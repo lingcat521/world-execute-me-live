@@ -26,7 +26,12 @@
     scale: 1, audioReady: false, hold: false, layers: [], bootQueue: []
   };
   PV.audio = audioEl; PV.chat = chatEl; PV.screen = screenEl;
-  PV.VER = '202610022243';
+  PV.VER = '202610022306';
+  PV.loadImage = function (path, cb) {
+    var im = new Image();
+    im.onload = function () { cb(im); };
+    im.src = path;
+  };
   PV.newCanvas = function (w, h) { var c = document.createElement('canvas'); c.width = Math.max(1, w | 0); c.height = Math.max(1, h | 0); return c; };
   PV.onWorld = function (fn) { PV.layers.push(fn); };
   PV.onBoot = function (fn) { PV.bootQueue.push(fn); };
@@ -105,6 +110,19 @@
     PV.audioReady = true;
     msgEl.textContent = f.name + ' (' + (f.size / 1048576).toFixed(1) + ' MB)';
     audioEl.play(); playEl.textContent = 'pause';
+  };
+  var startEl = document.getElementById('start');
+  var startBtn = document.getElementById('startbtn');
+  if (startBtn) startBtn.onclick = function () {
+    if (startEl) startEl.className = 'hide';
+    clock = 0;
+    if (PV.audioReady) {
+      try { audioEl.currentTime = 0; } catch (e) {}
+      var pr = audioEl.play();
+      if (pr && pr.catch) pr.catch(function () {});
+      playEl.textContent = 'pause';
+    }
+    layout();
   };
   if (fsEl) fsEl.onclick = function () {
     var el = document.documentElement;

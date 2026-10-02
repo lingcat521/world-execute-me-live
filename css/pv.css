@@ -43,3 +43,12 @@ body[data-ds-dark-theme]{--dsw-alias-bg-base:#05080f;--dsw-specific-bubble:#1823
   input[type=number]{font-size:14px;padding:6px 6px;width:4.5em}
   #msg{font-size:12px;max-width:30vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 }
+
+/* ==== 开始遮罩（浏览器不允许自动播放，需要一次手势） ==== */
+#start{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:14px;background:rgba(2,4,10,.86);color:#cfd6dd;font:16px/1.6 system-ui,sans-serif;backdrop-filter:blur(2px)}
+#start.hide{display:none}
+#start button{font-size:22px;padding:16px 34px;border-radius:999px;background:#1f2b52;color:#dbe4ff;
+  border:1px solid #35507f;cursor:pointer;font-family:inherit}
+#start button:active{background:#2a3a6b}
+#starthint{font-size:13px;color:#7d8798}

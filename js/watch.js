@@ -3,6 +3,8 @@
 (function () {
   var q = new URLSearchParams(location.search);
   if (!q.has('watch')) return;
+  var startEl = document.getElementById('start');
+  if (startEl) startEl.className = 'hide';
   var PV = window.PV;
   function report(msg) {
     try { fetch('/report', { method: 'POST', body: new Date().toISOString().slice(11, 19) + ' ' + msg }); } catch (e) {}
