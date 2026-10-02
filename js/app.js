@@ -28,7 +28,7 @@
     scale: 1, audioReady: false, hold: false, layers: [], bootQueue: []
   };
   PV.audio = audioEl; PV.chat = chatEl; PV.screen = screenEl;
-  PV.VER = '202610022329';
+  PV.VER = '202610022339';
   PV.loadImage = function (path, cb) {
     var im = new Image();
     im.onload = function () { cb(im); };
@@ -64,7 +64,7 @@
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
     for (var i = 0; i < PV.layers.length; i++) {
       ctx.save();
-      try { PV.layers[i](ctx, t, PV.frame); } catch (e) { PV.err = e; }
+      try { PV.layers[i](ctx, t, PV.frame); } catch (e) { PV.err = e; if (!PV.layerLogged) { PV.layerLogged = 1; if (window.console) console.log('layer error', e && e.message); } }
       ctx.restore();
     }
   }
@@ -94,7 +94,7 @@
     var t = pictureTime(); if (t < 0) t = 0;
     var tq = PV.hold ? PV.t : Math.floor(t * FPS) / FPS;
     draw(tq);
-    if (PV.sync) PV.sync(tq);
+    if (PV.sync) { try { PV.sync(tq); } catch (e) { PV.syncErr = e; if (!PV.syncLogged) { PV.syncLogged = 1; if (window.console) console.log('sync error', e && e.message); } } }
     if (seekEl && !seekDragging) { var dd = (PV.audioReady && isFinite(audioEl.duration) && audioEl.duration > 1) ? audioEl.duration : (PV.loopEnd || 211.9); seekEl.value = String(Math.round(1000 * Math.min(1, tq / dd))); }
     tcEl.textContent = fmt(tq) + '  f' + PV.frame + (PV.shotName ? '  ' + PV.shotName : '') + (PV.audioReady ? '' : '  loop 0-' + (PV.loopEnd || 16.1).toFixed(1) + 's');
     requestAnimationFrame(loop);
