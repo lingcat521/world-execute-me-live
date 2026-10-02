@@ -93,3 +93,24 @@
 - 02 SFT（44-73.5 s）之前还有 A3 段（29.28-44 s，聊天窗的"你是谁"选择题）与 shot 12-20。
 - 移动端适配待用户回报布局参数定位。
 
+
+## 移动端诊断（拿到真实数据）
+
+用户上报（Android 13，V2230A，Chrome）：
+
+```
+inner 360x662  dpr 2  barH 57  portrait true  scale 0.473  stage 605x340
+```
+
+分析：竖屏判定生效，缩放公式正确 —— 可用区 605 高，画面旋转后视觉尺寸 340x605，正好填满（左右各留 10px）。
+因此"没做好"不是尺寸算错，而是**形态/方向不符合预期**。已加开关：
+
+- `?rot=1`（默认）：竖屏时画面整体旋转 90 度
+- `?rot=0`：不旋转，按竖屏宽度等比缩小
+
+待用户反馈哪种形态正确，或具体现象（画面方向、大小、是否被工具栏遮挡）。
+
+## 下一步
+- 02 SFT 之前还有 8 个数学图形镜头：shot_points / dimension / circle / circumference / sine / tangent / infinity / limit（29.236 - 44.005 s）。
+- 已定位实现位置：`continuity_full_v2/scenes.py:300-530`，其中 shot_points 依赖 `points_pos(t, u)`。
+
