@@ -28,7 +28,11 @@
     scale: 1, audioReady: false, hold: false, layers: [], bootQueue: []
   };
   PV.audio = audioEl; PV.chat = chatEl; PV.screen = screenEl;
-  PV.VER = '202610030100';
+  PV.audioDur = 0;
+  audioEl.addEventListener('loadedmetadata', function () {
+    if (isFinite(audioEl.duration) && audioEl.duration > 1) PV.audioDur = audioEl.duration;
+  });
+  PV.VER = '202610030130';
   var errEl = document.getElementById('err');
   PV.showErr = function (msg) {
     if (!errEl) return;
@@ -92,6 +96,11 @@
   }
   PV.fmt = fmt;
   var lastTs = 0, clock = 0;
+  /* 进度条与循环共用的总时长：音频元数据优先，其次音频时长缓存，最后退回片长 */
+  function songDur() {
+    return (PV.audioReady && isFinite(audioEl.duration) && audioEl.duration > 1)
+      ? audioEl.duration : (PV.audioDur || PV.loopEnd || 211.9);
+  }
   /* clock 永远等于「当前画面时间 + offset」。音频播放时它每一帧都被同步成 audioEl.currentTime，
      所以暂停、拖动、恢复都不会丢位置——旧版这里读的是播放中的音频、暂停后切回没被推进过的 clock，
      于是暂停瞬间画面和进度条一起跳回 0。 */
@@ -103,10 +112,10 @@
     var dt = lastTs ? Math.min(0.2, (ts - lastTs) / 1000) : 0;
     lastTs = ts;
     var usingAudio = PV.audioReady && !audioEl.paused && !audioEl.ended;
-    var le = (PV.audioReady && isFinite(audioEl.duration) && audioEl.duration > 1) ? audioEl.duration : (PV.loopEnd || 211.9);
+    var le = songDur();
     if (usingAudio) {
       clock = audioEl.currentTime;
-    } else if (!paused) {
+    } else if (!paused && PV.started) {   /* 用户点过开始之前，画面停在第 0 帧——音画必须一起动 */
       clock += dt;
       if (clock >= le) {
         clock = 0;
@@ -117,7 +126,7 @@
     var tq = PV.hold ? PV.t : Math.floor(t * FPS) / FPS;
     draw(tq);
     if (PV.sync) { try { PV.sync(tq); } catch (e) { PV.syncErr = e; if (!PV.syncLogged) { PV.syncLogged = 1; if (window.console) console.log('sync error', e && e.message); } } }
-    if (seekEl && !seekDragging) { var dd = (PV.audioReady && isFinite(audioEl.duration) && audioEl.duration > 1) ? audioEl.duration : (PV.loopEnd || 211.9); seekEl.value = String(Math.round(1000 * Math.min(1, tq / dd))); }
+    if (seekEl && !seekDragging) { var dd = songDur(); seekEl.value = String(Math.round(1000 * Math.min(1, tq / dd))); }
     if (tcEl) tcEl.textContent = fmt(tq) + '  f' + PV.frame + (PV.shotName ? '  ' + PV.shotName : '') + (PV.audioReady ? '' : '  loop 0-' + (PV.loopEnd || 16.1).toFixed(1) + 's');
     } catch (e) { PV.loopErr = e; PV.showErr('loop ' + (e && e.message)); }
   }
@@ -146,6 +155,7 @@
   function startAudio() {
     if (PV.started) return;
     PV.started = true;
+    var hintEl = document.getElementById('hint'); if (hintEl) hintEl.style.display = 'none';
     if (PV.audioReady) {
       try { audioEl.currentTime = Math.max(0, clock + PV.offset); } catch (e) {}   /* 从当前画面位置接上，不把画面拽回 0 */
       var pr = audioEl.play();
@@ -168,7 +178,7 @@
     seekEl.addEventListener('pointerdown', function () { seekDragging = true; showBar(); });
     seekEl.addEventListener('pointerup', function () { seekDragging = false; showBar(); });
     seekEl.addEventListener('input', function () {
-      var dur = (PV.audioReady && isFinite(audioEl.duration) && audioEl.duration > 1) ? audioEl.duration : (PV.loopEnd || 211.9);
+      var dur = songDur();
       var target = (seekEl.value / 1000) * dur;
       if (PV.audioReady) { try { audioEl.currentTime = target; } catch (e) {} }
       clock = target;   /* 暂停状态下拖动进度条也要立刻跟手 */
@@ -215,7 +225,7 @@
       var tt = parseFloat(q.get('t'));
       var tq = Math.floor(tt * FPS) / FPS;
       draw(tq); if (PV.sync) PV.sync(tq);
-      if (seekEl && !seekDragging) { var dd = (PV.audioReady && isFinite(audioEl.duration) && audioEl.duration > 1) ? audioEl.duration : (PV.loopEnd || 211.9); seekEl.value = String(Math.round(1000 * Math.min(1, tq / dd))); }
+      if (seekEl && !seekDragging) { var dd = songDur(); seekEl.value = String(Math.round(1000 * Math.min(1, tq / dd))); }
     if (tcEl) tcEl.textContent = fmt(tq) + '  f' + PV.frame + (PV.shotName ? '  ' + PV.shotName : '') + (PV.audioReady ? '' : '  loop 0-' + (PV.loopEnd || 16.1).toFixed(1) + 's');
       if (q.has('shot')) {
         canvas.toBlob(function (b) {

@@ -68,3 +68,8 @@ body[data-ds-dark-theme]{--dsw-alias-bg-base:#05080f;--dsw-specific-bubble:#1823
   background:rgba(24,0,0,.93);color:#ff7b72;border:1px solid #ff3b30;border-radius:6px;padding:6px 9px;
   font:12px/1.5 ui-monospace,monospace;white-space:pre-wrap;word-break:break-all;pointer-events:none}
 #tc{font:12px/1 ui-monospace,monospace;color:#9aa4b2;min-width:8.5em;display:inline-block}
+
+/* 首次点击前的提示（自动播放被浏览器拦截时，等用户点一下才开始） */
+#hint{position:fixed;left:50%;top:44%;transform:translate(-50%,-50%);z-index:9000;pointer-events:none;
+  color:#c8d6ea;background:rgba(4,7,15,.74);border:1px solid rgba(200,214,234,.26);border-radius:6px;
+  padding:8px 18px;font:13px/1.4 ui-monospace,monospace;letter-spacing:.10em}
