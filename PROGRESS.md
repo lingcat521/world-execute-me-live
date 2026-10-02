@@ -222,3 +222,57 @@ inner 360x662  dpr 2  barH 57  portrait true  scale 0.473  stage 605x340
 - `c.echo` 经核对就是窗格标题里的 `layer NN/43` 本身，不需要单独通道
 - **至此 0 - 58.543 秒连续可播**（BOOT 8 镜 + PRETRAIN 12 镜 + SFT 6 镜）
 
+
+## —— 交接状态（第 42 轮，DSH 崩溃后恢复）——
+
+### 转场（cut）：16 / 24 已实现（台账见 CUTS.md）
+已完成：C01 C02 C03 C08 C09 C10 C11 C12 C13 C14 C15 C16 C17 C18 C19 C20
+
+待做：
+- C04（creation → parameters，RETAIN：me.* 块先亮起留在原地，chrome 收回 shell staging）
+- C05（parameters → init，CARRY：'552,000,000,000 params' 沿弧线升起落到直方图标题）
+- C06（init → world，MORPH：柱条碎成点列飞向球面）
+- C07（world → begin_sim，CARRY+MORPH：me/you 离开轨道飞进 population 行的词）
+- C21（current → blind，八条功率轨迹量化成十二段并胀成注意力矩阵格子）
+- C22（blind → dizzy，最重：需移植 scenes_sft.py 的 3D 投影 project/surface_z/dizzy_rot/draw_ball）
+- C23（dizzy → travel，窗格内镜头后拉）
+- C24（travel → unite，在 s_chorus1.py）
+
+源码位置（权威）：dshpv/film/tui_pv_world_execute_20260926/continuity_full_v2/
+  cuts.py = C08-C20；s_boot.py = C01-C07；s_sft.py = C21-C23；s_chorus1.py = C24
+
+### 关键机制（都已实现，改转场时务必复用）
+1. PV.SHOT_DELAY = {shot_circumference:0.4, shot_dimension:0.4, shot_dualpipe:0.42}
+   镜头自带启动延迟，分派器用 a' = min(t, a+delay)（延迟期内 lt=0,u=0）。
+   转场层要用 PV.shotTime(name, t) 取 [lt,u]，不要自己算，否则会绕过延迟。
+2. PV.reveal(ctx, t, oldDraw, newDraw, delayFn, opts) —— 逐格替换。
+   两张离屏画布都会先铺背景（不透明），这是修复「新画面透明导致旧画面透出、逐格替换失效」的关键，别去掉。
+3. PV.radial(sx,sy,t0,speed) / PV.inward(sx,sy,t0,t1,reach) —— 延迟场。
+4. 镜头钩子：
+   shotPieces(opts.cells) / shotLimit(opts.wall,drawBar) / shotCurrent(opts.traces)
+   shotTangent(opts.curve,rider,tangent) / shotSine(ctx,t,lt,u,wavesHook)
+   shotCircumference(opts.dots,line,labels) / shotCircle 用 PV.circleSpec(i) 控制每个圆的诞生
+5. PV.reg(name, a, b, fn) —— 各段独立文件注册镜头（scene_p2a/b/c.js），分派兜底会调用。
+   注意：分派兜底所在的 IIFE 里没有 T，必须写 PV.tui。
+
+### 并行分工
+三个子代理各写一个文件，互不冲突：
+- js/scene_p2a.js = 58.543–110.4s（03 RLHF + 04 DEPLOY）—— 已有 11 KB
+- js/scene_p2b.js = 110.4–147.4s（05 USER_LEFT + 06 REWARD_HACK）—— 尚未产出
+- js/scene_p2c.js = 147.4–211.872s（07 EXECUTION + 08 EVAL + 09 WHALE_FALL）—— 已有 18 KB
+
+### 已知缺口（非转场问题，但影响观感）
+1. shotPieces 的 'params loaded' 计数应当由 C02 的点落地时刻驱动
+   （原始工程：C.SHOT_HOOKS["shot_pieces"] = {"landed": landed, ...}），现在用的是镜头自己的时钟。
+2. shieldCells() 点阵密度偏低（我们 67 点，参考反推约 100 点），采样条件 (q+r)%4===0 待调。
+3. C03 的「她从种子点径向长出、前缘发亮」这一层，因为左窗格是真 HTML，需用 CSS clip-path 实现。
+4. 镜内动画（非转场）：tangent 的相机推进、infinity 的 context 条增长，运动量比参考弱。
+
+### 验证基础设施
+- node pvport/render.mjs <时刻...> → pv-live/render/t<时刻>.png；有异常会打印 sceneErr/chromeErr。
+- node pvport/clocktest.mjs —— 播放/暂停/拖动时钟回归（5 项）。
+- 参考帧：pvport/refall（0-60s 每 0.25s）、pvport/refall2（58-212s 每 0.5s）。
+  参考帧是 1920x1080，比对前必须缩放到 1280x720（早期踩过这个坑）。
+- 量化校验：pvport/motion.py / measure5.py / verify01-03.py。
+- 推送：python pvport/push_fast.py code（本地 git 必须先 commit；脚本用本地 blob sha 直接建树，不重传）。
+- 本地预览：python pvport/serve.py 8765 → http://127.0.0.1:8765/（端口冲突时换 8766）

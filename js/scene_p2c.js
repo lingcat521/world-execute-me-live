@@ -222,6 +222,8 @@
   };
   var CROPS = { full: [0, 0, 1, 1], upper: [0.05, 0.0, 0.95, 0.62], face: [0.15, 0.02, 0.85, 0.45],
                 bust: [0.08, 0.0, 0.92, 0.72] };
+  /* 载入期就把全部素材请求出去（渲染脚本靠 PENDING 判断何时可以开画） */
+  function preload() { for (var k in MAP) load(k); }
   function load(name) {
     var path = MAP[name] || MAP.cheerful;
     if (IMGS[path] !== undefined) return IMGS[path];
@@ -233,6 +235,7 @@
     return null;
   }
   PV.p2cImagesReady = function () { return PENDING === 0 && READY; };
+  preload();
   PV.p2cPortraitInfo = function (name, crop, maxW, maxH, px) {
     var im = load(name), c = CROPS[crop] || CROPS.full;
     var sw = im ? im.width : 120, sh = im ? im.height : 120;

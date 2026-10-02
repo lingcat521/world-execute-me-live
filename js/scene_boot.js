@@ -283,7 +283,7 @@
       /* 由 PV.reg 注册的镜头（各段独立文件），统一签名 fn(ctx, t, lt, u, dur) */
       var _d2 = (PV.SHOT_DELAY && PV.SHOT_DELAY[s.name]) || 0;
       var _a2 = Math.min(t, s.a + _d2), _lt = Math.max(0, t - _a2), _dur = s.b - _a2;
-      s.fn(ctx, t, _lt, _dur > 0 ? T.clamp01(_lt / _dur) : 0, _dur);
+      s.fn(ctx, t, _lt, _dur > 0 ? PV.tui.clamp01(_lt / _dur) : 0, _dur);   /* 这个 IIFE 里没有 T，必须走 PV.tui */
     }
     PV.shotName = s.name;
   };
