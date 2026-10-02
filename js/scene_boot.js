@@ -97,7 +97,8 @@
     { a: 11.005, b: 12.389, fn: null, name: 'shot_world', idx: 6, shell: false },
     { a: 12.389, b: 16.082, fn: null, name: 'shot_begin_sim', idx: 7, shell: false },
     { a: 16.082, b: 19.700, fn: null, name: 'shot_corpus', idx: 8, shell: false },
-    { a: 19.700, b: 23.236, fn: null, name: 'shot_losscurve', idx: 9, shell: false }];
+    { a: 19.700, b: 23.236, fn: null, name: 'shot_losscurve', idx: 9, shell: false },
+    { a: 23.236, b: 26.466, fn: null, name: 'shot_dualpipe', idx: 10, shell: false }];
   PV.powerLog = powerLog;
   PV.logLine = logLine;
   PV.POWER_LOG = POWER_LOG;
@@ -206,6 +207,7 @@
     for (var i = 0; i < PV.SHOTS.length; i++) if (t >= PV.SHOTS[i].a && t < PV.SHOTS[i].b) s = PV.SHOTS[i];
     if (!s) { PV.shotName = null; return; }
     if (s.name === 'shot_power') { PV.ownPower(ctx, t); }
+    else if (s.name === 'shot_dualpipe') { PV.shotDualPipe(ctx, t, Math.max(0, t - s.a), s.b - s.a); }
     else if (s.name === 'shot_losscurve') { PV.shotLossCurve(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
     else if (s.name === 'shot_corpus') { PV.shotCorpus(ctx, t, Math.max(0, t - s.a)); }
     else if (s.name === 'shot_begin_sim') { PV.shotBeginSim(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a), s.b - s.a); }
@@ -225,7 +227,7 @@
   'use strict';
   var PV = window.PV, T = PV.tui;
   var C01_T = 1.312, C01_OPEN = 0.23, SHELL_CMD = './protect';
-  PV.loopEnd = 23.236;
+  PV.loopEnd = 26.466;
   PV.SHELL_SHOTS = [
     { a: 1.312, b: 3.620, cmd: './protect' },
     { a: 7.082, b: 9.851, cmd: 'neofetch' }];
@@ -606,5 +608,54 @@
     PV.dotChart(ctx, 440, 460, 690, 120, lr, T.ease(u * 1.05), T.ui(0.7), 5, 4);
     if (xlabel) T.textMono(ctx, xlabel, 446, 400, T.ui(0.55), 13);
     T.textMono(ctx, 'no irrecoverable loss spikes · no rollbacks   (V3 report)', 440, 582, T.ui(0.6), 14);
+  };
+})();
+
+/* ---- 镜头 10（dualpipe）：DualPipe 流水线调度格子 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var PIPE = { ranks: 8, steps: 27, cw: 26, ch: 44, ox: 470, oy: 110 };
+  PV.PIPE = PIPE;
+  PV.pipeCells = function (lt, dur, delay) {
+    delay = delay || 0;
+    var head = Math.max(0, (lt - delay) / Math.max(0.3, dur - delay)) * PIPE.steps * 1.15;
+    var out = [];
+    for (var r = 0; r < PIPE.ranks; r++) {
+      for (var s = 0; s < PIPE.steps; s++) {
+        if (s > head) break;
+        var phase = (s + r) % 6;
+        if ((s < r && s < PIPE.ranks - r) || (s > PIPE.steps - 3 && phase === 0)) continue;
+        var kind = phase < 2 ? 'F' : (phase < 4 ? ((((s + PIPE.ranks - r) % 5) % 2) ? 'B' : 'Bd') : 'W');
+        out.push([r, s, PIPE.ox + s * PIPE.cw, PIPE.oy + r * PIPE.ch, kind]);
+      }
+    }
+    return [out, head];
+  };
+  PV.drawPipeCell = function (ctx, x, y, kind, a) {
+    var x1 = x + PIPE.cw - 3, y1 = y + PIPE.ch - 6;
+    if (kind === 'F') {
+      T.fill(ctx, x, y, x1 + 1, y1 + 1, T.ui(0.75 * a), 1);
+      T.textPIL(ctx, 'F', x + 7, y + 13, T.css(T.BG), 11);
+    } else if (kind === 'B' || kind === 'Bd') {
+      T.fill(ctx, x, y, x1 + 1, y1 + 1, T.mix(T.ME_TEXT, (kind === 'B' ? 0.75 : 0.5) * a), 1);
+      T.textPIL(ctx, 'B', x + 7, y + 13, T.css(T.BG), 11);
+    } else {
+      T.rect(ctx, x, y, x1, y1, T.ui(0.5 * a), 1, 1);
+      T.textPIL(ctx, 'W', x + 7, y + 13, T.ui(0.8 * a), 11);
+    }
+  };
+  PV.shotDualPipe = function (ctx, t, lt, dur) {
+    PV.ops = ['DUALPIPE', 'F', 'B', 'W', 'COMM.OVERLAP', 'ALL2ALL', 'DISPATCH', 'COMBINE'];
+    T.box(ctx, 404, 56, 1164, 604, 'pipeline schedule  DualPipe  (8 PP ranks, 20 micro-batches)', 0.5, T.UI, t);
+    var pc = PV.pipeCells(lt, dur, 0), cells = pc[0], head = pc[1], i;
+    for (i = 0; i < PIPE.ranks; i++) T.textMono(ctx, 'PP' + i, PIPE.ox - 40, PIPE.oy + i * PIPE.ch + 12, T.ui(0.6), 13);
+    for (i = 0; i < cells.length; i++) PV.drawPipeCell(ctx, cells[i][2], cells[i][3], cells[i][4], 1.0);
+    var hx = PIPE.ox + head * PIPE.cw;
+    if (head > 0 && hx < PIPE.ox + PIPE.steps * PIPE.cw) {
+      T.fill(ctx, Math.round(hx), PIPE.oy - 10, Math.round(hx) + 2, PIPE.oy + PIPE.ranks * PIPE.ch, T.ui(1.0), 1);
+    }
+    T.textMono(ctx, 'DualPipe: all-to-all hidden behind compute · bubbles shrink from both ends', 430, 480, T.ui(0.75), 16);
+    T.textPIL(ctx, T.decode('V3: 2.788M H800 GPU hours · $5.576M', lt - 0.4, PV.rngFor(t, 7919), 45, 0.12, 0), 430, 510, T.ui(0.95), 18);
   };
 })();

@@ -21,6 +21,16 @@
     mc.font = '17px ' + PV.tui.MONO_FAM;
     report('load resolved=' + mc.font + ' k=' + PV.tui.monoScale(mc, 17).toFixed(3) + ' | ' + probes.join(' '));
   } catch (e) { report('load fontprobe fail ' + e.message); }
+  function layoutInfo() {
+    return 'LAYOUT v' + PV.VER + ' inner ' + window.innerWidth + 'x' + window.innerHeight +
+      ' dpr ' + (window.devicePixelRatio || 1) +
+      ' scale ' + (PV.scale || 0).toFixed(3) +
+      ' portrait ' + PV.portrait +
+      ' stage ' + Math.round(1280 * (PV.scale || 0)) + 'x' + Math.round(720 * (PV.scale || 0)) +
+      ' barH ' + (document.getElementById('bar') ? document.getElementById('bar').offsetHeight : -1) +
+      ' ua ' + navigator.userAgent.slice(0, 45);
+  }
+  var pollN = 0;
   var busy = false;
   function shot(t, name) {
     busy = true;
@@ -43,6 +53,8 @@
     }, 60);
   }
   function poll() {
+    pollN++;
+    if (pollN % 2 === 1) report(layoutInfo());
     if (busy) return;
     fetch('/next', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
       if (d && d.ver) {
