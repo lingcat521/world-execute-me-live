@@ -52,3 +52,13 @@ body[data-ds-dark-theme]{--dsw-alias-bg-base:#05080f;--dsw-specific-bubble:#1823
   border:1px solid #35507f;cursor:pointer;font-family:inherit}
 #start button:active{background:#2a3a6b}
 #starthint{font-size:13px;color:#7d8798}
+
+/* ==== 播放器式控制条 ==== */
+#bar{transition:opacity .35s ease}
+#bar.hide{opacity:0;pointer-events:none}
+#seek{-webkit-appearance:none;appearance:none;flex:1;min-width:110px;height:6px;border-radius:3px;
+  background:#2b323b;outline:none;margin:0 4px}
+#seek::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:#7ea6ff;
+  box-shadow:0 0 6px rgba(126,166,255,.6);cursor:pointer}
+#seek::-moz-range-thumb{width:18px;height:18px;border:0;border-radius:50%;background:#7ea6ff;cursor:pointer}
+#play{min-width:44px;font-size:16px}
