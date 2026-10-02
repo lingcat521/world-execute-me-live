@@ -798,3 +798,50 @@
     }
   });
 })();
+
+/* ---- C06：init -> world。MORPH：定型的柱条碎成点列，每个点飞向球面的一点
+        （柱顶到上缘、柱身到下纬），到达时变成球面的字符；球在拍点上完整并继续自转。 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var T0 = 11.005, PRE = 0.26, TA = -0.23, TB = 0.23, BASE = 560, GX = 784, GY = 320, GR = 230;
+  function eIo(u) { u = T.clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
+  function glyph(z) { return z < 0.35 ? '\u00b7' : (z < 0.75 ? 'o' : 'O'); }
+  var BARS = null;
+  function bars() {
+    if (BARS) return BARS;
+    var ms = T0 + TA;
+    BARS = PV.initBars(ms, (ms - 9.851) / (11.005 - 9.851));
+    return BARS;
+  }
+  PV.addCut(T0, PRE, 0.32, function (ctx, t, cut) {
+    var ms = T0 + TA, span = TB - TA;
+    PV.reveal(ctx, t,
+      function (c) { PV.shotInit(c, t, Math.max(0, t - 9.851), T.clamp01((t - 9.851) / (11.005 - 9.851)), { bars: false }); },
+      function (c) { PV.shotWorld(c, t, Math.max(0, t - T0), T.clamp01((t - T0) / (12.389 - T0)), { globe: t >= T0 + TB }); },
+      PV.radial(GX, GY, T0 - 0.12, 1400),
+      { region: [405, 44, 1164, 604], cell: [8, 16], dur: 0.09 });
+    var lift = T.clamp01((t - (T0 - PRE)) / 0.1), B = bars(), i;
+    if (t < ms + 0.14) {
+      var k = T.clamp01((t - (ms - 0.06)) / 0.2), hw = 4.5 * (1 - eIo(k));
+      if (hw > 0.3) for (i = 0; i < B.length; i++) {
+        /* 实测参考在这一段是浅灰白的柱条（与 init 镜头同色），不是琥珀 */
+        if (B[i][1] > 0) T.fill(ctx, B[i][0] + 4.5 - hw, BASE - B[i][1], B[i][0] + 4.5 + hw, BASE,
+                                T.ui(0.35 + 0.6 * B[i][2]), 1 - 0.5 * k);
+      }
+    }
+    if (t >= ms - 0.06 && t < T0 + TB + 0.02) {
+      var pts = PV.globePoints(t, GR);
+      for (i = 0; i < pts.length; i++) {
+        var gx = pts[i][0], gy = pts[i][1], z = pts[i][2];
+        var fx = T.clamp01((gx - (GX - GR)) / (2 * GR)), fy = T.clamp01((gy - (GY - GR)) / (2 * GR));
+        var b = B[Math.min(59, Math.max(0, Math.round(fx * 59)))];
+        var sx = b[0] + 4.5, sy = BASE - b[1] * (1 - fy);
+        var u = eIo(T.clamp01((t - (ms + 0.1 * Math.abs(fx - 0.5) * 2)) / (span - 0.1)));
+        var x = sx + (gx - sx) * u, y = sy + (gy - sy) * u;
+        if (u < 0.6) T.fill(ctx, x - 4, y - 1, x + 4, y + 1, T.mix(T.ANOM, 0.35 + 0.6 * b[2]), 1 - u * 0.5);
+        else T.textPIL(ctx, glyph(z), x - 4, y - 8, T.ui(0.35 + 0.65 * z), 15);
+      }
+    }
+  });
+})();

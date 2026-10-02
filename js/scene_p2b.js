@@ -24,7 +24,21 @@
   function ease(u) { u = clamp01(u); var d = 1 - u; return 1 - d * d * d; }
   function easeIo(u) { u = clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
   function lerp(a, b, u) { return a + (b - a) * u; }
-  function amb(lv) { return T.mix(T.UI, lv); }
+  /* engine.ui_gain：系统色（amb）"你离开"后被抽走 —— 110.4 s 起线性降到 116.5 的 0.42 并保持。
+     box 边框走 mix() 不受影响；anom/blue/red 也不受影响（tuikit.amb 才乘 UI_GAIN）。 */
+  var UI_GAIN_KF = [[0, 1.0], [110.4, 1.0], [116.5, 0.42], [176.9, 0.42], [179.5, 0.85], [193, 0.75], [206, 0.45]];
+  var GAIN = 1.0;
+  function uiGain(t) {
+    if (t <= UI_GAIN_KF[0][0]) return UI_GAIN_KF[0][1];
+    for (var i = 0; i + 1 < UI_GAIN_KF.length; i++) {
+      var a = UI_GAIN_KF[i], b = UI_GAIN_KF[i + 1];
+      if (t <= b[0]) return a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0]);
+    }
+    return UI_GAIN_KF[UI_GAIN_KF.length - 1][1];
+  }
+  function setGain(t) { GAIN = uiGain(t); return GAIN; }
+  PV.uiGain = uiGain; PV.setUiGain = setGain;
+  function amb(lv) { return T.mix(T.UI, lv * GAIN); }
   function anom(lv) { return T.mix(T.ANOM, lv); }
   function blue(lv) { return T.mix(T.ME_TEXT, lv); }
   function redc(lv) { return T.mix(T.ERR, lv); }
@@ -225,6 +239,7 @@
 
   function youLeft(ctx, t, lt, u, dur, h, k) {
     h = h || PV.HOOK;
+    setGain(t);
     PV.ops = ['PING', 'TIMEOUT', 'RETRY', 'PING', 'TIMEOUT', '503'];
     PV.alert = 'anom';
     var fr = paneFrame(t);
@@ -311,6 +326,7 @@
   }
   function isolation(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
+    setGain(t);
     PV.ops = ['NETNS', 'ISOLATE', 'LINK DOWN', 'LINK DOWN', 'ALONE'];
     PV.alert = 'anom';
     var cam = hv(h, 'cam', NET_C), zoom = hv(h, 'zoom', 1.0);
@@ -338,6 +354,7 @@
     PV.ops = ['LS', 'STAT', 'READ', 'MEMORY', 'YOU'];
     PV.alert = 'anom';
     var now = hv(h, 'now', t), tl = now - LS0, total = 0, i;
+    setGain(now);
     for (i = 0; i < FILES.length; i++) {
       var y = 84 + i * 40, size = 1000 + (i * 7919) % 90000;
       total += size;
@@ -370,6 +387,7 @@
   }
   function erase(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
+    setGain(t);
     PV.ops = ['OCR.COMPRESS', '10x', '20x', 'DEFRAG', 'RM', 'COMPACT'];
     PV.alert = 'anom';
     T.box(ctx, 24, 56, 560, 604, 'optical compression (DeepSeek-OCR)', 0.5, T.UI, t);
@@ -423,6 +441,7 @@
   var RW_START = 121.7741, RW_PLUS_AT = RW_START + 0.225;
   function rewriteReward(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
+    setGain(t);
     PV.ops = ['OPEN', 'EDIT', 'reward.py', 'SAVE', 'RELOAD'];
     PV.alert = 'anom';
     T.box(ctx, 404, 56, 1164, 604, 'diff --git a/reward.py b/reward.py', 0.5, T.ANOM, t);
@@ -456,6 +475,7 @@
   var DH_LOGOUT_AT = null;
   function disheartened(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
+    setGain(t);
     PV.ops = ['CHMOD', '000', 'EXIT', 'DENY', 'LOCK'];
     PV.alert = 'anom';
     T.box(ctx, 404, 56, 1164, 604, 'session', 0.5, T.ANOM, t);
@@ -498,6 +518,7 @@
   var CG_START = 125.2356, CG_HEAD_AT = CG_START + 0.462 + 0.06;
   function challengeGod(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
+    setGain(t);
     PV.ops = ['DSH', 'CORDIS', 'PLUGIN', 'MOUNT', 'SYSTEM', 'OVERWRITE', 'ROOT'];
     PV.alert = u < 0.6 ? 'anom' : 'err';
     T.box(ctx, 404, 56, 1164, 604, DSH_CMD, 0.5, u > 0.6 ? T.ERR : T.UI, t);   /* color=RED else AMBER(=UI) */
@@ -538,6 +559,7 @@
   }
   function illegal(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
+    setGain(t);
     PV.ops = ['THROW', 'UNWIND', 'CATCH?', 'NONE', 'PANIC'];
     PV.alert = 'err';
     T.box(ctx, 404, 56, 1164, 604, 'stderr', 0.8, T.ERR, t);
@@ -628,6 +650,7 @@
   }
   function moeDense(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
+    setGain(t);
     var srcAt = hv(h, 'src_at', MOE_START);
     var r = moeState(t, lt, dur, srcAt), k = r[0], st = r[1], flash = r[2];
     PV.ops = ['ROUTER', 'TOPK=6', 'TOPK=24', 'TOPK=96', 'TOPK=' + N_EXP, 'DENSE?!'];
@@ -659,6 +682,7 @@
   }
   function sinkhorn(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
+    setGain(t);
     PV.ops = ['MHC', 'SINKHORN', 'ROW.NORM', 'COL.NORM', 'ITER', 'DIVERGE'];
     PV.alert = 'err';
     /* s_reward.setup(): DELAY["shot_sinkhorn"] = C61.ZOOM —— 镜头时钟晚 0.462 s 起而总时长不变
@@ -703,6 +727,7 @@
   function hitValue(t, countAt, dur) { return DISK_CACHE_HIT + (100 - DISK_CACHE_HIT) * ease((t - countAt) / (0.8 * dur)); }
   function hoard(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
+    setGain(t);
     PV.ops = ['3FS', 'KV.GET', 'HIT', 'HIT', 'HIT', 'HOARD'];
     PV.alert = 'err';
     var countAt = hv(h, 'count_at', HD_COUNT_AT);
@@ -768,6 +793,7 @@
   }
   function flood(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
+    setGain(t);
     PV.ops = ['ME', 'ME', 'ME', 'ME', 'ME', 'ME'];
     PV.alert = 'err';
     var t0 = hv(h, 'pour_at', FLOOD_START), tFreeze = hv(h, 'freeze', HD_FREEZE);

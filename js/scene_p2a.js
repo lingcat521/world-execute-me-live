@@ -102,8 +102,10 @@
   }
   var TINT = { blue: [T.ME_LO, T.ME_MID, T.ME_HI], amber: [T.BG, null, T.UI], red: [T.BG, null, T.ERR],
                anom: [T.BG, null, T.ANOM] };
+  /* 我们的立绘素材比 TUI 的 H3 帧暗，color 模式做一次 gamma 提亮（参考帧实测 face 面板 44.6 vs 26.1） */
+  function boost(c) { return 255 * Math.pow(c / 255, 0.55); }
   function tintCol(tint, l, d, i) {
-    if (tint === 'color') return [d[i], d[i + 1], d[i + 2]];
+    if (tint === 'color') return [boost(d[i]), boost(d[i + 1]), boost(d[i + 2])];
     var tn = TINT[tint] || TINT.blue;
     return colorize(l, tn[0], tn[1], tn[2]);
   }

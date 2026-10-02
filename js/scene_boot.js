@@ -468,12 +468,12 @@
     }
     return out;
   };
-  PV.shotInit = function (ctx, t, lt, u, opts) {
+  PV.shotInit = function (ctx, t, lt, u, opts) {   /* opts.title / opts.bars */
     opts = opts || {};
     PV.ops = ['INIT', 'NORMAL', 'STD=0.006', 'ZERO.BIAS', 'SEED', 'SYNC'];
     T.box(ctx, 404, 56, 1164, 604, 'init: normal(0, 0.006)', 0.5, T.UI, t);
     var bars = PV.initBars(t, u);
-    for (var i = 0; i < bars.length; i++) {
+    for (var i = 0; opts.bars !== false && i < bars.length; i++) {   /* C06：柱条由转场层接管 */
       var hh = bars[i][1];
       if (hh > 0) T.fill(ctx, bars[i][0], BASE - hh, bars[i][0] + 10, BASE + 1, T.ui(0.35 + 0.6 * bars[i][2]), 1);
     }
@@ -513,11 +513,12 @@
     T.fill(ctx, x - 5, y - 5, x + 6, y + 6, T.css(PV.lit(T.mix(base, 1.0 * a), glow)), 1);
     T.textPIL(ctx, lab, x + 10, y - 10, T.css(PV.lit(T.mix(base, 0.95 * a), glow)), 16);
   };
-  PV.shotWorld = function (ctx, t, lt, u) {
+  PV.shotWorld = function (ctx, t, lt, u, opts) {
+    opts = opts || {};
     PV.ops = ['WORLD.NEW', 'SPACE', 'TIME', 'PHYSICS', 'SIMULATE?'];
     T.box(ctx, 404, 56, 1164, 604, 'world = World(dim=3)', 0.5, T.UI, t);
     var R = R0 * T.ease(u * 2);
-    var pts = PV.globePoints(t, R);
+    var pts = opts.globe === false ? [] : PV.globePoints(t, R);   /* C06：球面由转场层逐点拼出来 */
     for (var i = 0; i < pts.length; i++) {
       var p = pts[i], z = p[2];
       T.textPIL(ctx, z < 0.35 ? '·' : (z < 0.75 ? 'o' : 'O'), p[0] - 4, p[1] - 8, T.ui(0.35 + 0.65 * z), 15);
