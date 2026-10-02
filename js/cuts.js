@@ -360,3 +360,69 @@
     }
   });
 })();
+
+/* ---- C18：tangent -> infinity。只有可视化窗格在平移（镜头追着骑手往 +x 走）。 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var T0 = 40.312, PRE = 0.25, POST = 0.3;
+  var X0 = 406, Y0 = 58, X1 = 1163, Y1 = 603, W = X1 - X0, H = Y1 - Y0;
+  function eIo(u) { u = T.clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
+  PV.addCut(T0, PRE, POST, function (ctx, t, cut) {
+    var e = eIo((t - (T0 - PRE)) / (PRE + POST));
+    var oc = PV.newCanvas(1280, 720), nc = PV.newCanvas(1280, 720);
+    var og = oc.getContext('2d'), ng = nc.getContext('2d');
+    if (PV.drawBackground) { PV.drawBackground(og, t); PV.drawBackground(ng, t); }
+    PV.shotTangent(og, t, Math.max(0, t - 38.236), T.clamp01((t - 38.236) / (40.312 - 38.236)), 40.312 - 38.236);
+    PV.shotInfinity(ng, t, Math.max(0, t - T0), T.clamp01((t - T0) / (41.928 - T0)));
+    ctx.drawImage(e < 0.5 ? oc : nc, 0, 0);
+    ctx.save(); ctx.beginPath(); ctx.rect(X0, Y0, W, H); ctx.clip();
+    T.fill(ctx, X0, Y0, X1, Y1, T.BG, 1);
+    var off = Math.round(W * e);
+    if (off < W) ctx.drawImage(oc, X0 + off, Y0, W - off, H, X0, Y0, W - off, H);
+    if (off > 0) ctx.drawImage(nc, X0, Y0, off, H, X1 - off, Y0, off, H);
+    ctx.restore();
+  });
+})();
+
+/* ---- C19：infinity -> limit。墙在拍点上砸下来，越界部分碎裂，条变蓝加厚抵住墙。 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var T0 = 41.928, PRE = 0.18;
+  var SH = null;
+  function eIn(u) { u = T.clamp01(u); return u * u * u; }
+  function eOut(u) { u = T.clamp01(u); return 1 - Math.pow(1 - u, 3); }
+  function shards() {
+    if (SH) return SH;
+    var rng = PV.mt(19);   /* 与原始 cuts.py 的 random.Random(19) 同序同值 */
+    SH = [];
+    for (var q = 0; q < 36; q++) SH.push([1060 + (q % 9) * 8, 202 + Math.floor(q / 9) * 9, 80 + rng.random() * 340, -260 + rng.random() * 420]);
+    return SH;
+  }
+  PV.addCut(T0, PRE, 0.45, function (ctx, t, cut) {
+    PV.reveal(ctx, t,
+      function (c) { PV.shotInfinity(c, t, t - 40.312, (t - 40.312) / (41.928 - 40.312)); },
+      function (c) { PV.shotLimit(c, t, Math.max(0, t - T0), T.clamp01((t - T0) / (44.005 - T0)), { wall: t >= T0 + 0.02, drawBar: t >= T0 + 0.2 }); },
+      PV.radial(1050, 230, T0, 1700),
+      { region: [405, 44, 1164, 604], cell: [8, 16], dur: 0.09 });
+    if (t < T0 + 0.02) {
+      var u = eIn((t - (T0 - PRE)) / PRE), y = -140 + (170 + 140) * u;
+      T.fill(ctx, 1040, y, 1060, y + 120, T.ANOM, 1);
+    }
+    if (t >= T0 && t < T0 + 0.2) {
+      var u2 = eOut((t - T0) / 0.2);
+      T.fill(ctx, 430, 200, 1030, 240 + 20 * u2, [255 + (120 - 255) * u2, 204 + (148 - 204) * u2, 0 + 255 * u2], 1);
+    }
+    if (t >= T0 && t < T0 + 0.12) {
+      T.rect(ctx, 1036, 150, 1064, 310, [235, 240, 255], 3, 1 - (t - T0) / 0.12);
+    }
+    if (t >= T0 && t < T0 + 0.45) {
+      var sh = shards(), f = t - T0, al = Math.max(0, 1 - f / 0.45);
+      for (var q = 0; q < sh.length; q++) {
+        var x = sh[q][0] + sh[q][2] * f, y2 = sh[q][1] + sh[q][3] * f + 700 * f * f;
+        T.fill(ctx, x, y2, x + 5, y2 + 5, T.mix(T.ANOM, 0.85), al);
+      }
+    }
+  });
+})();
