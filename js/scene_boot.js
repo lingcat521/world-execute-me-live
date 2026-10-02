@@ -96,7 +96,8 @@
     { a: 9.851, b: 11.005, fn: null, name: 'shot_init', idx: 5, shell: false },
     { a: 11.005, b: 12.389, fn: null, name: 'shot_world', idx: 6, shell: false },
     { a: 12.389, b: 16.082, fn: null, name: 'shot_begin_sim', idx: 7, shell: false },
-    { a: 16.082, b: 19.543, fn: null, name: 'shot_corpus', idx: 8, shell: false }];
+    { a: 16.082, b: 19.700, fn: null, name: 'shot_corpus', idx: 8, shell: false },
+    { a: 19.700, b: 23.236, fn: null, name: 'shot_losscurve', idx: 9, shell: false }];
   PV.powerLog = powerLog;
   PV.logLine = logLine;
   PV.POWER_LOG = POWER_LOG;
@@ -198,12 +199,14 @@
   'use strict';
   var PV = window.PV;
   PV.scene = function (ctx, t) {
+    if (PV.activeCut) { var cut = PV.activeCut(t); if (cut) { cut.fn(ctx, t, cut); PV.shotName = 'cut@' + cut.T; return; } }
     var C = PV.C01;
     if (t >= C.t - C.pre && t < C.t + C.post) { PV.c01(ctx, t); PV.shotName = 'cut01'; return; }
     var s = null;
     for (var i = 0; i < PV.SHOTS.length; i++) if (t >= PV.SHOTS[i].a && t < PV.SHOTS[i].b) s = PV.SHOTS[i];
     if (!s) { PV.shotName = null; return; }
     if (s.name === 'shot_power') { PV.ownPower(ctx, t); }
+    else if (s.name === 'shot_losscurve') { PV.shotLossCurve(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
     else if (s.name === 'shot_corpus') { PV.shotCorpus(ctx, t, Math.max(0, t - s.a)); }
     else if (s.name === 'shot_begin_sim') { PV.shotBeginSim(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a), s.b - s.a); }
     else if (s.name === 'shot_world') { PV.shotWorld(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
@@ -222,7 +225,7 @@
   'use strict';
   var PV = window.PV, T = PV.tui;
   var C01_T = 1.312, C01_OPEN = 0.23, SHELL_CMD = './protect';
-  PV.loopEnd = 19.543;
+  PV.loopEnd = 23.236;
   PV.SHELL_SHOTS = [
     { a: 1.312, b: 3.620, cmd: './protect' },
     { a: 7.082, b: 9.851, cmd: 'neofetch' }];
@@ -535,17 +538,73 @@
     }
     return out;
   };
-  PV.shotCorpus = function (ctx, t, lt) {
+  PV.counterText = function (tt) { var v = (45 * ((tt - 16.0) / 13.3)).toFixed(2); while (v.length < 5) v = ' ' + v; return 'tokens seen  ' + v + 'T / 45T'; };
+  PV.shotCorpus = function (ctx, t, lt, o) {
+    o = o || {};
     PV.ops = ['DATALOADER', 'TOKENIZE', 'PACK', 'FORWARD', 'LOSS', 'BACKWARD', 'ALLREDUCE', 'STEP'];
     T.box(ctx, 404, 56, 1164, 604, 'corpus.stream', 0.5, T.UI, t);
+    if (o.words === false) return;
     var toks = PV.corpusTokens(t);
     for (var i = 0; i < toks.length; i++) {
       var tk = toks[i];
       if (CJK.test(tk[2])) T.textPIL(ctx, tk[2], tk[0], tk[1], T.ui(tk[3]), 15);
       else T.textMono(ctx, tk[2], tk[0], tk[1], T.ui(tk[3]), 15);
     }
-    var s = (45 * ((t - 16.0) / 13.3)).toFixed(2);
-    while (s.length < 5) s = ' ' + s;
-    T.textPIL(ctx, 'tokens seen  ' + s + 'T / 45T', 430, 572, T.ui(0.95), 18);
+    if (o.counter === false) return;
+    T.textPIL(ctx, PV.counterText(t), 430, 572, T.ui(0.95), 18);
+  };
+})();
+
+/* ---- 镜头 9（losscurve）：train/loss 点阵曲线 + lr schedule ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var NOISE = (function () {
+    var s = 4, out = [];
+    function rnd() { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; }
+    for (var i = 0; i < 600; i++) {
+      var u1 = Math.max(1e-9, rnd()), u2 = rnd();
+      out.push(Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2));
+    }
+    return out;
+  })();
+  PV.lossFn = function (u) {
+    return 0.92 * Math.exp(-5 * u) + 0.12 + 0.02 * NOISE[Math.min(599, Math.floor(u * 599))] * (1 - u * 0.7);
+  };
+  PV.dotChart = function (ctx, x, y, w, h, fn, progress, col, sx, sy) {
+    sx = sx || 5; sy = sy || 5;
+    var cols = Math.floor(w / sx), rows = Math.floor(h / sy), i, j;
+    for (i = 0; i < cols; i += 2) T.fill(ctx, x + i * sx, y + h, x + i * sx + 2, y + h + 2, T.UI, 0.28);
+    for (j = 0; j < rows; j += 3) T.fill(ctx, x - 4, y + j * sy, x - 2, y + j * sy + 2, T.UI, 0.28);
+    var prev = null, last = null;
+    for (i = 0; i < cols; i++) {
+      var u = i / (cols - 1);
+      if (u > progress) break;
+      var v = Math.min(1, fn(u));
+      var r = Math.round((1 - Math.max(0, v)) * (rows - 1));
+      var lo = prev === null ? r : Math.min(prev, r), hi = prev === null ? r : Math.max(prev, r);
+      for (var rr = lo; rr <= hi; rr++) T.fill(ctx, x + i * sx, y + rr * sy, x + i * sx + 2, y + rr * sy + 2, col, 1);
+      prev = r; last = [x + i * sx, y + r * sy];
+    }
+    return last;
+  };
+  PV.shotLossCurve = function (ctx, t, lt, u, xlabel) {
+    PV.ops = ['FORWARD', 'MTP.HEAD', 'LOSS', 'BACKWARD', 'FP8.GEMM', 'ALLREDUCE', 'ADAMW', 'LR.SCHED'];
+    T.box(ctx, 404, 56, 1164, 420, 'train/loss', 0.5, T.UI, t);
+    var prog = T.ease(u * 1.05) * 0.98 + 0.02;
+    var last = PV.dotChart(ctx, 440, 80, 250, 240, PV.lossFn, prog, T.ui(0.95), 5, 5);
+    if (last) {
+      var lv = PV.lossFn(Math.min(1, prog));
+      T.textPIL(ctx, 'loss ' + lv.toFixed(3), last[0] - 80, last[1] - 26, T.ui(1.0), 16);
+    }
+    T.box(ctx, 404, 440, 1164, 604, 'lr schedule', 0.5, T.UI, t);
+    function lr(uu) {
+      if (uu < 0.05) return uu / 0.05 * 0.9;
+      if (uu < 0.7) return 0.9;
+      return 0.9 * Math.pow(Math.max(0, 1 - (uu - 0.7) / 0.3), 1.5) + 0.1;
+    }
+    PV.dotChart(ctx, 440, 460, 690, 120, lr, T.ease(u * 1.05), T.ui(0.7), 5, 4);
+    if (xlabel) T.textMono(ctx, xlabel, 446, 400, T.ui(0.55), 13);
+    T.textMono(ctx, 'no irrecoverable loss spikes · no rollbacks   (V3 report)', 440, 582, T.ui(0.6), 14);
   };
 })();
