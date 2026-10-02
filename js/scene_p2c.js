@@ -109,6 +109,156 @@
   }
   PV.p2c.killLog = killLog;
 
+  /* ---- dsh_patch_f F2 5：hit #4 / #8（lay 3）的画面是对她头像的推近 ----
+     f2_closeup.py 的 1:1 移植。源图 avatars/f/closeup_la.png（560x560 LA：whale-starry 的
+     CROP(250,40,690,480) 各边扩 60，按 red.png 的配方做成灰+alpha）；画面 = tuikit.halfblock 的
+     5px 格 x104x104、8 级灰、red.png 的三段调色板；EXECUTION 条沿她的眼线（-13.83°，向右上）
+     从画面顶外加速砸下来落在眼睛上（落地帧白热 + 抖 5/2/0 px + 撕一帧行）；#8 的第一条从切点起就在
+     她眼睛上，第二条更重、从它上方再砸一次。落点 = 该句被唱出的那个字（w(70,0)=150.736 / w(74,0)=154.361）。 */
+  var F2R = [24, 70, 544, 590], F2PX = 5, F2MARGIN = 60;
+  var F2EYES = [[211.3, 216.3], [292.5, 196.3]];
+  var F2MID = [(F2EYES[0][0] + F2EYES[1][0]) / 2, (F2EYES[0][1] + F2EYES[1][1]) / 2];
+  var F2ANG = Math.atan2(F2EYES[1][1] - F2EYES[0][1], F2EYES[1][0] - F2EYES[0][0]);   /* <0：向右上 */
+  var F2NX = -Math.sin(F2ANG), F2NY = Math.cos(F2ANG);
+  var F2S0 = (F2R[2] - F2R[0]) / 440.0, F2CENTRE = [286.0, 318.0];
+  var F2PAL = [[24, 3, 5], [196, 36, 30], [255, 120, 104]];
+  /* cut/until = 该镜头的起止；land = land_time(w(line,0), cut)，即"被唱出来的那一帧" */
+  var F2SPEC = {3: { cut: 150.6202, until: 151.5433, land: 150.75000, z0: 1.0, z1: 1.25, bars: 1 },
+                7: { cut: 154.3125, until: 155.2356, land: 154.41667, z0: 1.35, z1: 1.6, bars: 2 }};
+  var F2_SRC = null;
+  if (PV.loadImage) PV.loadImage('avatars/f/closeup_la.png', function (im) { F2_SRC = im; });
+  function f2View(z) {
+    var a0 = [F2R[0] + F2MID[0] * F2S0, F2R[1] + F2MID[1] * F2S0];
+    var k = P.smooth2((z - 1.0) / 0.6);
+    return [F2S0 * z, [a0[0] + (F2CENTRE[0] - a0[0]) * k, a0[1] + (F2CENTRE[1] - a0[1]) * k]];
+  }
+  /* face(z, dy)：520x520 的半调头像 */
+  function f2Face(z, dy) {
+    if (!F2_SRC) return null;
+    var v = f2View(z), s = v[0], ax = v[1][0], ay = v[1][1] + dy;
+    var w = F2R[2] - F2R[0], h = F2R[3] - F2R[1], cols = w / F2PX, rows = h / F2PX;
+    function artX(x) { return F2MID[0] + (x - ax) / s + F2MARGIN; }
+    function artY(y) { return F2MID[1] + (y - ay) / s + F2MARGIN; }
+    var bx = artX(F2R[0]), by = artY(F2R[1]);
+    var tmp = PV.newCanvas(cols, rows), tg = tmp.getContext('2d');
+    tg.imageSmoothingEnabled = true; tg.imageSmoothingQuality = 'high';
+    tg.drawImage(F2_SRC, bx, by, artX(F2R[2]) - bx, artY(F2R[3]) - by, 0, 0, cols, rows);
+    var d = tg.getImageData(0, 0, cols, rows).data;
+    var cv = PV.newCanvas(w, h), g2 = cv.getContext('2d');
+    var step = 255 / 7, q, r, i, lum, u, col;
+    for (r = 0; r < rows; r++) for (q = 0; q < cols; q++) {
+      i = (r * cols + q) * 4;
+      if (d[i + 3] <= 100) continue;
+      lum = Math.round((0.16 + 0.84 * Math.pow(d[i] / 255, 1.7)) * 7) * step;
+      u = lum / 255;
+      col = u < 0.5 ? P.mixc(F2PAL[0], F2PAL[1], u * 2) : P.mixc(F2PAL[1], F2PAL[2], (u - 0.5) * 2);
+      g2.fillStyle = T.css(col, 1);
+      g2.fillRect(q * F2PX, r * F2PX, F2PX, F2PX);
+    }
+    g2.globalCompositeOperation = 'destination-out';     /* grid_mask：竖缝挖空、横线压到 70/255 */
+    g2.fillStyle = 'rgba(0,0,0,1)';
+    for (q = 1; q * F2PX - 1 < w; q++) g2.fillRect(q * F2PX - 1, 0, 1, h);
+    g2.fillStyle = 'rgba(0,0,0,' + (1 - 70 / 255).toFixed(4) + ')';
+    for (r = 1; 2 * F2PX * r - 1 < h; r++) g2.fillRect(0, 2 * F2PX * r - 1, w, 1);
+    g2.globalCompositeOperation = 'source-over';
+    return cv;
+  }
+  /* bar_strip：横着的 EXECUTION 条（还没转到眼线上） */
+  function f2BarStrip(length, thick, offset, heat) {
+    thick = Math.max(4, Math.round(thick));
+    var cv = PV.newCanvas(length, thick), g = cv.getContext('2d');
+    g.fillStyle = T.css(P.mixc(T.ERR, [255, 236, 228], 0.8 * heat), 1);
+    g.fillRect(0, 0, length, thick);
+    var size = Math.max(12, Math.min(34, Math.round(thick * 0.5)));
+    var unit = 11 * size * P.MONO_ADV_W, wordw = 9 * size * P.MONO_ADV_W;
+    var x = length / 2 - wordw / 2 - offset * unit / 2, top = (thick - size) / 2 - size * 0.12;
+    while (x > -unit) x -= unit;
+    while (x < length) { mono(g, 'EXECUTION', x, top, T.BG, size, 'left', true); x += unit; }
+    return cv;
+  }
+  function f2DrawBar(g, centre, thick, heat, offset, alpha) {
+    var length = 900, strip = f2BarStrip(length, thick, offset || 0, heat || 0);
+    var diag = Math.ceil(Math.sqrt(length * length + thick * thick));
+    var rot = PV.newCanvas(diag, diag), rg = rot.getContext('2d');
+    rg.translate(diag / 2, diag / 2); rg.rotate(F2ANG);
+    rg.globalAlpha = (alpha === undefined ? 1 : alpha);
+    rg.drawImage(strip, -length / 2, -thick / 2);
+    var x = Math.round(centre[0] - F2R[0] - diag / 2), y = Math.round(centre[1] - F2R[1] - diag / 2);
+    if (heat > 0.01) {                                   /* 红光晕：整条按 heat 变亮后高斯模糊 */
+      var glo = PV.newCanvas(diag, diag), gg = glo.getContext('2d');
+      gg.drawImage(rot, 0, 0);
+      gg.globalCompositeOperation = 'source-in';
+      gg.fillStyle = T.css(T.ERR, 1); gg.fillRect(0, 0, diag, diag);
+      layer.save();
+      layer.globalAlpha = 0.55 + 0.35 * heat;
+      layer.filter = 'blur(' + (5 + 5 * heat).toFixed(2) + 'px)';
+      layer.drawImage(glo, x, y);
+      layer.restore();
+    }
+    layer.drawImage(rot, x, y);
+  }
+  function f2Closeup(t, cut, land, z0, z1, until, bars) {
+    var FPS = 24, fall = 3 / FPS;
+    var p = (t - (land - fall)) / fall, after = t - land;
+    var z = z0 + (z1 - z0) * (1 - Math.pow(1 - T.clamp01((t - cut) / (until - cut)), 3));
+    if (after >= -1e-6) z += 0.045 * Math.exp(-after / 0.06);
+    var jolt = 0.0;
+    if (after >= -1e-6 && after < 2.5 / FPS) jolt = [5.0, 2.0, 0.0][Math.min(2, Math.floor(after * FPS + 1e-6))];
+    var w = F2R[2] - F2R[0], h = F2R[3] - F2R[1];
+    var layer = PV.newCanvas(w, h), g = layer.getContext('2d');
+    var pic = f2Face(z, jolt);
+    if (!pic) return null;
+    if (after >= 0 && after < 1.5 / FPS) {               /* 落地那一帧：若干行横向撕裂 */
+      var rnd = PV.mt(Math.round(land * 1000)), yy, row = 2 * F2PX;
+      for (yy = 0; yy < h; yy += row) {
+        var off = rnd.random() < 0.45 ? rnd.choice([0, 0, 0, -F2PX, F2PX, -2 * F2PX, 2 * F2PX]) : 0;
+        g.drawImage(pic, 0, yy, w, Math.min(row, h - yy), off, yy, w, Math.min(row, h - yy));
+      }
+    } else g.drawImage(pic, 0, 0);
+    var v = f2View(z), s = v[0], ax = v[1][0], ay = v[1][1] + jolt;
+    var h1 = 50.0 * s;
+    var heat = after >= -1e-6 ? Math.exp(-after / 0.07) : 0.0;
+    var travel = (ay - F2R[1]) / F2NY + 0.5 * h1 + 40;
+    function at(vv) { vv += -3.0 * s; return [ax + F2NX * vv, ay + F2NY * vv]; }
+    function fr(x) { return [0.10, -0.04, 0.0][Math.min(2, Math.floor(x * FPS + 1e-6))]; }
+    if (bars === 1) {
+      if (p <= 0) return layer;
+      if (p < 1) {                                       /* 在空中：加速下落，身后拖两道影 */
+        var vv = -travel * (1 - Math.pow(Math.min(1, p), 1.6));
+        f2DrawBar(g, at(vv - 2 * 0.22 * travel / 3), h1, 0, 0, 0.18);
+        f2DrawBar(g, at(vv - 1 * 0.22 * travel / 3), h1, 0, 0, 0.38);
+        f2DrawBar(g, at(vv), h1, 0, 0, 1);
+        return layer;
+      }
+      f2DrawBar(g, at(fr(after) * h1), h1, heat, 0, 1);
+      return layer;
+    }
+    var h2 = 1.25 * h1;                                  /* #8：第一条从切点起就在眼睛上 */
+    var rest = -(0.5 * h1 + 0.5 * h2 + 2 * z);
+    var push = p >= 1 ? fr(after) * h1 : 0.0;
+    f2DrawBar(g, at(push), h1, 0.6 * heat, 0, 1);
+    if (p <= 0) return layer;
+    if (p < 1) {
+      var v2 = rest - (travel + 0.5 * h2) * (1 - Math.pow(p, 1.6));
+      f2DrawBar(g, at(v2 - 2 * 0.22 * travel / 3), h2, 0, 1, 0.18);
+      f2DrawBar(g, at(v2 - 1 * 0.22 * travel / 3), h2, 0, 1, 0.38);
+      f2DrawBar(g, at(v2), h2, 0, 1, 1);
+      return layer;
+    }
+    f2DrawBar(g, at(rest + push), h2, heat, 1, 1);
+    return layer;
+  }
+  PV.p2cF2Closeup = function (ctx, t, k) {
+    var sp = F2SPEC[k];
+    if (!sp || !F2_SRC) return false;
+    var layer = f2Closeup(t, sp.cut, sp.land, sp.z0, sp.z1, sp.until, sp.bars);
+    if (!layer) return false;
+    ctx.save(); ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(layer, F2R[0], F2R[1]);
+    ctx.restore();
+    return true;
+  };
+
   /* ---- 13 个 Execution hit（scenes_exec.shot_exec_hit） ---- */
   PV.shotExecHit = function (ctx, t, lt, u, dur, o) {
     o = o || {};
@@ -139,11 +289,14 @@
         mono(ctx, s, x0, y0 + r * 16, red(1.0), 15, 'left', true);
       }
     } else if (lay === 3) {
-      PV.p2cPortrait(ctx, 'angry', 'face', 520, 520, 5, 24, 70, T.ERR);
-      var ph = PV.p2cPortraitSize('angry', 'face', 520, 520, 5);
-      var y = 70 + Math.floor(ph[1] * 0.55);
-      T.fill(ctx, 24, y, 24 + ph[0], y + 40, red(1.0), 1);
-      mono(ctx, 'EXECUTION  EXECUTION  EXECUTION', 60, y + 6, T.BG, 22, 'left', true);
+      /* dsh_patch_f F2 5：hit #4/#8 的画面换成对她头像的推近（源图在时）；否则退回 v1 的舞者头 */
+      if (!PV.p2cF2Closeup(ctx, t, k)) {
+        PV.p2cPortrait(ctx, 'angry', 'face', 520, 520, 5, 24, 70, T.ERR);
+        var ph = PV.p2cPortraitSize('angry', 'face', 520, 520, 5);
+        var y = 70 + Math.floor(ph[1] * 0.55);
+        T.fill(ctx, 24, y, 24 + ph[0], y + 40, red(1.0), 1);
+        mono(ctx, 'EXECUTION  EXECUTION  EXECUTION', 60, y + 6, T.BG, 22, 'left', true);
+      }
       T.box(ctx, 580, 56, 1164, 604, 'ps -ef', 0.8, T.ERR, t);
       for (var i = 0; i < TARGETS.length; i++) {
         var tgt = TARGETS[i], dead = i <= k && tgt !== 'you', yy = 84 + i * 40;
