@@ -18,7 +18,9 @@
   var offEl = document.getElementById('off');
   var RES = parseFloat(new URLSearchParams(location.search).get('res') || '') || 1.5;
   canvas.width = Math.round(W * RES); canvas.height = Math.round(H * RES);
+  var ROT = (new URLSearchParams(location.search).get('rot') || '1') !== '0';
   var PV = window.PV = {
+    ROT: ROT,
     RES: RES,
     W: W, H: H, FPS: FPS, t: 0, frame: 0, playing: false, offset: 0,
     scale: 1, audioReady: false, hold: false, layers: [], bootQueue: []
@@ -32,7 +34,7 @@
     var vw = window.innerWidth, vh = window.innerHeight;
     var barH = barEl ? (barEl.offsetHeight || 56) : 56;
     var availH = Math.max(120, vh - barH);
-    var portrait = availH > vw * 1.05;
+    var portrait = PV.ROT && availH > vw * 1.05;
     var s = portrait ? Math.min(availH / W, vw / H) : Math.min(vw / W, availH / H);
     PV.scale = s;
     PV.portrait = portrait;
