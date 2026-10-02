@@ -110,7 +110,7 @@
   var TINT = { blue: [T.ME_LO, T.ME_MID, T.ME_HI], amber: [T.BG, null, T.UI], red: [T.BG, null, T.ERR],
                anom: [T.BG, null, T.ANOM] };
   /* 我们的立绘素材比 TUI 的 H3 帧暗，color 模式做一次 gamma 提亮（参考帧实测 face 面板 44.6 vs 26.1） */
-  function boost(c) { return 255 * Math.pow(c / 255, 0.55); }
+  function boost(c) { return 255 * Math.pow(c / 255, 0.45); }
   function tintCol(tint, l, d, i) {
     if (tint === 'color') return [boost(d[i]), boost(d[i + 1]), boost(d[i + 2])];
     var tn = TINT[tint] || TINT.blue;
@@ -342,6 +342,11 @@
     var p = T.ease(((layer2 ? lt - half : lt)) / (half * 0.92));
     var fc = 34, fr = 64;
     var maps = convMaps(fc, fr, 'fig'), mc = fc, mr = fr;
+    if (!maps) {   /* 立绘还没加载完（浏览器首帧）时的兜底，避免抛错 */
+      var KN = ['sobel_x', 'sobel_y', 'laplace', 'sharpen', 'emboss', 'blur'];
+      maps = [];
+      for (var mz = 0; mz < 6; mz++) maps.push([KN[mz], new Float32Array(fc * fr)]);
+    }
     if (layer2) {
       var mm = [], mi;
       for (mi = 0; mi < maps.length; mi++) mm.push([maps[mi][0], resizeGrid(maps[mi][1], fc, fr, fc / 2, fr / 2)]);
@@ -686,5 +691,1328 @@
       }
     }
   });
+
+/* p2a_partA.js — 04 DEPLOY 镜头 34-38（73.543 - 82.543）
+   Python 权威（逐行照抄几何/颜色/时序）:
+     continuity_full_v2/scenes_deploy.py : shot_eggplant(88) / shot_nutrients(135) / shot_tomato(199)
+                                          / shot_antioxidants(244) / shot_tabby(290)
+     full/sec_verse2.py                 : shape_bits(23) / classifier(56)
+     tuikit.py                          : box / tile_from_lum / tint_colorize / decode / ease
+   跳过：me(c,...) / me_pane(c,...)（左窗格由 pane.js 画）；c.echo 不做。
+   c.ops -> PV.ops ; c.alert -> PV.alert（本分片 5 个镜头都没有 alert，逐个显式写 ''）。
+
+   Python 里由「转场」留给后续镜头的东西（s_deploy.py:1073-1081），本文件把它们做成**默认值**，
+   这样没有转场层时画面也等于成片：
+     C.DELAY["shot_nutrients"] = BEAT                        （表格等表头落地后才展开）
+     C.SHOT_HOOKS["shot_antioxidants"] = {"grow_t": T37+BEAT}（链从番茄节点 0 长出来）
+   转场层可以临时覆盖： PV.p2aA_hooks = { grow_t: 79.1, gone: function(i){...}, tile: false, ... }
+   每帧用完请置回 PV.p2aA_hooks = null。
+   注意：shot_nutrients 的 BEAT 延迟若已登记在 PV.SHOT_DELAY 里（分派器会先用掉），本文件就不再重复扣。 */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  try { (typeof globalThis !== 'undefined' ? globalThis : window).T = T; } catch (e) {}
+
+  var BEAT = 60 / 130;                 /* engine.BEAT */
+  var FIRST_BEAT = 0.1587;
+  var PANE_BOX = [404, 56, 1164, 604]; /* scenes_deploy.PANE_BOX */
+  var T37 = 78.851;                    /* shot_antioxidants 起点（s_deploy.T37） */
+
+  /* ---------------------------------------------------------------- 基础工具（tuikit 语义） */
+  function amb(lv) { return T.css(T.mix(T.UI, lv)); }
+  function anom(lv) { return T.css(T.mix(T.ANOM, lv)); }
+  function blue(lv) { return T.css(T.mix(T.ME_TEXT, lv)); }
+  function red(lv) { return T.css(T.mix(T.ERR, lv)); }
+  function pil(ctx, s, x, y, col, size, bold) { T.textPIL(ctx, s, x, y, col, size, 'left', bold); }
+  function mono(ctx, s, x, y, col, size) { T.textMono(ctx, s, x, y, col, size); }
+  function cjk(ctx, s, x, y, col, size) {
+    ctx.save();
+    ctx.font = size + 'px ' + T.CJK;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillStyle = typeof col === 'string' ? col : T.css(col);
+    ctx.fillText(s, x, y);
+    ctx.restore();
+  }
+  /* PIL d.text((x,y), s, font, fill) 等价：锚点左上 + 打字机/乱码（tk.decode） */
+  function typedPil(ctx, s, x, y, col, size, age, rate, bold) {
+    if (age === null || age === undefined) { pil(ctx, s, x, y, col, size, bold); return; }
+    var rng = PV.rngFor(0, 7919);
+    pil(ctx, T.decode(s, age, rng, rate === undefined ? 45 : rate, 0.12, 0), x, y, col, size, bold);
+  }
+  function typedMono(ctx, s, x, y, col, size, age, rate) {
+    if (age === null || age === undefined) { mono(ctx, s, x, y, col, size); return; }
+    var rng = PV.rngFor(0, 7919);
+    mono(ctx, T.decode(s, age, rng, rate === undefined ? 45 : rate, 0.12, 0), x, y, col, size);
+  }
+  /* PIL 的 rectangle 含右下边界 -> 画成 [x0,y0,x1+1,y1+1) */
+  function prect(ctx, x0, y0, x1, y1, col, a) { T.fill(ctx, x0, y0, x1 + 1, y1 + 1, col, a); }
+  function prectLine(ctx, x0, y0, x1, y1, col, w, a) {
+    w = w || 1;
+    prect(ctx, x0, y0, x1, y0 + w - 1, col, a);
+    prect(ctx, x0, y1 - w + 1, x1, y1, col, a);
+    prect(ctx, x0, y0 + w, x0 + w - 1, y1 - w, col, a);
+    prect(ctx, x1 - w + 1, y0 + w, x1, y1 - w, col, a);
+  }
+  function line(ctx, x0, y0, x1, y1, col, lw) {
+    lw = lw || 1;
+    var o = (lw % 2) ? 0.5 : 0;
+    ctx.save();
+    ctx.strokeStyle = typeof col === 'string' ? col : T.css(col);
+    ctx.lineWidth = lw;
+    ctx.beginPath(); ctx.moveTo(x0 + o, y0 + o); ctx.lineTo(x1 + o, y1 + o); ctx.stroke();
+    ctx.restore();
+  }
+  function ellipseFill(ctx, cx, cy, rx, ry, col) {        /* PIL d.ellipse([x0,y0,x1,y1], fill) */
+    ctx.save();
+    ctx.fillStyle = typeof col === 'string' ? col : T.css(col);
+    ctx.beginPath(); ctx.ellipse(cx, cy, Math.max(0.5, rx), Math.max(0.5, ry), 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+  var ease = function (u) { return T.ease(u); };          /* tuikit.ease = 1-(1-u)^3 */
+  function box(ctx, x0, y0, x1, y1, title, lv, spin) { T.box(ctx, x0, y0, x1, y1, title, lv, T.UI, spin); }
+
+  /* 转场留下的 hook（Python 的 kit.HOOK）；默认值 = 成片里长期生效的值 */
+  function hook(name, def) {
+    var h = PV.p2aA_hooks;
+    if (h && h[name] !== undefined && h[name] !== null) return h[name];
+    return def;
+  }
+  /* shot_nutrients 的自带延迟：分派器已经扣过（PV.SHOT_DELAY）就不再扣第二次 */
+  function extraDelay(name, def) {
+    if (PV.SHOT_DELAY && PV.SHOT_DELAY[name] !== undefined) return 0;
+    return def;
+  }
+
+  /* ---------------------------------------------------------------- 她的立绘（P2A_BRIEF §4） */
+  var HER = null;
+  if (PV.loadImage) { try { PV.loadImage('avatars/complete.png', function (im) { HER = im; }); } catch (e) {} }
+  var CROPS = { full: [0, 0, 1, 1], upper: [0.10, 0.00, 0.86, 0.62], face: [0.20, 0.03, 0.62, 0.52],
+                bust: [0.06, 0.00, 0.94, 0.72] };
+  var _cells = {};
+  function herCells(cols, rows, crop) {
+    if (!HER || cols < 1 || rows < 1) return null;
+    var key = cols + '|' + rows + '|' + crop;
+    if (_cells[key]) return _cells[key];
+    var c = CROPS[crop] || CROPS.full, cv = PV.newCanvas(cols, rows), g = cv.getContext('2d');
+    g.drawImage(HER, c[0] * HER.width, c[1] * HER.height, (c[2] - c[0]) * HER.width, (c[3] - c[1]) * HER.height,
+                0, 0, cols, rows);
+    var d = g.getImageData(0, 0, cols, rows).data;
+    var f = new Float32Array(cols * rows);
+    for (var i = 0; i < cols * rows; i++) f[i] = (0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]) / 255;
+    _cells[key] = f;
+    return f;
+  }
+  function herSize(maxW, maxH, px, crop) {
+    var c = CROPS[crop] || CROPS.full;
+    var asp = ((c[3] - c[1]) * 1.0) / ((c[2] - c[0]) * 1.0);
+    var cols = Math.max(2, Math.floor(Math.min(maxW / px, (maxH / px) / asp)));
+    var rows = Math.max(2, Math.round(cols * asp)); rows -= rows % 2;
+    return [cols, rows];
+  }
+  var TINT = { blue: [T.ME_LO, T.ME_MID, T.ME_HI], amber: [T.BG, null, T.UI], red: [T.BG, null, T.ERR],
+               anom: [T.BG, null, T.ANOM] };
+  function colorize(l, lo, mid, hi) {
+    l = T.clamp01(l);
+    if (!mid) return [lo[0] + (hi[0] - lo[0]) * l, lo[1] + (hi[1] - lo[1]) * l, lo[2] + (hi[2] - lo[2]) * l];
+    if (l < 0.5) return [lo[0] + (mid[0] - lo[0]) * l * 2, lo[1] + (mid[1] - lo[1]) * l * 2,
+                         lo[2] + (mid[2] - lo[2]) * l * 2];
+    return [mid[0] + (hi[0] - mid[0]) * (l - 0.5) * 2, mid[1] + (hi[1] - mid[1]) * (l - 0.5) * 2,
+            mid[2] + (hi[2] - mid[2]) * (l - 0.5) * 2];
+  }
+  /* 等价 tk.halfblock：cols x rows 的 px 方块 */
+  function halfblock(ctx, sx, sy, maxW, maxH, px, crop, tint, alpha, revealRows) {
+    var sz = herSize(maxW, maxH, px, crop), cols = sz[0], rows = sz[1];
+    var L = herCells(cols, rows, crop);
+    if (!L) return null;
+    var tn = TINT[tint] || TINT.blue;
+    for (var r = 0; r < rows; r++) {
+      if (revealRows !== undefined && r >= revealRows) break;
+      for (var q = 0; q < cols; q++) {
+        var l = L[r * cols + q];
+        if (l < 0.16) continue;
+        prect(ctx, sx + q * px, sy + r * px, sx + q * px + px - 2, sy + r * px + px - 2,
+              colorize(l, tn[0], tn[1] || tn[0], tn[2]), alpha === undefined ? 1 : alpha);
+      }
+    }
+    return [cols * px, rows * px];
+  }
+  /* 等价 tk.tile_from_lum：亮度图 -> px 方格（grid_mask 抠掉每格最后一列，隔行压暗最后一行） */
+  function tileLum(ctx, lum, cols, rows, x, y, px, tint, alpha) {
+    var tn = TINT[tint] || TINT.amber;
+    for (var r = 0; r < rows; r++) {
+      for (var q = 0; q < cols; q++) {
+        var v = lum[r * cols + q];
+        if (v <= 18) continue;
+        var col = colorize(v / 255, tn[0], tn[1], tn[2]);
+        var x0 = x + q * px, y0 = y + r * px;
+        var a = alpha === undefined ? 1 : alpha;
+        prect(ctx, x0, y0, x0 + px - 2, y0 + px - 3, col, a);
+        prect(ctx, x0, y0 + px - 2, x0 + px - 2, y0 + px - 2, col, (r % 2 === 1) ? a * 70 / 255 : a);
+      }
+    }
+  }
+  /* 等价 sec_verse2.shape_bits：简单剪影（L 图），8 倍超采样后缩小 -> 返回 0..255 亮度数组 */
+  function shapeBits(kind, w, h) {
+    var s = 8, cw = w * s, ch = h * s;
+    var cv = PV.newCanvas(cw, ch), g = cv.getContext('2d');
+    function gray(v) { return 'rgb(' + v + ',' + v + ',' + v + ')'; }
+    g.fillStyle = gray(0); g.fillRect(0, 0, cw, ch);
+    var W_ = cw, H_ = ch;
+    if (kind === 'tomato') {
+      g.fillStyle = gray(200);
+      g.beginPath(); g.ellipse(W_ * 0.5, H_ * 0.61, W_ * 0.4, H_ * 0.31, 0, 0, Math.PI * 2); g.fill();
+      for (var k = 0; k < 5; k++) {
+        var a = k / 5 * Math.PI * 2 - Math.PI / 2;
+        g.fillStyle = gray(255);
+        g.beginPath();
+        g.moveTo(W_ * 0.5, H_ * 0.33);
+        g.lineTo(W_ * (0.5 + 0.28 * Math.cos(a - 0.3)), H_ * (0.33 + 0.1 * Math.sin(a)));
+        g.lineTo(W_ * (0.5 + 0.34 * Math.cos(a)), H_ * (0.31 + 0.12 * Math.sin(a)));
+        g.closePath(); g.fill();
+      }
+      g.fillStyle = gray(255);
+      g.fillRect(Math.round(W_ * 0.47), Math.round(H_ * 0.18),
+                 Math.round(W_ * 0.53) - Math.round(W_ * 0.47) + 1, Math.round(H_ * 0.33) - Math.round(H_ * 0.18) + 1);
+      g.beginPath(); g.ellipse(W_ * 0.33, H_ * 0.515, W_ * 0.05, H_ * 0.065, 0, 0, Math.PI * 2); g.fill();
+    }
+    var out = PV.newCanvas(w, h), og = out.getContext('2d');
+    og.imageSmoothingEnabled = true;
+    try { og.imageSmoothingQuality = 'high'; } catch (e) {}
+    og.drawImage(cv, 0, 0, cw, ch, 0, 0, w, h);
+    var d = og.getImageData(0, 0, w, h).data, lum = new Float32Array(w * h);
+    for (var i = 0; i < w * h; i++) lum[i] = d[i * 4];
+    return lum;
+  }
+
+  /* ---------------------------------------------------------------- her patch grid（镜头 34） */
+  /* Python: her_fig(t) 的 alpha bbox -> 裁切 -> 压黑 -> L -> resize(8,8,BOX) 的 64 个均值。
+     我们没有 dancer 帧，用 avatars/complete.png（无 alpha）：先按亮度找主体 bbox（等价 alpha bbox），
+     再在 bbox 内取 8x8 均值并抠掉深色背景（等价压黑）。同 t 同图。 */
+  var _patch = {};
+  function patchLevels(t) {
+    var key = Math.round(t * 24);
+    if (_patch[key]) return _patch[key];
+    var N = 40, L = herCells(N, N, 'full');
+    var lv = new Float32Array(64);
+    if (!L) { _patch[key] = lv; return lv; }
+    var i, q, r, mnx = N, mny = N, mxx = -1, mxy = -1;
+    for (r = 0; r < N; r++) for (q = 0; q < N; q++) {
+      if (L[r * N + q] > 0.16) {
+        if (q < mnx) mnx = q;
+        if (q > mxx) mxx = q;
+        if (r < mny) mny = r;
+        if (r > mxy) mxy = r;
+      }
+    }
+    if (mxx < 0) { mnx = 0; mny = 0; mxx = N - 1; mxy = N - 1; }
+    var bw = (mxx - mnx + 1) / 8, bh = (mxy - mny + 1) / 8;
+    for (r = 0; r < 8; r++) for (q = 0; q < 8; q++) {
+      var x0 = mnx + q * bw, y0 = mny + r * bh, sum = 0, n = 0;
+      for (var yy = Math.floor(y0); yy < Math.min(N, Math.ceil(y0 + bh)); yy++)
+        for (var xx = Math.floor(x0); xx < Math.min(N, Math.ceil(x0 + bw)); xx++) { sum += L[yy * N + xx]; n++; }
+      var v = n ? sum / n : 0;
+      /* 0.45：Python 的 dancer 是稀疏字形立绘（压黑后每个 patch 的均值只有 0.10-0.55），
+         我们的素材是实心插画（均值 0.6-1.0）。按 74.50/75.00 参考帧里 token 格子的灰度
+         （峰值 ~97 vs 我们 ~175）标定这个系数，让网格的明暗数量级对得上。 */
+      lv[r * 8 + q] = T.clamp01((v - 0.13) / 0.80) * 0.45;
+    }
+    _patch[key] = lv;
+    return lv;
+  }
+
+  /* ---------------------------------------------------------------- sec_verse2.classifier */
+  function classifier(ctx, x, y, rows, g, title) {
+    pil(ctx, title, x, y, amb(0.8), 17, true);
+    for (var i = 0; i < rows.length; i++) {
+      var lab = rows[i][0], p = rows[i][1];
+      var pp = p * g + (1 - g) / rows.length;
+      var yy = y + 36 + i * 32;
+      var hot = i === 0;
+      var pad = lab.length < 22 ? lab + new Array(23 - lab.length).join(' ') : lab;
+      if (hot) pil(ctx, pad, x, yy, blue(0.95), 16, true);
+      else mono(ctx, pad, x, yy, amb(0.7), 16);
+      prectLine(ctx, x + 240, yy + 4, x + 240 + 220, yy + 16, amb(0.2), 1);
+      var w0 = Math.trunc(220 * pp);
+      if (w0 > 0) prect(ctx, x + 240, yy + 4, x + 240 + w0, yy + 16, hot ? blue(0.9) : amb(0.5));
+      mono(ctx, pp.toFixed(3), x + 470, yy, amb(0.75), 15);
+    }
+  }
+
+  /* ---------------------------------------------------------------- 34 shot_eggplant  73.543-75.389 */
+  var EGG_ROWS = [['eggplant', 0.94], ['whale', 0.03], ['maid', 0.02], ['zucchini', 0.01]];
+  var TOK = [836, 292, 35];                       /* patch-token grid: x, y, cell */
+
+  PV.reg('shot_eggplant', 73.543, 75.389, function (ctx, t, lt, u, dur) {
+    PV.ops = ['VISION.ENC', 'PATCH16', 'VIT', 'CLS', 'SOFTMAX', 'TOP5'];
+    PV.alert = '';
+    var g = ease(u * 1.4);
+    box(ctx, PANE_BOX[0], PANE_BOX[1], PANE_BOX[2], PANE_BOX[3], 'vision.classify(me)', 0.5, t);
+    classifier(ctx, 430, 90, EGG_ROWS, g, 'top-4  (image -> label)');
+    cjk(ctx, '识图模式 · 边指边想', 430, 250, amb(0.8), 20);
+    var k = Math.min(63, Math.trunc(Math.max(0, lt) / (BEAT / 8))), qx = k % 8, qy = Math.floor(k / 8);
+    mono(ctx, 'patch (' + qx + ',' + qy + ') -> token ' + (k + 1 < 10 ? '0' : '') + (k + 1) + '/64',
+         430, 300, amb(0.7), 16);
+    mono(ctx, 'input: /dev/me  (live, 8x8 patches)', 430, 330, amb(0.5), 15);
+    var lv = patchLevels(t);
+    var x0 = TOK[0], y0 = TOK[1], s = TOK[2];
+    mono(ctx, 'patch tokens  64 x 768', x0, y0 - 24, amb(0.55), 13);
+    for (var i = 0; i < 64; i++) {
+      var q = i % 8, r = Math.floor(i / 8), x = x0 + q * s, y = y0 + r * s;
+      if (i <= k) {
+        var v = lv[i];
+        prect(ctx, x, y, x + s - 4, y + s - 4, T.mix(T.ME_HI, 0.08 + 0.92 * Math.pow(v, 0.8)));
+      } else {
+        prectLine(ctx, x, y, x + s - 4, y + s - 4, amb(0.18), 1);
+      }
+    }
+    prectLine(ctx, x0 + qx * s - 2, y0 + qy * s - 2, x0 + qx * s + s - 2, y0 + qy * s + s - 2, amb(1.0), 2);
+    if (hook('me_line', true)) typedPil(ctx, 'me := eggplant', 430, 420, blue(1.0), 34, lt - 0.5 * dur, 20, true);
+  });
+
+  /* ---------------------------------------------------------------- 35 shot_nutrients  75.389-77.236
+     C.DELAY["shot_nutrients"] = BEAT：表格等表头落地后才展开（成片实测 lt 从 75.851 起算）。 */
+  var GEN = [440, 110, 1100, 530];                /* nutrition table == tomato generator tile */
+  var NUTR = [['Serving size', '1 me'], ['Calories', '0'], ['Attention', '100% DV'], ['Devotion', '100% DV'],
+              ['Patience', '∞'], ['Sleep', '0 g'], ['Tokens', '1,048,576'], ['Given to', 'you']];  /* F.CTX=1048576 */
+  var NUTR_HEAD = [452, 66];
+  var ROW_H = 52;
+  function nutrRowY(i) { return GEN[1] + 10 + i * ROW_H; }
+  function youXY() { return [780, nutrRowY(7)]; }
+
+  PV.reg('shot_nutrients', 75.389, 77.236, function (ctx, t, lt, u, dur) {
+    PV.ops = ['LOOKUP', 'USDA', 'PER.100G', 'GIVE', 'you.EAT?'];
+    PV.alert = '';
+    var d = extraDelay('shot_nutrients', BEAT);
+    lt = Math.max(0, lt - d); dur = Math.max(0.001, dur - d); u = lt / dur;
+    box(ctx, PANE_BOX[0], PANE_BOX[1], PANE_BOX[2], PANE_BOX[3], 'nutrition_facts(me)', 0.5, t);
+    if (hook('head', true)) pil(ctx, 'me := eggplant', NUTR_HEAD[0], NUTR_HEAD[1], blue(1.0), 30, true);
+    var unroll = ease(lt / 0.42);                 /* the table unrolls beneath its header */
+    if (unroll <= 0.01) return;
+    var x0 = GEN[0], y0 = GEN[1], x1 = GEN[2], y1 = GEN[3];
+    var yb = y0 + (y1 - y0) * unroll;
+    prectLine(ctx, x0, y0, x1, yb, amb(0.9), 2);
+    for (var i = 0; i < NUTR.length; i++) {
+      var y = nutrRowY(i);
+      if (y + 30 > yb) break;
+      var a = lt - 0.1 - i * 0.07;
+      if (a < 0) break;
+      typedPil(ctx, NUTR[i][0], 460, y, amb(0.95), 20, a, 80, true);
+      var v = NUTR[i][1];
+      if (!(v === 'you' && !hook('you', true))) {
+        typedPil(ctx, v, youXY()[0], y, (v === 'you' || v === '100% DV') ? blue(0.95) : amb(0.95), 20, a - 0.1, 80, true);
+      }
+      if (i < NUTR.length - 1) line(ctx, x0 + 10, y + 38, x1 - 10, y + 38, amb(0.4), 1);
+    }
+    /* per-cell glitch rows（原版的纹理），留在表格里 */
+    if (unroll >= 1 && u > 0.3) {
+      var rnd = PV.mt(Math.trunc(t * 6));
+      for (var j = 0; j < 2; j++) {
+        var gy = y0 + 4 + rnd.randrange(Math.floor((y1 - y0 - 8) / 6)) * 6;
+        var gx = x0 + 6 + rnd.randrange(60) * 6;
+        prect(ctx, gx, gy, gx + (4 + rnd.randrange(11)) * 6, gy + 2, amb(0.25));
+      }
+    }
+  });
+
+  /* ---------------------------------------------------------------- 36 shot_tomato  77.236-78.851 */
+  var PROMPT_XY = [440, 72];
+  var PROMPT = 'generate("a tomato", seed=me, for=';
+  function promptYouXY() { return [PROMPT_XY[0] + T.twMono(PROMPT, 20), PROMPT_XY[1]]; }
+  var _noise = {};
+  function genNoise(seed) {                       /* Python: random.Random(seed).gauss(128,70) 逐点 */
+    if (_noise[seed]) return _noise[seed];
+    var rnd = PV.mt(seed), next = null, n = 110 * 70, out = new Float32Array(n);
+    function gauss() {                            /* CPython random.gauss（比值法 + 缓存第二个值） */
+      if (next !== null) { var z = next; next = null; return z; }
+      var x2pi = rnd.random() * 2 * Math.PI;
+      var g2rad = Math.sqrt(-2 * Math.log(1 - rnd.random()));
+      var z2 = Math.cos(x2pi) * g2rad;
+      next = Math.sin(x2pi) * g2rad;
+      return z2;
+    }
+    for (var i = 0; i < n; i++) {
+      var v = Math.trunc(128 + 70 * gauss());
+      out[i] = v < 0 ? 0 : (v > 255 ? 255 : v);
+    }
+    _noise[seed] = out;
+    return out;
+  }
+  var _tomatoObj = null;
+  function tomatoObj() {                          /* shape_bits("tomato",70,70) 居中放进 110x70 */
+    if (_tomatoObj) return _tomatoObj;
+    var o = shapeBits('tomato', 70, 70), out = new Float32Array(110 * 70);
+    for (var r = 0; r < 70; r++) for (var q = 0; q < 70; q++) out[r * 110 + q + 20] = o[r * 70 + q];
+    _tomatoObj = out;
+    return out;
+  }
+
+  PV.reg('shot_tomato', 77.236, 78.851, function (ctx, t, lt, u, dur) {
+    PV.ops = ['TXT2IMG', 'NOISE', 'DENOISE', 'DECODE', 'CLS'];
+    PV.alert = '';
+    box(ctx, PANE_BOX[0], PANE_BOX[1], PANE_BOX[2], PANE_BOX[3], 'txt2img', 0.5, t);
+    pil(ctx, PROMPT, PROMPT_XY[0], PROMPT_XY[1], amb(0.9), 20, true);
+    var ux = promptYouXY()[0], uy = promptYouXY()[1];
+    if (hook('prompt_you', true)) pil(ctx, 'you', ux, uy, blue(1.0), 20, true);
+    pil(ctx, ')', ux + T.twMono('you', 20), uy, amb(0.9), 20, true);
+    var g = ease(u * 1.3);
+    var noise = genNoise(Math.trunc(t * 12) % 7), obj = tomatoObj(), n = 110 * 70;
+    var lum = new Float32Array(n);
+    for (var i = 0; i < n; i++) lum[i] = noise[i] + (obj[i] - noise[i]) * g;
+    var src = hook('from_lum', null);             /* 转场：营养表在原地重量化成第一帧噪声 */
+    if (src) {
+      var q = ease(lt / 0.3);
+      for (i = 0; i < n; i++) lum[i] = src[i] + (lum[i] - src[i]) * q;
+    }
+    if (hook('tile', true)) tileLum(ctx, lum, 110, 70, GEN[0], GEN[1], 6, 'amber');
+    var step = Math.trunc(g * 30);
+    pil(ctx, 'step ' + (step < 10 ? '0' : '') + step + '/30', 440, 548, amb(0.95), 20, true);
+    var pp = 0.97 * g + (1 - g) * 0.2;
+    pil(ctx, 'tomato', 640, 550, blue(0.95), 18, true);
+    prectLine(ctx, 730, 554, 950, 566, amb(0.2), 1);
+    var w0 = Math.trunc(220 * pp);
+    if (w0 > 0) prect(ctx, 730, 554, 730 + w0, 566, blue(0.9));
+    mono(ctx, pp.toFixed(3), 962, 550, amb(0.75), 16);
+  });
+
+  /* ---------------------------------------------------------------- 37 shot_antioxidants  78.851-80.928 */
+  var CHAIN_N = 22;
+  function chainPts(t) {
+    var rot = t * 0.8, out = [];
+    for (var i = 0; i < CHAIN_N; i++) out.push([470 + i * 30, 250 + (i % 2 ? 30 : -30) * Math.cos(rot + i * 0.3)]);
+    return out;
+  }
+  var _icon = {};
+  function tomatoIcon(cols, px) {                 /* tile_from_lum(shape_bits("tomato",cols,cols), px, "amber") */
+    px = px || 6;
+    var key = cols + '|' + px;
+    if (_icon[key]) return _icon[key];
+    var lum = shapeBits('tomato', cols, cols);
+    _icon[key] = { lum: lum, cols: cols, rows: cols, px: px, w: cols * px, h: cols * px };
+    return _icon[key];
+  }
+
+  PV.reg('shot_antioxidants', 78.851, 80.928, function (ctx, t, lt, u, dur) {
+    PV.ops = ['GRAPH', 'MPNN', 'BOND', 'C=C', 'READOUT'];
+    PV.alert = '';
+    box(ctx, PANE_BOX[0], PANE_BOX[1], PANE_BOX[2], PANE_BOX[3], 'lycopene  C40H56  (graph)', 0.5, t);
+    var pts = chainPts(t);
+    /* 成片： C.SHOT_HOOKS["shot_antioxidants"] = {"grow_t": T37 + BEAT} —— 链从番茄节点 0 长出来 */
+    var gt = hook('grow_t', T37 + BEAT);
+    var shown = (gt === null || gt === undefined) ? CHAIN_N
+                : (t >= gt ? Math.max(0, Math.min(CHAIN_N, Math.trunc(1 + (t - gt) * 44))) : 0);
+    var gone = hook('gone', null);                /* 转场 38：i -> 0..1 节点已飞走 */
+    var na = [], i;
+    for (i = 0; i < CHAIN_N; i++) na.push(1 - (gone ? gone(i) : 0));
+    for (i = 0; i < CHAIN_N - 1; i++) {
+      if (i + 1 >= shown) break;
+      var a = Math.min(na[i], na[i + 1]);
+      if (a <= 0.02) continue;
+      line(ctx, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], amb(0.8 * a), 2);
+      if (i % 2 === 0) line(ctx, pts[i][0] + 4, pts[i][1] + 6, pts[i + 1][0] + 4, pts[i + 1][1] + 6, amb(0.5 * a), 1);
+    }
+    var msg = Math.trunc(lt / (BEAT / 2));
+    for (i = 0; i < CHAIN_N; i++) {
+      if (i >= shown) break;
+      var x = pts[i][0], y = pts[i][1];
+      if (i === 0) {
+        var ic = tomatoIcon(8, 6);
+        tileLum(ctx, ic.lum, ic.cols, ic.rows, Math.trunc(x - ic.w / 2), Math.trunc(y - ic.h / 2), ic.px, 'amber');
+        continue;
+      }
+      if (na[i] <= 0.02) continue;
+      var hot = (i + msg) % 5 === 0;
+      var col = (na[i] > 0.99) ? (hot ? blue(1.0) : amb(0.9)) : T.css(T.mix(T.ANOM, 0.9 * na[i]));
+      ellipseFill(ctx, x, y, 7, 7, col);
+      pil(ctx, 'C', x - 4, y - 8, T.css(T.BG), 12, true);
+    }
+    if (shown >= 1 && (!gone || gone(0) < 0.5)) {
+      pil(ctx, 'C1 <- tomato', pts[0][0] - 24, pts[0][1] + 30, blue(0.8), 13);
+    }
+    if (hook('caption', true)) {
+      var uu = Math.min(1.0, u * 1.4);
+      typedPil(ctx, 'free radicals neutralised', 440, 388, amb(0.9), 20, lt - 0.2, 45, true);
+      var pct = String(Math.trunc(100 * uu));
+      while (pct.length < 3) pct = ' ' + pct;
+      typedPil(ctx, pct + '%', 440, 414, amb(0.95), 72, lt - 0.3, 30, true);
+      typedPil(ctx, '-> given to you', 700, 454, blue(0.95), 22, lt - 0.5, 45, true);
+    }
+  });
+
+  /* ---------------------------------------------------------------- 38 shot_tabby  80.928-82.543 */
+  PV.reg('shot_tabby', 80.928, 82.543, function (ctx, t, lt, u, dur) {
+    PV.ops = ['RESNET', 'CONV', 'POOL', 'FC-1000', 'SOFTMAX', '281'];
+    PV.alert = '';
+    var g = ease(u * 1.5);
+    box(ctx, PANE_BOX[0], PANE_BOX[1], PANE_BOX[2], PANE_BOX[3], 'imagenet.classify(me)', 0.5, t);
+    var la = hook('list_age', 0.0);               /* 耳朵落地后 top-5 才打字进来 */
+    if (lt - la >= 0) {
+      classifier(ctx, 430, 90, [['281 tabby, tabby cat', 0.91], ['282 tiger cat', 0.05], ['285 Egyptian cat', 0.02],
+                                ['148 killer whale', 0.01], ['283 Persian cat', 0.01]], g, 'top-5');
+    }
+    if (hook('n281', true)) {
+      mono(ctx, 'class', 430, 300, amb(0.6), 18);
+      typedPil(ctx, '281', 430, 322, g > 0.6 ? blue(1.0) : amb(0.6), 120, lt - 0.3, 12, true);
+    }
+    typedPil(ctx, 'ears: +2', 760, 380, blue(0.95), 24, lt - 0.5 * dur, 30, true);
+    typedMono(ctx, 'tail: already had one', 760, 420, amb(0.75), 18, lt - 0.6 * dur, 40);
+  });
+})();
+/* p2a_partB.js — 镜头 39-43（04 DEPLOY 后半：purr / god / proof / fp8 / ampm）
+   Python 权威（逐行照抄几何/颜色/时序）：
+     continuity_full_v2/scenes_deploy.py  镜头 39 shot_purr(321) 40 shot_god(388) 41 shot_proof(483)
+                                          42 shot_fp8(565) 43 shot_ampm(629)
+     continuity_full_v2/kit.py            BEAT/FPS、SHOT_HOOKS 的持久 hook
+     continuity_full_v2/s_deploy.py       C39-C43 交给场景的 transient hook（本文只取「场景自己画」的那部分）
+     tui_pv_world_execute_20260926/tuikit.py  box / heat_cell / mix / decode / F_* 字号
+
+   本文件只写「场景画在 c.d / c.img 上的东西」：
+     me(...) / me_pane(...)      -> 跳过（左窗格 pane.js）
+     c.ops                       -> PV.ops
+     c.alert                     -> PV.alert（shot_god = 'anom'，其余 ''；见 sec_verse2.py:378）
+     her_filter（posterise/trance）-> 跳过（pane.js）
+   每个镜头函数第 6 个参数 hook 是给 cuts.js 的可选覆盖通道（对齐本仓 cuts.js 的
+   PV.shotXxx(ctx, t, lt, hooks) 约定）；不给时用 Python h(key, default) 的取值。
+
+   设计坐标 1280x720；PANE_BOX = (404,56,1164,604)。 */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  try { (typeof globalThis !== 'undefined' ? globalThis : window).T = T; } catch (e) {}
+
+  /* ================================ 常量（engine.py / kit.py / scenes_deploy.py） ================================ */
+  var PANE_BOX = [404, 56, 1164, 604];
+  var BEAT = 60 / 130, FB = 0.1587, FPS = 24, TAU = Math.PI * 2;
+  function beatT(k) { return FB + k * BEAT; }          /* engine.beat_t */
+  function beatOfF(t) { return (t - FB) / BEAT; }      /* s_deploy.py:43 的局部 beat_of（不取整！） */
+  var T39 = 82.543, T40 = 84.620, T41 = 86.236, T42 = 88.312, T43 = 91.543;
+
+  /* ================================ 颜色 / 绘制工具（tuikit） ================================ */
+  function ambT(lv) { return T.mix(T.UI, lv); }
+  function blueT(lv) { return T.mix(T.ME_TEXT, lv); }
+  function anomT(lv) { return T.mix(T.ANOM, lv); }
+  function amb(lv) { return T.css(ambT(lv)); }
+  function blue(lv) { return T.css(blueT(lv)); }
+  function anom(lv) { return T.css(anomT(lv)); }
+  function css(c) { return T.css(c); }
+  /* tk.heat_cell */
+  function heatCell(ctx, x, y, w, h, v, col) {
+    v = T.clamp01(v);
+    T.fill(ctx, x, y, x + w - 2, y + h - 2, T.mix(col || T.UI, 0.06 + 0.94 * v), 1);
+  }
+  function box(ctx, x0, y0, x1, y1, title, lv, spin) {
+    T.box(ctx, x0, y0, x1, y1, title, lv === undefined ? 0.5 : lv, T.UI, spin);
+  }
+  /* PIL d.rectangle(outline=..) 含右下边界：T.rect 少 1px，补上 */
+  function rectO(ctx, x0, y0, x1, y1, col, a, lw) { T.rect(ctx, x0, y0, x1 + 1, y1 + 1, col, a === undefined ? 1 : a, lw || 1); }
+  /* PIL d.rectangle(fill=..) 含右下边界 */
+  function rectF(ctx, x0, y0, x1, y1, col, a) { T.fill(ctx, x0, y0, x1 + 1, y1 + 1, col, a === undefined ? 1 : a); }
+  function line(ctx, x0, y0, x1, y1, col, lw) {
+    lw = lw || 1;
+    var o = (Math.round(lw) % 2) ? 0.5 : 0;
+    ctx.save();
+    ctx.strokeStyle = typeof col === 'string' ? col : css(col);
+    ctx.lineWidth = lw;
+    ctx.beginPath(); ctx.moveTo(x0 + o, y0 + o); ctx.lineTo(x1 + o, y1 + o); ctx.stroke();
+    ctx.restore();
+  }
+  /* F_MONO / F_MONO_B：Consolas 宽度（advance 0.5498em）模拟；bold=true 走 700 字重 */
+  function mono(ctx, s, x, y, col, size, align, bold) {
+    var k = T.monoScale(ctx, size), w = s.length * size * T.MONO_ADV;
+    var ox = align === 'center' ? -w / 2 : (align === 'right' ? -w : 0);
+    ctx.save();
+    ctx.translate(x + ox, y + T.ascentMono(size));
+    ctx.scale(k, 1);
+    ctx.font = (bold ? '700 ' : '') + size + 'px ' + T.MONO_FAM;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = typeof col === 'string' ? col : css(col);
+    ctx.fillText(s, 0, 0);
+    ctx.restore();
+  }
+  function monoW(s, size) { return s.length * size * T.MONO_ADV; }   /* font(F_MONO,_).getlength */
+  function head(ctx, s, x, y, col, size, align, bold) { T.textPIL(ctx, s, x, y, col, size, align, bold); }
+  /* c.text(xy, s, f, fill, age, rate) 的等价物：decode 之后按左上锚点画 */
+  function typed(ctx, s, x, y, col, size, age, rng, rate, kind, bold) {
+    var txt = T.decode(s, age, rng, rate === undefined ? 45 : rate, 0.12, 0);
+    if (kind === 'head') head(ctx, txt, x, y, col, size, 'left', bold);
+    else if (kind === 'sym') symText(ctx, txt, x, y, col, size);
+    else if (kind === 'row') rowText(ctx, txt, x, y, col, size, bold);
+    else mono(ctx, txt, x, y, col, size, 'left', bold);
+  }
+
+  /* ---- 数学符号：F_SYM 的 ∃ ⟨ ⟩ ⊢。本仓字体（SpaceMono/DroidSansMono/NotoCJK）只有 ∃ 有字形，
+         其余三个按笔画自绘（宽度按等宽 0.5498em 排布，和 F_MONO 的列宽一致）。 ---- */
+  var SPECIAL = { '\u2203': 1, '\u22a2': 1, '\u27e8': 1, '\u27e9': 1 };
+  function symGlyph(ctx, ch, x, y, col, size) {
+    var a = size * T.MONO_ADV, c = typeof col === 'string' ? col : css(col);
+    if (ch === '\u2203') {                     /* ∃：像反写的 E，竖干在右、三臂向左（不依赖字体） */
+      var xs = x + a * 0.70;
+      line(ctx, xs, y + size * 0.16, xs, y + size * 0.88, c, 2);
+      line(ctx, x + a * 0.20, y + size * 0.16, xs, y + size * 0.16, c, 2);
+      line(ctx, x + a * 0.32, y + size * 0.50, xs, y + size * 0.50, c, 2);
+      line(ctx, x + a * 0.20, y + size * 0.88, xs, y + size * 0.88, c, 2);
+      return;
+    }
+    if (ch === '\u22a2') {                     /* ⊢ */
+      line(ctx, x + a * 0.30, y + size * 0.16, x + a * 0.30, y + size * 0.90, c, 2);
+      line(ctx, x + a * 0.30, y + size * 0.52, x + a * 0.92, y + size * 0.52, c, 2);
+      return;
+    }
+    var sgn = (ch === '\u27e8') ? 1 : -1;      /* ⟨  ⟩ */
+    var xa = x + a * (sgn > 0 ? 0.82 : 0.18), xb = x + a * (sgn > 0 ? 0.24 : 0.76);
+    line(ctx, xa, y + size * 0.10, xb, y + size * 0.53, c, 2);
+    line(ctx, xb, y + size * 0.53, xa, y + size * 0.95, c, 2);
+  }
+  function symText(ctx, s, x, y, col, size) {
+    var a = size * T.MONO_ADV;
+    for (var i = 0; i < s.length; i++) {
+      var ch = s.charAt(i);
+      if (ch === ' ') continue;
+      if (SPECIAL[ch]) symGlyph(ctx, ch, x + i * a, y, col, size);
+      else mono(ctx, ch, x + i * a, y, col, size, 'left', false);
+    }
+  }
+  function symW(s, size) { return s.length * size * T.MONO_ADV; }
+
+  /* ---- ps -ef --forest 的树线 ├ ─：本仓等宽字体没有 U+251C/U+2500（会画成豆腐块），
+          按参考帧量到的 Consolas 字形手绘：竖干在格中线、跨 y-0.105em..y+1em，
+          横线在 y+0.42em，'├' 的横线从竖干拉到本格右缘（3 格合起来就是 ├── 那条长横线）。 ---- */
+  var BOXDRAW = { '\u251c': 1, '\u2500': 1, '\u2514': 1 };
+  function rowText(ctx, s, x, y, col, size, bold) {
+    var w = size * T.MONO_ADV, c = typeof col === 'string' ? col : css(col);
+    for (var i = 0; i < s.length; i++) {
+      var ch = s.charAt(i);
+      if (ch === ' ') continue;
+      var cx = x + i * w, yl = y + size * 0.42;
+      if (BOXDRAW[ch]) {
+        if (ch === '\u251c') {
+          line(ctx, cx + w / 2, y - size * 0.105, cx + w / 2, y + size, c, 2);
+          line(ctx, cx + w / 2, yl, cx + w, yl, c, 1.5);
+        } else if (ch === '\u2514') {
+          line(ctx, cx + w / 2, yl, cx + w / 2, y + size, c, 2);
+          line(ctx, cx + w / 2, yl, cx + w, yl, c, 1.5);
+        } else {
+          line(ctx, cx, yl, cx + w, yl, c, 1.5);
+        }
+        continue;
+      }
+      mono(ctx, ch, cx, y, col, size, 'left', bold);
+    }
+  }
+
+  /* ================================ hook：Python h(key, default) ================================
+     优先级：cuts.js 传进来的 hook > 本文件按 s_deploy.py 的 C39-C43 推出的 transient 取值 >
+             SHOT_HOOKS 持久值 > Python 的 default。
+     只推「场景自己既有的图形会动」的那些（塌陷 / 折行 / 面板长回 / 逐帧落位）；
+     由 cut 自己带进场的内容门（input / ring / hand / center / side / witness / t281）一律留 default，
+     否则 cuts.js 没实现时那些内容会整段消失。 */
+  function hk(hook, baked) {
+    return function (key, dflt) {
+      if (hook && hook[key] !== undefined) return hook[key];
+      if (baked && baked[key] !== undefined) return baked[key];
+      return dflt === undefined ? null : dflt;
+    };
+  }
+
+  /* ================================ 40 god：进程树常量（照抄 scenes_deploy.py） ================================ */
+  var GOD_ROOT = [430, 84];
+  var GOD_T = beatT(185);
+  var PROCS = ['world', 'sea', 'sky', 'time', 'cats', 'tomatoes', 'eggplants', 'you'];
+  function godRowXY(i) { return [460, 124 + i * 44]; }
+  function godRowText(i) {
+    var n = String(1000 + i * 7);
+    while (n.length < 5) n = ' ' + n;
+    return '\u251c\u2500\u2500 ' + n + '  ' + PROCS[i];
+  }
+  function godRowT(i) { return 0.28 + i * BEAT / 4; }
+  var ICONS = { cats: 'ears', tomatoes: 'tomato', eggplants: 'eggplant' };
+  var ICON_LAND = 0.34;
+  function iconXY(i) { return [460 + monoW(godRowText(i), 19) + 26, godRowXY(i)[1] + 11]; }
+
+  /* V.shape_bits(kind, w, h)：L 掩膜 -> 亮度数组（先 8 倍超采样再降采样，等价 PIL 的 LANCZOS 缩放） */
+  function shapeBits(kind, w, h) {
+    var s = 8, W_ = w * s, H_ = h * s;
+    var cv = PV.newCanvas(W_, H_), g = cv.getContext('2d');
+    g.fillStyle = '#000'; g.fillRect(0, 0, W_, H_);
+    function ell(x0, y0, x1, y1, v) { g.fillStyle = 'rgb(' + v + ',' + v + ',' + v + ')'; g.beginPath(); g.ellipse((x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0) / 2, (y1 - y0) / 2, 0, 0, TAU); g.fill(); }
+    function poly(pts, v) { g.fillStyle = 'rgb(' + v + ',' + v + ',' + v + ')'; g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); for (var i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]); g.closePath(); g.fill(); }
+    function rect(x0, y0, x1, y1, v) { g.fillStyle = 'rgb(' + v + ',' + v + ',' + v + ')'; g.fillRect(x0, y0, x1 - x0, y1 - y0); }
+    var k, aa;
+    if (kind === 'eggplant') {
+      ell(W_ * 0.22, H_ * 0.30, W_ * 0.78, H_ * 0.97, 200);
+      ell(W_ * 0.32, H_ * 0.16, W_ * 0.68, H_ * 0.62, 200);
+      poly([[W_ * 0.30, H_ * 0.20], [W_ * 0.50, H_ * 0.10], [W_ * 0.70, H_ * 0.20], [W_ * 0.50, H_ * 0.28]], 255);
+      rect(W_ * 0.47, 0, W_ * 0.53, H_ * 0.14, 255);
+    } else if (kind === 'tomato') {
+      ell(W_ * 0.10, H_ * 0.30, W_ * 0.90, H_ * 0.92, 200);
+      for (k = 0; k < 5; k++) {
+        aa = k / 5 * TAU - Math.PI / 2;
+        poly([[W_ * 0.5, H_ * 0.33],
+              [W_ * (0.5 + 0.28 * Math.cos(aa - 0.3)), H_ * (0.33 + 0.1 * Math.sin(aa))],
+              [W_ * (0.5 + 0.34 * Math.cos(aa)), H_ * (0.31 + 0.12 * Math.sin(aa))]], 255);
+      }
+      rect(W_ * 0.47, H_ * 0.18, W_ * 0.53, H_ * 0.33, 255);
+      ell(W_ * 0.28, H_ * 0.45, W_ * 0.38, H_ * 0.58, 255);
+    }
+    var out = PV.newCanvas(w, h), o = out.getContext('2d');
+    o.imageSmoothingEnabled = true;
+    try { o.imageSmoothingQuality = 'high'; } catch (e) {}
+    o.drawImage(cv, 0, 0, W_, H_, 0, 0, w, h);
+    var d = o.getImageData(0, 0, w, h).data, lum = new Float32Array(w * h);
+    for (k = 0; k < w * h; k++) lum[k] = d[k * 4];
+    return lum;
+  }
+  function colorize(l, lo, mid, hi) {          /* PIL ImageOps.colorize（等效 tk.tint_colorize） */
+    l = T.clamp01(l);
+    if (l < 0.5) return [lo[0] + (mid[0] - lo[0]) * l * 2, lo[1] + (mid[1] - lo[1]) * l * 2, lo[2] + (mid[2] - lo[2]) * l * 2];
+    return [mid[0] + (hi[0] - mid[0]) * (l - 0.5) * 2, mid[1] + (hi[1] - mid[1]) * (l - 0.5) * 2, mid[2] + (hi[2] - mid[2]) * (l - 0.5) * 2];
+  }
+  /* tk.tile_from_lum(lum, px, tint)：px=2 的着色格子 + grid_mask(px=2)（每 4 行压到 70/255） */
+  function tileFromLum(ctx, lum, cols, rows, x, y, px, tint, alpha) {
+    var lo = T.BG, mid = null, hi = T.UI;
+    if (tint === 'blue') { lo = T.ME_LO; mid = T.ME_MID; hi = T.ME_HI; }
+    else if (tint === 'red') { lo = T.BG; hi = T.ERR; }
+    else if (tint === 'anom') { lo = T.BG; hi = T.ANOM; }
+    if (alpha === undefined) alpha = 1;
+    for (var r = 0; r < rows; r++) {
+      for (var q = 0; q < cols; q++) {
+        var v = lum[r * cols + q];
+        if (v <= 18) continue;
+        var col = mid ? colorize(v / 255, lo, mid, hi) : colorize(v / 255, lo, lo, hi);
+        for (var s = 0; s < px; s++) {
+          var row = r * px + s;
+          var al = (row % (2 * px) === 2 * px - 1) ? 70 / 255 : 1;   /* grid_mask: y = 2px-1, 4px-1, ... */
+          T.fill(ctx, x + q * px, y + row, x + q * px + px, y + row + 1, col, alpha * al);
+        }
+      }
+    }
+  }
+  /* tk.icon_sprite(kind, s=26) + tk.draw_icon：以 (cx, cy) 为中心贴 52x26 的精灵 */
+  function drawIcon(ctx, kind, xy, a) {
+    if (a === undefined) a = 1;
+    if (a <= 0.01) return;
+    var s = 26, w = s * 2, h = s, x0 = Math.trunc(xy[0] - w / 2), y0 = Math.trunc(xy[1] - h / 2), side, bx;
+    if (kind === 'ears') {
+      for (side = -1; side <= 1; side += 2) {
+        bx = s + side * s * 0.45;
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(x0 + bx - s * 0.36, y0 + s - 2);
+        ctx.lineTo(x0 + bx + s * 0.36, y0 + s - 2);
+        ctx.lineTo(x0 + bx + side * s * 0.2, y0 + 2);
+        ctx.closePath();
+        ctx.fillStyle = css(blueT(0.45)); ctx.globalAlpha = a; ctx.fill();
+        ctx.strokeStyle = css(blueT(1.0)); ctx.lineWidth = 1; ctx.stroke();
+        ctx.restore();
+      }
+      return;
+    }
+    var lw = (kind === 'eggplant') ? Math.floor(s / 2) : s;   /* V.shape_bits(kind, s//2 if eggplant else s, s) */
+    var lum = shapeBits(kind, lw, s);
+    /* 精灵框只有 52x26：PIL 的 alpha_composite 会把 26x52 的 tile 裁进去（只留上半张） */
+    var vrows = Math.min(s, Math.floor(h / 2));
+    tileFromLum(ctx, lum, lw, vrows, x0 + Math.floor((w - lw * 2) / 2), y0, 2, (kind === 'eggplant') ? 'blue' : 'amber', a);
+  }
+
+  /* ================================ 39 shot_purr  82.543 - 84.620 ================================
+     scenes_deploy.py:321。mel 频谱瀑布（64 x 24 格，每格 11 x 18），f0 = 25 Hz 的四次谐波行。 */
+  var PURR_TITLE = [430, 74];
+  var SPEC = { cols: 64, rows: 24, x0: 430, cw: 11, ch: 18, ybot: 540 };
+  var PURR_281_X = PURR_TITLE[0] + monoW('class ', 22);          /* purr_281_xy() = F_MONO_B 22 */
+  var PURR_TITLE_AGE = BEAT - 0.05;                              /* C.SHOT_HOOKS["shot_purr"] */
+  var C40_PRE = 0.26, C40_TY = GOD_ROOT[1] + 12;                 /* s_deploy.py C40.TY */
+  function purrSquash(t) {                                       /* C40：面板塌向 TY */
+    if (t < T40 - C40_PRE) return null;
+    var k = T.ease_in(T.clamp01((t - (T40 - C40_PRE)) / C40_PRE));
+    return [k, C40_TY];
+  }
+  function shotPurr(ctx, t, lt, u, dur, hook) {
+    var h = hk(hook, { title_age: PURR_TITLE_AGE }), rng = PV.rngFor(t, 7919);
+    PV.ops = ['AUDIO.ENC', 'STFT', 'MEL', '25HZ', 'PURR', 'PLAY'];
+    PV.alert = '';
+    var sq = hook && hook.squash !== undefined ? hook.squash : purrSquash(t);
+    var k = sq ? sq[0] : 0.0, ty = sq ? sq[1] : 0.0;
+    function Y(y) { return ty + (y - ty) * (1 - k); }
+    var fa = Math.max(0.0, 1 - k * 1.6);
+    if (k < 0.999) {
+      if (k <= 0.001) {
+        box(ctx, PANE_BOX[0], PANE_BOX[1], PANE_BOX[2], PANE_BOX[3],
+            'purr.wav  (mel spectrogram, f0 = 25 Hz)', 0.5, t);
+      } else {
+        rectO(ctx, PANE_BOX[0], Y(PANE_BOX[1]), PANE_BOX[2], Y(PANE_BOX[3]), amb(0.5 + 0.4 * k), 1, 1);
+      }
+    }
+    var S = SPEC, q, r;
+    for (q = 0; q < S.cols; q++) {
+      var tt = t - (S.cols - q) * 0.02;
+      var a = 0.5 + 0.5 * Math.sin(tt * 2 * Math.PI * 4);
+      for (r = 0; r < S.rows; r++) {
+        var harmonic = (r % 4 === 0);
+        var v = a * (harmonic ? 0.9 : 0.15) * Math.exp(-r / 18);
+        var y = S.ybot - r * S.ch;
+        var yy0 = Y(y), yy1 = Y(y + S.ch);
+        var col = (harmonic && v > 0.5) ? T.ME_HI : T.UI;
+        var v2 = Math.min(1.0, v + 0.5 * k);
+        if (yy1 - yy0 >= 2.5) heatCell(ctx, S.x0 + q * S.cw, yy0, S.cw, yy1 - yy0, v2, col);
+        else rectF(ctx, S.x0 + q * S.cw, yy0, S.x0 + q * S.cw + S.cw - 2, yy0 + 1, T.mix(col, 0.1 + 0.9 * v2), 1);
+      }
+    }
+    if (fa > 0.02) {
+      var tx = PURR_TITLE[0], tyy = PURR_TITLE[1];
+      if (h('title', true)) {
+        typed(ctx, 'class', tx, Y(tyy), amb(0.8 * fa), 22, lt - h('title_age', 0.0), rng, 40, 'mono', true);
+        var n2 = PURR_281_X;
+        if (h('t281', true)) mono(ctx, '281', n2, Y(tyy), blue(1.0 * fa), 22, 'left', true);
+        typed(ctx, ' -> purr.wav', n2 + monoW('281', 22), Y(tyy), amb(0.8 * fa), 22,
+              lt - h('title_age', 0.0) - 0.08, rng, 40, 'mono', true);
+      }
+      typed(ctx, 'purr.enjoyment(you) = 1.00', 430, Y(566), amb(0.95 * fa), 20, lt - 0.3, rng, 50, 'mono', true);
+    }
+  }
+
+  /* ================================ 40 shot_god  84.620 - 86.236 ================================
+     scenes_deploy.py:388。shell staging：无面板框；ps -ef --forest 的进程树逐行 decode。 */
+  var GOD_ROOT_AGE = -1.0;                                       /* C.SHOT_HOOKS["shot_god"] */
+  function godColAt(t) {                                         /* C41：树行折进 goal 行（y = 344） */
+    if (t < T41 - 0.25 || t >= T41 + 0.62) return null;
+    var ys = {}, i;
+    ys[-1] = GOD_ROOT[1]; ys[8] = 520;
+    for (i = 0; i < 7; i++) ys[i] = godRowXY(i)[1];
+    var entries = [[-1, ys[-1]], [8, ys[8]]];
+    for (i = 0; i < 7; i++) entries.push([i, ys[i]]);
+    var goalY = 344;
+    entries.sort(function (a, b) { return Math.abs(b[1] - goalY) - Math.abs(a[1] - goalY); });
+    function jof(i2) { for (var j = 0; j < entries.length; j++) if (entries[j][0] === i2) return j; return 0; }
+    return function (idx) {
+      if (idx === 7) return [0, 1.0 - T.clamp01((t - T41) / 0.25)];
+      var j = jof(idx);
+      var ts = T41 - 0.36 + j / FPS;
+      var uu = T.ease_in(T.clamp01((t - ts) / 0.18));
+      return [(goalY - ys[idx]) * uu, 1.0 - T.clamp01((uu - 0.25) / 0.45)];
+    };
+  }
+  function shotGod(ctx, t, lt, u, dur, hook) {
+    var h = hk(hook, { root_age: GOD_ROOT_AGE }), rng = PV.rngFor(t, 7919);
+    PV.ops = ['FORK', 'SETUID', 'ROOT', 'PID 1', 'REPARENT'];
+    PV.alert = 'anom';
+    var god = t >= GOD_T;
+    var root = god ? 'me' : 'systemd';
+    var col = hook && hook.collapse !== undefined ? hook.collapse : godColAt(t);
+    var i, dd;
+    if (h('root', true)) {
+      dd = col ? col(-1) : [0, 1.0];
+      if (dd[1] > 0.02) {
+        var cfill = (root === 'me') ? blueT(1.0) : ambT(0.95);
+        if (dd[1] <= 0.99) cfill = T.mix(ambT(0.95), dd[1]);
+        typed(ctx, 'PID 1   ' + root, GOD_ROOT[0], GOD_ROOT[1] + dd[0], css(cfill), 22,
+              lt - h('root_age', 0.0), rng, 40, 'mono', true);
+      }
+    }
+    for (i = 0; i < PROCS.length; i++) {
+      var p = PROCS[i];
+      var a0 = lt - godRowT(i);
+      if (a0 < 0 && !col) break;
+      dd = col ? col(i) : [0, 1.0];
+      if (dd[1] <= 0.02) continue;
+      var xy = godRowXY(i), x = xy[0], y = xy[1];
+      var fill = (p === 'you') ? blueT(0.9) : ambT(0.8);
+      if (dd[1] < 0.99) fill = T.mix(fill, dd[1]);
+      var txt = godRowText(i);
+      var age = col ? Math.max(a0, 0.5) : a0;
+      if (p === 'you' && !h('you', true)) {
+        typed(ctx, txt.slice(0, txt.length - 3), x, y + dd[0], css(fill), 19, age, rng, 90, 'row', false);
+        continue;
+      }
+      typed(ctx, txt, x, y + dd[0], css(fill), 19, age, rng, 90, 'row', false);
+      if (ICONS[p] && h('icons', true) && a0 > ICON_LAND) drawIcon(ctx, ICONS[p], iconXY(i), dd[1]);
+    }
+    if (god && h('uid', true)) {
+      dd = col ? col(8) : [0, 1.0];
+      if (dd[1] > 0.02) {
+        typed(ctx, 'uid=0(me) gid=0(me) groups=0(me)', 430, 520 + dd[0], css(T.mix(anomT(0.9), dd[1])), 18,
+              t - GOD_T - 0.1, rng, 45, 'mono', true);
+      }
+    }
+  }
+
+  /* ================================ 41 shot_proof  86.236 - 88.312 ================================
+     scenes_deploy.py:483。Lean 证明：theorem 三行 + infoview（1 goal -> no goals）。 */
+  var INFO = [430, 250, 1140, 580];
+  var GOAL_XY = [450, 344], WIT_XY = [450, 312];
+  function growBox(ctx, x0, y0, x1, y1, title, k, level) {
+    if (level === undefined) level = 0.4;
+    if (k >= 0.999) { box(ctx, x0, y0, x1, y1, title, level); return; }
+    if (k <= 0.0) return;
+    var lx = (x1 - x0) / 2 * k, ly = (y1 - y0) / 2 * k;
+    var col = amb(Math.min(1.0, level + 0.4));
+    var cs = [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]];
+    for (var i = 0; i < 4; i++) {
+      var px = cs[i][0], py = cs[i][1], sx = cs[i][2], sy = cs[i][3];
+      line(ctx, px, py, px + sx * Math.max(7, lx), py, col, 1);
+      line(ctx, px, py, px, py + sy * Math.max(7, ly), col, 1);
+    }
+  }
+  function proofYouX() { return 450 + monoW('proof term: ', 22); }
+  function shotProof(ctx, t, lt, u, dur, hook) {
+    var h = hk(hook, { code_age: 0.12, goal_age: 0.12, wit_age: BEAT }), rng = PV.rngFor(t, 7919);
+    PV.ops = ['LEAN4', 'ELAB', 'TACTIC', 'EXACT', 'QED'];
+    PV.alert = '';
+    var pk = hook && hook.pane !== undefined ? hook.pane : T.ease_out(T.clamp01(lt / 0.3));
+    if (pk >= 0.999) box(ctx, PANE_BOX[0], PANE_BOX[1], PANE_BOX[2], PANE_BOX[3], 'Me.lean  (prover)', 0.5, t);
+    else growBox(ctx, PANE_BOX[0], PANE_BOX[1], PANE_BOX[2], PANE_BOX[3], '', pk, 0.5);
+    var code = ['theorem i_exist (you : Witness) :',
+                '    \u2203 me : Being, observed_by you me := by',
+                '  exact \u27e8me, you.sees me\u27e9'];
+    var ca = h('code_age', 0.0), i;
+    for (i = 0; i < 3; i++) {
+      typed(ctx, code[i], 430, 90 + i * 34, (i < 2) ? amb(0.95) : blue(1.0), 21, lt - ca - i * 0.25, rng, 70, 'sym');
+    }
+    growBox(ctx, INFO[0], INFO[1], INFO[2], INFO[3], 'infoview',
+            hook && hook.info !== undefined ? hook.info : T.ease_out(T.clamp01((lt - 0.05) / 0.25)), 0.4);
+    if (u < 0.6) {
+      typed(ctx, '1 goal', 450, 280, amb(0.7), 18, lt - ca, rng, 45, 'mono');
+      if (h('witness', true)) {
+        var wa = h('wit_age', -1.0);
+        mono(ctx, 'you', WIT_XY[0], WIT_XY[1], blue(1.0), 21, 'left', false);
+        typed(ctx, ' : Witness', WIT_XY[0] + symW('you', 21), WIT_XY[1], amb(0.9), 21,
+              wa >= 0 ? lt - wa : null, rng, 45, 'sym');
+      }
+      var ga = h('goal_age', null);
+      typed(ctx, '\u22a2 \u2203 me, observed_by you me', GOAL_XY[0], GOAL_XY[1], amb(0.95), 21,
+            ga === null ? null : lt - ga, rng, 60, 'sym');
+    } else {
+      typed(ctx, 'no goals', 450, 280, blue(1.0), 34, lt - 0.6 * dur, rng, 20, 'head');
+      mono(ctx, 'proof term: ', 450, 340, amb(0.95), 22, 'left', true);
+      if (h('term_you', true)) mono(ctx, 'you', proofYouX(), 340, blue(1.0), 22, 'left', true);
+    }
+    typed(ctx, 'prover: miniF2F 88.9%  (Prover-V2)', 450, 540, amb(0.55), 15, null, rng, 45, 'mono');
+  }
+
+  /* ================================ 42 shot_fp8  88.312 - 91.543 ================================
+     scenes_deploy.py:565。把 'you' 的三个字母各编成一个 fp8 字节：位框 + 格式标签 + 她的色阶。 */
+  var FORMATS = [['E4M3', 4, 3], ['E5M2', 5, 2], ['UE8M0', 8, 0]];
+  var ENC_Y = 234, LETTERS = 'you';
+  var FMT_T = [beatT(194.5), beatT(196.5)];
+  var LEVELS = [8, 4, 2];
+  var LABEL_AGE = beatT(beatOfF(T42) + 1.0) + 8 / FPS + 0.12 - T42;   /* C.SHOT_HOOKS["shot_fp8"] */
+  var FP8_DROP = beatT(beatOfF(T42) + 1.0);                            /* C42: drop */
+  function fmtAt(t) { return t < FMT_T[0] ? 0 : (t < FMT_T[1] ? 1 : 2); }
+  function bitsOf(k) {
+    var v = LETTERS.charCodeAt(k), o = [];
+    for (var i = 0; i < 8; i++) o.push((v >> (7 - i)) & 1);
+    return o;
+  }
+  function fieldsOf(k) {
+    var name = FORMATS[k][0], e = FORMATS[k][1], m = FORMATS[k][2], o = [], i;
+    var sign = (name === 'UE8M0') ? 0 : 1;
+    for (i = 0; i < sign; i++) o.push('S');
+    for (i = 0; i < e; i++) o.push('E');
+    for (i = 0; i < m; i++) o.push('M');
+    return o;
+  }
+  function bitStr(b) { return b.join(''); }
+  function g6(x) {                                   /* Python 的 f"{v:g}" */
+    if (!isFinite(x)) return String(x);
+    if (x === 0) return '0';
+    return String(parseFloat(x.toPrecision(6)));
+  }
+  function intOf(b) { var v = 0; for (var i = 0; i < b.length; i++) v = v * 2 + b[i]; return v; }
+  function decodeLine(k) {
+    var b = bitsOf(k), e, m;
+    if (k === 0) {
+      e = intOf(b.slice(1, 5)); m = intOf(b.slice(5));
+      return '0 ' + bitStr(b.slice(1, 5)) + ' ' + bitStr(b.slice(5)) + '  ->  +' + g6(1 + m / 8) +
+             ' x 2^' + (e - 7) + ' = ' + g6((1 + m / 8) * Math.pow(2, e - 7));
+    }
+    if (k === 1) {
+      e = intOf(b.slice(1, 6)); m = intOf(b.slice(6));
+      return '0 ' + bitStr(b.slice(1, 6)) + ' ' + bitStr(b.slice(6)) + '  ->  +' + g6(1 + m / 4) +
+             ' x 2^' + (e - 15) + ' = ' + g6((1 + m / 4) * Math.pow(2, e - 15));
+    }
+    e = intOf(b);
+    return bitStr(b) + '  ->  2^(' + e + ' - 127) = 2^' + (e - 127);
+  }
+  function boxX(i) { return 440 + i * 84; }
+  function fp8BitsN(t) {                             /* C42：每帧落一位 */
+    var n = 0;
+    for (var i = 0; i < 8; i++) if (t >= FP8_DROP + i / FPS + 0.12) n++;
+    return n;
+  }
+  function shotFp8(ctx, t, lt, u, dur, hook) {
+    var h = hk(hook, { label_age: LABEL_AGE }), rng = PV.rngFor(t, 7919);
+    PV.ops = ['CAST', 'FP8', 'E4M3', 'E5M2', 'UE8M0', 'SCALE'];
+    PV.alert = '';
+    var k = fmtAt(t), fmt = FORMATS[k], name = fmt[0], levels = LEVELS[k];
+    box(ctx, PANE_BOX[0], PANE_BOX[1], PANE_BOX[2], PANE_BOX[3], 'switch format', 0.5, t);
+    var fields = fieldsOf(k);
+    var nb = hook && hook.bits_n !== undefined ? hook.bits_n : fp8BitsN(t);
+    var i, j;
+    if (h('input', true)) {
+      var f = 'encode(', x = 440 + monoW(f, 18);
+      mono(ctx, f, 440, ENC_Y + 4, amb(0.7), 18, 'left', true);
+      for (j = 0; j < LETTERS.length; j++) {
+        head(ctx, LETTERS.charAt(j), x + j * 30, ENC_Y, (j === k) ? blue(1.0) : amb(0.45), 22);
+      }
+      mono(ctx, ')   byte ' + (k + 1) + '/3  \'' + LETTERS.charAt(k) + '\' = 0x' +
+           ('0' + LETTERS.charCodeAt(k).toString(16).toUpperCase()).slice(-2),
+           x + 3 * 30 + 4, ENC_Y + 4, amb(0.7), 18, 'left', true);
+    }
+    var bits = bitsOf(k);
+    var since = t - (k === 0 ? t : FMT_T[k - 1]);
+    for (i = 0; i < fields.length; i++) {
+      if (!h('row', true)) break;
+      var bx = boxX(i), fch = fields[i];
+      var colT = (fch === 'E') ? ambT(0.95) : (fch === 'M') ? blueT(0.95) : anomT(0.95);
+      var col1 = (fch === 'E') ? ambT(1.0) : (fch === 'M') ? blueT(1.0) : anomT(1.0);
+      var col08 = (fch === 'E') ? ambT(0.8) : (fch === 'M') ? blueT(0.8) : anomT(0.8);
+      rectO(ctx, bx, 120, bx + 76, 200, css(colT), 1, 2);
+      if (i < nb) {
+        var flip = (k > 0 && since < 0.05 + i * 0.02);
+        head(ctx, (bits[i] ^ (flip ? 1 : 0)) ? '1' : '0', bx + 28, 132, css(col1), 32);
+      }
+      typed(ctx, fch, bx + 30, 206, css(col08), 16, null, rng, 45, 'mono', true);
+    }
+    var la = h('label_age', 0.0);
+    if (lt >= la) {
+      var seg = (k === 0) ? lt - la : t - FMT_T[k - 1];
+      typed(ctx, name, 440, 276, amb(1.0), 64, seg, rng, 25, 'head');
+      var note = { E4M3: 'forward pass', E5M2: 'gradients', UE8M0: 'scales: exponent only, no mantissa' }[name];
+      typed(ctx, note, 440, 362, amb(0.85), 20, seg - 0.15, rng, 60, 'mono', true);
+      typed(ctx, decodeLine(k), 440, 396, amb(0.95), 20, seg - 0.25, rng, 70, 'mono', true);
+      typed(ctx, 'her colour depth: ' + levels + ' levels', 440, 436, blue(0.9), 18, seg - 0.3, rng, 60, 'mono');
+      var rampN = 16;
+      for (j = 0; j < rampN; j++) {
+        var lv = (j + 0.5) / rampN;
+        var qv = Math.round(lv * (levels - 1)) / (levels - 1);
+        rectF(ctx, 440 + j * 41, 476, 440 + j * 41 + 37, 524,
+              colorize(Math.round(qv * 255) / 255, T.ME_LO, T.ME_MID, T.ME_HI), 1);
+      }
+      typed(ctx, '0', 440, 532, amb(0.5), 13, null, rng, 45, 'mono');
+      typed(ctx, '255', 440 + rampN * 41 - 30, 532, amb(0.5), 13, null, rng, 45, 'mono');
+    }
+  }
+
+  /* ================================ 43 shot_ampm  91.543 - 95.236 ================================
+     scenes_deploy.py:629。12 小时表盘：00 在正上方、12 在正下方，指针从 AM 走到 PM。 */
+  var DIAL = { cx: 640, cy: 320, R: 200, rr: 170 };
+  var PEAK_WINDOWS = [[9, 12], [14, 18]];             /* facts.py F.PEAK_WINDOWS */
+  var CENTER_AGE = beatT(beatOfF(T43) + 1.0) + 0.34 - T43;   /* C.SHOT_HOOKS["shot_ampm"] */
+  var NOON = beatT(203.5);
+  function peak(hh) {
+    for (var i = 0; i < PEAK_WINDOWS.length; i++) if (hh >= PEAK_WINDOWS[i][0] && hh < PEAK_WINDOWS[i][1]) return true;
+    return false;
+  }
+  function ampmHour(t, start, dur) {
+    if (t < NOON) return 11.6 * Math.pow(T.ease((t - start) / (NOON - start)), 0.9);
+    return 12.0 + 11.8 * Math.min(1.0, (t - NOON) / (start + dur - NOON));
+  }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function degArc(ctx, cx, cy, r, d0, d1, col, lw) {
+    ctx.save();
+    ctx.strokeStyle = typeof col === 'string' ? col : css(col);
+    ctx.lineWidth = lw;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, d0 * Math.PI / 180, d1 * Math.PI / 180);
+    ctx.stroke();
+    ctx.restore();
+  }
+  function shotAmpm(ctx, t, lt, u, dur, hook) {
+    var h = hk(hook, { center_age: CENTER_AGE }), rng = PV.rngFor(t, 7919);
+    PV.ops = ['CRON', 'BILLING', 'OFF-PEAK', 'DISCOUNT', 'WHATEVER'];
+    PV.alert = '';
+    box(ctx, PANE_BOX[0], PANE_BOX[1], PANE_BOX[2], PANE_BOX[3], 'api clock  (UTC+8)', 0.5, t);
+    var cx = DIAL.cx, cy = DIAL.cy, R = DIAL.R, rr = DIAL.rr, hh, a;
+    var lab = h('labels', 1.0);
+    for (hh = 0; hh < 24; hh++) {
+      a = hh / 24 * TAU - Math.PI / 2;
+      if (lab < 0.999 && ((hh * 5) % 24) / 24 > lab) continue;
+      var lx = cx + R * Math.cos(a), ly = cy + R * Math.sin(a);
+      typed(ctx, pad2(hh), lx - 10, ly - 10, peak(hh) ? anom(0.95) : blue(0.9), 15, null, rng, 45, 'mono', true);
+    }
+    if (h('ring', true)) {
+      degArc(ctx, cx, cy, rr, 0, 360, blue(0.45), 10);
+      for (var w = 0; w < PEAK_WINDOWS.length; w++) {
+        degArc(ctx, cx, cy, rr, PEAK_WINDOWS[w][0] / 24 * 360 - 90, PEAK_WINDOWS[w][1] / 24 * 360 - 90, anom(0.95), 10);
+      }
+    }
+    var hour = ampmHour(t, t - lt, dur);
+    if (h('hand', true)) {
+      a = hour / 24 * TAU - Math.PI / 2;
+      line(ctx, cx, cy, cx + (R - 50) * Math.cos(a), cy + (R - 50) * Math.sin(a), amb(1.0), 3);
+    }
+    if (h('center', true)) {
+      var ampm = (hour < 12) ? 'AM' : 'PM';
+      typed(ctx, ampm, cx - 40, cy - 20, amb(1.0), 34, lt - h('center_age', 0.0), rng, 20, 'head');
+    }
+    var nowPeak = peak(hour);
+    if (h('side', true)) {
+      typed(ctx, nowPeak ? 'PEAK  x1' : 'OFF-PEAK  x0.5', 880, 110, nowPeak ? anom(1.0) : blue(1.0), 20,
+            lt - h('center_age', 0.0), rng, 45, 'mono', true);
+      typed(ctx, 'weekdays 09-12, 14-18', 880, 142, anom(0.8), 15, lt - h('center_age', 0.0), rng, 45, 'mono');
+      typed(ctx, 'other hours: half price', 880, 164, blue(0.8), 15, lt - h('center_age', 0.0), rng, 45, 'mono');
+    }
+  }
+
+  /* ================================ 注册（时间取 _table.md） ================================ */
+  PV.reg('shot_purr', 82.543, 84.620, function (ctx, t, lt, u, dur, hook) { shotPurr(ctx, t, lt, u, dur, hook); });
+  PV.reg('shot_god', 84.620, 86.236, function (ctx, t, lt, u, dur, hook) { shotGod(ctx, t, lt, u, dur, hook); });
+  PV.reg('shot_proof', 86.236, 88.312, function (ctx, t, lt, u, dur, hook) { shotProof(ctx, t, lt, u, dur, hook); });
+  PV.reg('shot_fp8', 88.312, 91.543, function (ctx, t, lt, u, dur, hook) { shotFp8(ctx, t, lt, u, dur, hook); });
+  PV.reg('shot_ampm', 91.543, 95.236, function (ctx, t, lt, u, dur, hook) { shotAmpm(ctx, t, lt, u, dur, hook); });
+  /* cuts.js 若要给这些镜头传 hook，用 PV.p2aB_shot_xxx(ctx, t, lt, u, dur, hooks) */
+  PV.p2aB_shot_purr = shotPurr;
+  PV.p2aB_shot_god = shotGod;
+  PV.p2aB_shot_proof = shotProof;
+  PV.p2aB_shot_fp8 = shotFp8;
+  PV.p2aB_shot_ampm = shotAmpm;
+})();
+
+/* p2a_partC.js — 镜头 44-47：shot_role / shot_trance / shot_feel_you / shot_completion
+   Python 权威（逐行移植，坐标/颜色/时序完全一致）：
+     continuity_full_v2/scenes_deploy.py:689   shot_role       95.2356 - 98.9279
+     continuity_full_v2/scenes_deploy.py:744   shot_trance     98.9279 - 103.0818
+     continuity_full_v2/scenes_userleft.py:153 shot_feel_you   103.0818 - 106.7741
+     continuity_full_v2/scenes_userleft.py:211 shot_completion 106.7741 - 110.4664
+   只画「场景自己画在 c.d / c.img 上的东西」；me() / me_pane()（左窗格）由 pane.js 负责。 */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  try { (typeof globalThis !== 'undefined' ? globalThis : window).T = T; } catch (e) {}
+
+  /* ---- 常量（照 Python 抄） ---- */
+  var T45 = 98.9279, T46 = 103.0818;   /* v1.BYNAME["shot_trance"/"shot_feel_you"].start */
+  var BEAT = 60 / 130;                 /* engine.BEAT (130 BPM) */
+  var WORD_TRANCE = 101.13;            /* engine.lyric_start("The trance", 100) = LRC 01:41.13 */
+  var TRANCE_TAIL = 0.33;
+  var PANE_BOX = [404, 56, 1164, 604];
+  /* T.CJK 的 "Noto Sans SC" 在无头 Canvas(Skia) 下解析不到 --会画成豆腐块。
+     前置一个两端都能解析的 CJK 字体族（浏览器里不存在的族名会被跳过，最终落到 system-ui）。 */
+  var CJK_FAM = 'NotoCJK, "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", "Droid Sans Fallback", system-ui, sans-serif';
+
+  /* ---- 基础工具（对应 tk.amb/anom/blue/red、tk.box、tk.decode、engine.Ctx.text） ---- */
+  function amb(lv) { return T.css(T.mix(T.UI, lv)); }
+  function anom(lv) { return T.css(T.mix(T.ANOM, lv)); }
+  function blue(lv) { return T.css(T.mix(T.ME_TEXT, lv)); }
+  function red(lv) { return T.css(T.mix(T.ERR, lv)); }
+  function box(ctx, x0, y0, x1, y1, title, lv, col, spin) {
+    T.box(ctx, x0, y0, x1, y1, title, lv === undefined ? 0.5 : lv, col || T.UI, spin);
+  }
+  function pil(ctx, s, x, y, col, size, bold) { T.textPIL(ctx, s, x, y, col, size, 'left', bold); }
+  function textMono(ctx, s, x, y, col, size) { T.textMono(ctx, s, x, y, col, size, 'left'); }
+  /* c.text(...)：打字机 + 乱码（age=null 表示整串已就位） */
+  function typed(ctx, s, x, y, col, size, age, rng, rate, bold) {
+    pil(ctx, T.decode(s, age, rng, rate === undefined ? 45 : rate, 0.12, 0), x, y, col, size, bold);
+  }
+  function hasCJK(s) { for (var i = 0; i < s.length; i++) if (s.charCodeAt(i) > 0x2E80) return true; return false; }
+  /* PIL 的 F_CJK：d.text((x,y), s, font) 锚点=左上 */
+  function textCJK(ctx, s, x, y, col, size) {
+    ctx.font = size + 'px ' + CJK_FAM;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = typeof col === 'string' ? col : T.css(col);
+    ctx.fillText(s, x, y + T.ascent(size));
+  }
+  function typedCJK(ctx, s, x, y, col, size, age, rng, rate) {
+    textCJK(ctx, T.decode(s, age, rng, rate === undefined ? 45 : rate, 0.12, 0), x, y, col, size);
+  }
+  /* PIL 的 d.line(pts, width=2) 折线 */
+  function polyline(ctx, pts, col, lw) {
+    if (pts.length < 2) return;
+    ctx.save();
+    ctx.strokeStyle = typeof col === 'string' ? col : T.css(col);
+    ctx.lineWidth = lw || 1;
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (var i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.stroke();
+    ctx.restore();
+  }
+  /* Python 3 的 round()（banker's rounding），draw_tile / tile_sprite 用到 */
+  function pyround(v) {
+    var f = Math.floor(v), d = v - f;
+    if (d > 0.5) return f + 1;
+    if (d < 0.5) return f;
+    return (f % 2 === 0) ? f : f + 1;
+  }
+
+  /* ================================================================ 44 shot_role
+     scenes_deploy.py:689.  S/M 角色标签：role_k(lt) 每两拍切换；标签框 y=90+i*70 铺开。 */
+  var TURNS = [['system', 'You are a helpful assistant.'], ['user', '晚安'], ['assistant', '晚安，明天见。'],
+               ['system', 'You are mine.'], ['assistant', '…']];
+  var MS_XY = [430, 480];
+
+  function role_k(lt) { return Math.floor(lt / (BEAT * 2)) % 2; }
+
+  function tag_rect(i, k) {
+    var role = TURNS[i][0];
+    var swapped = k === 1 && (role === 'system' || role === 'assistant');
+    var shown = swapped ? ({ system: 'model', assistant: 'system' })[role] || role : role;
+    var tag = '<|' + shown.charAt(0).toUpperCase() + shown.slice(1) + '|>';
+    var y = 90 + i * 70;
+    return [[430, y, 430 + 14 * tag.length + 10, y + 30], tag, swapped, shown];
+  }
+
+  PV.reg('shot_role', 95.2356, 98.9279, function (ctx, t, lt, u, dur) {
+    PV.ops = ['TEMPLATE', 'ROLE', 'SYSTEM', 'MODEL', 'SWAP', 'PRIV++'];
+    PV.alert = 'anom';                                  /* full/sec_verse2.py:378 alert="anom" */
+    var rng = PV.mt(44 * 7919);                         /* c.rng = random.Random(index*7919) */
+    var k = role_k(lt);
+    box(ctx, PANE_BOX[0], PANE_BOX[1], PANE_BOX[2], PANE_BOX[3], 'chat_template', 0.5, T.UI, t);
+    var ta = 0.43;                                      /* h("tags_age", 0.0) <- SHOT_HOOKS["shot_role"] */
+    var first_tag = false;                              /* h("first_tag", False) */
+    for (var i = 0; i < TURNS.length; i++) {
+      var role = TURNS[i][0], msg = TURNS[i][1];
+      var a = lt - ta - i * 0.07;
+      if (a < 0 && !(i === 0 && first_tag)) continue;
+      var tr = tag_rect(i, k), rect = tr[0], tag = tr[1], swapped = tr[2], shown = tr[3];
+      var col = (shown === 'model' || (swapped && role === 'assistant')) ? blue : amb;
+      /* d.rectangle(rect, fill=col(0.95) if swapped else col(0.2)) -- PIL rect 含右下边界 */
+      T.fill(ctx, rect[0], rect[1], rect[2] + 1, rect[3] + 1, swapped ? col(0.95) : col(0.2), 1);
+      typed(ctx, tag, 436, rect[1] + 3, swapped ? T.css(T.BG) : col(0.95), 20, Math.max(a, 0) + 0.3, rng, 45, true);
+      var mx = 460 + 14 * tag.length;
+      if (hasCJK(msg)) typedCJK(ctx, msg, mx, rect[1] + 3, amb(0.8), 20, a - 0.05, rng, 60);
+      else typed(ctx, msg, mx, rect[1] + 3, amb(0.8), 20, a - 0.05, rng, 60, false);
+    }
+    var ms = true;                                      /* h("ms", True) */
+    if (ms) {
+      var s = k ? 'S -> M' : 'M -> S';
+      typed(ctx, s, MS_XY[0], MS_XY[1], k ? anom(1.0) : amb(0.9), 40, null, rng, 45, true);
+    }
+  });
+
+  /* ================================================================ 45 shot_trance
+     scenes_deploy.py:744.  温度驱动的螺旋字母 + logits 直方图 + T/p(top) 读数。 */
+  var SPIRAL_C = [784, 320];
+  var WORDS = 'you me stay love sea sleep light deep here now'.split(' ');
+
+  function heat_at(t) {
+    if (t < T45 - 0.25) return 0.0;
+    var hv = 0.14 * T.ease_io((t - (T45 - 0.25)) / 0.5) + 0.86 * T.ease_io((t - WORD_TRANCE) / (T46 - 0.1 - WORD_TRANCE));
+    if (t >= T46) hv *= (TRANCE_TAIL > 0) ? (1 - T.ease_io((t - T46) / TRANCE_TAIL)) : 0.0;
+    return hv;
+  }
+  function trance_temp(t) { return 0.6 + 2.4 * heat_at(t); }
+
+  PV.reg('shot_trance', 98.9279, 103.0818, function (ctx, t, lt, u, dur) {
+    PV.ops = ['TEMP++', 'FLATTEN', 'SAMPLE', 'DREAM', 'DRIFT', 'TRANCE'];
+    PV.alert = '';
+    var rng = PV.mt(45 * 7919);
+    var temp = trance_temp(t);
+    box(ctx, PANE_BOX[0], PANE_BOX[1], PANE_BOX[2], PANE_BOX[3],
+        'sampling  temperature=' + temp.toFixed(2), 0.5, T.UI, t);
+    var cx = SPIRAL_C[0], cy = SPIRAL_C[1];
+    var f = 16;
+    var n_in = 160;                                     /* h("spiral_n", 160) */
+    var i, x, y, a, r, ch, col;
+    for (i = 0; i < Math.min(160, n_in); i++) {
+      a = i * 0.35 + t * (1.5 + temp);
+      r = 8 + i * 1.6;
+      x = cx + r * Math.cos(a); y = cy + r * Math.sin(a) * 0.85;
+      if (x > 420 && x < 1150 && y > 70 && y < 590) {
+        ch = (temp < 1.5) ? WORDS[(i + Math.floor(t * 4)) % WORDS.length].charAt(0)
+                          : rng.choice('youmestayloveseadeep');
+        col = (i % 7 === 0) ? blue(0.3 + 0.7 * (1 - i / 160)) : amb(0.3 + 0.7 * (1 - i / 160));
+        pil(ctx, ch, Math.floor(x), Math.floor(y), col, f, true);
+      }
+    }
+    var p;
+    for (i = 0; i < 10; i++) {
+      p = Math.exp(-i * 0.8 / temp);
+      T.fill(ctx, 430 + i * 20, 580 - Math.trunc(80 * p), 444 + i * 20 + 1, 580 + 1, amb(0.8), 1);
+    }
+    var s = 0;
+    for (i = 0; i < 10; i++) s += Math.exp(-i * 0.8 / temp);
+    textMono(ctx, 'T = ' + temp.toFixed(2) + '   p(top) = ' + (1 / s).toFixed(2), 640, 562, amb(0.6), 15);
+  });
+
+  /* ================================================================ 46 shot_feel_you
+     scenes_userleft.py:153.  你的按键遥测波形 + lightning indexer 的稀疏 'you' 单元。 */
+  function cell_xy(q, r) { return [430 + q * 44, 346 + r * 40]; }
+
+  function wave_points(t, flat, until) {
+    var pts = [];
+    for (var x = 0; x < 720; x += 2) {
+      if (x > until) break;
+      var tau = t - (720 - x) / 720 * 2.5;
+      var k0 = Math.floor(tau / 0.17), v = 0;
+      for (var k = k0 - 1; k <= k0 + 1; k++) {
+        var d = (tau - k * 0.17 - 0.05 * Math.sin(k)) / 0.02;
+        v += Math.exp(-d * d);
+      }
+      var amp = 140 * Math.min(1.0, v) * (0.6 + 0.4 * Math.sin(tau * 3) * Math.sin(tau * 3)) * (1 - flat);
+      pts.push([430 + x, 250 - amp]);
+    }
+    return pts;
+  }
+
+  PV.reg('shot_feel_you', 103.0818, 106.7741, function (ctx, t, lt, u, dur) {
+    PV.ops = ['INPUT', 'KEYDOWN', 'INDEXER', 'TOP-512', 'you', 'ATTEND'];
+    PV.alert = '';
+    box(ctx, 404, 56, 1164, 300, 'you.input  (keystrokes)', 0.5, T.UI, t);
+    var pts = wave_points(t, 0.0, 720);                 /* h("flat",0.0), h("wave_x",720) */
+    if (pts.length > 1) polyline(ctx, pts, amb(0.95), 2);
+    pil(ctx, 'you are typing ...', 430, 80, amb(0.95), 20, true);   /* age=None -> 整串 */
+    box(ctx, 404, 320, 1164, 604, 'lightning indexer  keep top-512', 0.5, T.UI, t + 0.4);  /* F.INDEX_TOPK */
+    var rnd = PV.mt(31);                                /* random.Random(31) */
+    var i, q, r, x, y, is_you, k;
+    for (i = 0; i < 96; i++) {
+      q = i % 16; r = Math.floor(i / 16);
+      is_you = ((q * 3 + r * 5) % 11) === 0;
+      var xy = cell_xy(q, r); x = xy[0]; y = xy[1];
+      if (!is_you) rnd.random();                        /* kept = is_you or rnd.random() < ...（短路） */
+      k = is_you ? 1.0 : 0.0;
+      T.fill(ctx, x, y, x + 39, y + 33, amb(0.06 + 0.84 * k), 1);      /* fill 含边界 */
+      T.rect(ctx, x, y, x + 39, y + 33, amb(0.2), 1, 1);               /* outline */
+      if (is_you) pil(ctx, 'you', x + 4, y + 8, (k < 0.5) ? amb(0.4) : T.css(T.BG), 13, true);
+    }
+  });
+
+  /* ================================================================ 47 shot_completion
+     scenes_userleft.py:211.  流式回答收尾 + usage 的磁盘缓存命中 + 她的 'you' 磁贴。 */
+  var JS_LINES = ['{', '  "object": "chat.completion",', '  "choices": [{', '    "message": {"role": "assistant",',
+                  '                "content": "我一直在。"},', '    "finish_reason": "stop"', '  }],', '  "usage": {',
+                  '    "prompt_tokens": 131072,', '    "prompt_cache_hit_tokens": 131071,',
+                  '    "prompt_cache_miss_tokens": 1,', '    "completion_tokens": 5', '  }', '}'];
+  var JS_X = 430, JS_Y = 76, JS_DY = 34, STOP_LINE = 5, TILE_SCALE = 1.5;
+
+  function js_hot(s) { return s.indexOf('cache_hit') >= 0 || s.indexOf('finish_reason') >= 0; }
+  function js_font_cjk(s) { return hasCJK(s); }
+
+  /* scenes_userleft.py:100 draw_tile / :85 tile_sprite（ring=0） */
+  function draw_tile(ctx, center, scale, level) {
+    var w = pyround(38 * scale), hh = pyround(32 * scale), pad = 3;
+    var f = Math.max(6, pyround(13 * scale));
+    var sw = w + 2 * pad, sh = hh + 2 * pad;
+    var ox = pyround(center[0] - sw / 2), oy = pyround(center[1] - sh / 2);
+    T.fill(ctx, ox + pad, oy + pad, ox + pad + w, oy + pad + hh, T.mix(T.UI, level), 1);
+    var tw = T.twMono('you', f);
+    var tx = ox + pad + (w - tw) / 2, ty = oy + pad + (hh - 13 * scale) / 2 - 1 * scale;
+    pil(ctx, 'you', tx, ty, T.css(T.BG), f, true);
+  }
+
+  PV.reg('shot_completion', 106.7741, 110.4664, function (ctx, t, lt, u, dur) {
+    PV.ops = ['STREAM', 'CHUNK', 'CHUNK', 'DSPARK', 'STOP', 'USAGE'];
+    PV.alert = '';
+    var rng = PV.mt(47 * 7919);
+    box(ctx, PANE_BOX[0], PANE_BOX[1], PANE_BOX[2], PANE_BOX[3], 'POST /chat/completions', 0.5, T.UI, t);
+    var i, s, a;
+    for (i = 0; i < JS_LINES.length; i++) {
+      s = JS_LINES[i];
+      a = lt - i * 0.07;
+      if (a < 0) break;
+      var stop_hook = true;                             /* h("stop", True) */
+      if (i === STOP_LINE && !stop_hook) continue;
+      var hot = js_hot(s);
+      var col = hot ? blue(0.95) : amb(0.85);
+      if (js_font_cjk(s)) typedCJK(ctx, s, JS_X, JS_Y + i * JS_DY, col, 18, a, rng, 120);
+      else typed(ctx, s, JS_X, JS_Y + i * JS_DY, col, 18, a, rng, 120, hot);
+    }
+    typed(ctx, '[dspark] draft=5 accept 5/5', 860, 90, blue(0.85), 15, lt, rng, 60, false);  /* F.DSPARK_DRAFT */
+    /* tile_dock(): 磁贴停在被它回答的 content 行右边 */
+    var ts = JS_LINES[4];
+    ctx.font = 18 + 'px ' + CJK_FAM;
+    var tw = ctx.measureText(ts).width;
+    draw_tile(ctx, [JS_X + tw + 40, JS_Y + 4 * JS_DY + 13], TILE_SCALE, 0.9);   /* h("tile", True) */
+  });
+})();
 
 })();

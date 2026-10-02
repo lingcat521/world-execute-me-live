@@ -9,7 +9,21 @@
               frame split_at cells sums polytope count_at number freeze lift pour_at。
 
    场景级工具（转场层可直接调用）：PV.SU（scenes_userleft）、PV.SR（scenes_reward）、
-   PV.HOOK、PV.bannerBitsDraw、PV.morph、PV.settle、PV.when、PV.beatT。 */
+   PV.HOOK、PV.bannerBitsDraw、PV.morph、PV.settle、PV.when、PV.beatT、PV.uiGain/PV.setUiGain、
+   PV.randBelow/PV.cpChoice/PV.cpSample（CPython random 等价）。
+
+   也可以按名字直接调某个镜头（转场要它带 hook 时）：
+     PV.shotYouLeft(ctx, t, lt, u, dur, h, k)   k = 0..4（五个 you_left 镜头）
+     PV.shotIsolation / shotMemoryLs / shotErase / shotRewriteReward / shotDisheartened /
+     shotChallengeGod / shotIllegal / shotMoeDense / shotSinkhorn / shotHoard / shotFlood
+   每个的签名都是 fn(ctx, t, lt, u, dur, h)。
+
+   两条容易踩的坑（已按原工程实现）：
+   1) shot_sinkhorn 的 DELAY = C61.ZOOM = 0.462 s：场景时钟与 c.t 都是 t - 0.462，
+      总时长不变（u = (t - start - 0.462) / (end - start)）。延迟在 sinkhorn() 内部实现，
+      不要写 PV.SHOT_DELAY —— 分派器在 _dl > 0 时复制镜头对象会丢掉 fn。
+   2) engine.ui_gain：110.4 → 116.5 把系统色抽到 0.42（只在 amb() 上；box 边框/anom/blue/red 不变）。
+      每个镜头函数开头都会 setGain()，转场自己画时若要用 PV.SU/PV.SR 的绘图助手也应先 PV.setUiGain(t)。 */
 (function () {
   'use strict';
   var PV = window.PV, T = PV.tui;
