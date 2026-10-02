@@ -21,7 +21,7 @@
     var pad = 4 - st.length, l = Math.floor(pad / 2);
     return new Array(l + 1).join(' ') + st + new Array(pad - l + 1).join(' ');
   }
-  PV.rngFor = function (t, salt) { return new T.Rng(((salt || 31) * 1) >>> 0); };
+  PV.rngFor = function (t, salt) { return PV.mt((salt || 31) >>> 0); };
   function logLine(ctx, t, x, y, st, s, age) {
     var f = LOG_SIZE;
     var col = st === 'OK' ? amb(0.95) : (st === 'WARN' ? anom(0.95) : amb(0.5));
@@ -99,7 +99,9 @@
     { a: 16.082, b: 19.700, fn: null, name: 'shot_corpus', idx: 8, shell: false },
     { a: 19.700, b: 23.236, fn: null, name: 'shot_losscurve', idx: 9, shell: false },
     { a: 23.236, b: 26.466, fn: null, name: 'shot_dualpipe', idx: 10, shell: false },
-    { a: 26.466, b: 29.236, fn: null, name: 'shot_whale', idx: 11, shell: false }];
+    { a: 26.466, b: 29.236, fn: null, name: 'shot_whale', idx: 11, shell: false },
+    { a: 29.236, b: 30.851, fn: null, name: 'shot_points', idx: 12, shell: false },
+    { a: 30.851, b: 32.928, fn: null, name: 'shot_dimension', idx: 13, shell: false }];
   PV.powerLog = powerLog;
   PV.logLine = logLine;
   PV.POWER_LOG = POWER_LOG;
@@ -208,6 +210,8 @@
     for (var i = 0; i < PV.SHOTS.length; i++) if (t >= PV.SHOTS[i].a && t < PV.SHOTS[i].b) s = PV.SHOTS[i];
     if (!s) { PV.shotName = null; return; }
     if (s.name === 'shot_power') { PV.ownPower(ctx, t); }
+    else if (s.name === 'shot_points') { PV.shotPoints(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a), s.b - s.a); }
+    else if (s.name === 'shot_dimension') { PV.shotDimension(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
     else if (s.name === 'shot_whale') { PV.shotWhale(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
     else if (s.name === 'shot_dualpipe') { PV.shotDualPipe(ctx, t, Math.max(0, t - s.a), s.b - s.a); }
     else if (s.name === 'shot_losscurve') { PV.shotLossCurve(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
@@ -229,7 +233,7 @@
   'use strict';
   var PV = window.PV, T = PV.tui;
   var C01_T = 1.312, C01_OPEN = 0.23, SHELL_CMD = './protect';
-  PV.loopEnd = 29.236;
+  PV.loopEnd = 32.928;
   PV.SHELL_SHOTS = [
     { a: 1.312, b: 3.620, cmd: './protect' },
     { a: 7.082, b: 9.851, cmd: 'neofetch' }];
@@ -390,7 +394,7 @@
   var PV = window.PV, T = PV.tui;
   var BASE = 560;
   PV.initBars = function (t, u) {
-    var bins = 60, g = T.ease(u * 1.4), rng = new T.Rng(Math.floor(t * 24)), out = [];
+    var bins = 60, g = T.ease(u * 1.4), rng = PV.mt(Math.floor(t * 24)), out = [];
     for (var i = 0; i < bins; i++) {
       var x = (i - bins / 2) / (bins / 6);
       var target = Math.exp(-x * x / 2);
@@ -564,12 +568,8 @@
   'use strict';
   var PV = window.PV, T = PV.tui;
   var NOISE = (function () {
-    var s = 4, out = [];
-    function rnd() { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; }
-    for (var i = 0; i < 600; i++) {
-      var u1 = Math.max(1e-9, rnd()), u2 = rnd();
-      out.push(Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2));
-    }
+    var rng = PV.mt(4), out = [];
+    for (var i = 0; i < 600; i++) out.push(rng.gauss(0, 1));
     return out;
   })();
   PV.lossFn = function (u) {
@@ -739,5 +739,89 @@
       var s = '[ OK ] checkpoint step_' + pad7(Math.floor(step / 6) * (m + 1)) + ' -> 3fs://ckpt';
       T.textMono(ctx, T.decode(s, lt - m * 0.2, PV.rngFor(t, 7919), 120, 0.12, 0), 430, 460 + m * 22, T.ui(0.7), 15);
     }
+  };
+})();
+
+/* ---- 镜头 12（points）：随机点云塌缩成她的形状 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var SET = null;
+  fetch('data/her_points.json').then(function (r) { return r.json(); }).then(function (d) {
+    var rng = PV.mt(9);
+    SET = d.map(function (p) { return [440 + p[0] * 260, 70 + p[1] * 520, p[2], 420 + rng.random() * 720, 70 + rng.random() * 520]; });
+    PV.herSet = SET;
+  }).catch(function (e) { PV.herErr = String(e); });
+  PV.pointsPos = function (t, u) {
+    if (!SET) return [];
+    var g = T.ease(u * 1.25), out = [];
+    for (var i = 0; i < SET.length; i++) {
+      var tx = SET[i][0], ty = SET[i][1], lv = SET[i][2], rx = SET[i][3], ry = SET[i][4];
+      var j = (1 - g) * 6;
+      var x = rx + (tx - rx) * g + j * Math.sin(t * 5 + i);
+      var y = ry + (ty - ry) * g + j * Math.cos(t * 4 + i);
+      out.push([x, y, g > 0.3 ? T.mix(T.ME_TEXT, 0.35 + 0.65 * lv) : T.mix(T.UI, 0.4 + 0.4 * lv)]);
+    }
+    return out;
+  };
+  PV.shotPoints = function (ctx, t, lt, u, dur) {
+    PV.ops = ['EMBED', 'PCA', 'TSNE.STEP', 'ATTRACT', 'REPEL', 'CONVERGE'];
+    T.box(ctx, 404, 56, 1164, 604, 'embedding(me)  as a point set', 0.5, T.UI, t);
+    var g = T.ease(u * 1.25), pts = PV.pointsPos(t, u);
+    for (var i = 0; i < pts.length; i++) T.fill(ctx, pts[i][0], pts[i][1], pts[i][0] + 3, pts[i][1] + 3, pts[i][2], 1);
+    T.textPIL(ctx, '|points| = 1400', 760, 120, T.ui(0.9), 22);
+    var pc = String(Math.floor(100 * g));
+    while (pc.length < 3) pc = ' ' + pc;
+    T.textMono(ctx, 'clustering ... ' + pc + '%', 760, 160, T.ui(0.7), 20);
+    if (g > 0.9) {
+      T.textPIL(ctx, T.decode('cluster[0] = me', lt - 0.8 * dur, PV.rngFor(t, 7919), 30, 0.12, 0), 760, 220, T.css(T.mix(T.ME_TEXT, 1.0)), 30);
+    }
+  };
+})();
+
+/* ---- 镜头 13（dimension）：me.hidden[0:4096] 逐格传给 you ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var ROWS = 16, COLS = 28, VALS = null;
+  function vals() {
+    if (VALS) return VALS;
+    var rng = PV.mt(12);
+    VALS = [];
+    for (var r = 0; r < ROWS; r++) { var row = []; for (var q = 0; q < COLS; q++) row.push(rng.random()); VALS.push(row); }
+    return VALS;
+  }
+  function heatCell(ctx, x, y, w, h, v, col) {
+    v = T.clamp01(v);
+    T.fill(ctx, x, y, x + w - 1, y + h - 1, T.mix(col, 0.06 + 0.94 * v), 1);
+  }
+  PV.shotDimension = function (ctx, t, lt, u) {
+    PV.ops = ['HIDDEN', 'D_MODEL', 'COPY', 'SEND', 'RECV', 'you.ADD'];
+    T.box(ctx, 404, 56, 1164, 604, 'transfer  me.hidden[0:4096]  ->  you', 0.5, T.UI, t);
+    var g = T.ease(u * 1.2), V = vals();
+    for (var r = 0; r < ROWS; r++) {
+      for (var q = 0; q < COLS; q++) {
+        var sent = (r * COLS + q) / (ROWS * COLS) < g;
+        var x0 = 430 + q * 12, y0 = 90 + r * 26, x1 = 790 + q * 12, v = V[r][q];
+        if (sent) {
+          heatCell(ctx, x1, y0, 12, 22, v, T.UI);
+          T.rect(ctx, x0, y0, x0 + 10, y0 + 20, T.mix(T.ME_TEXT, 0.2), 1, 1);
+        } else {
+          heatCell(ctx, x0, y0, 12, 22, v, T.ME_HI);
+        }
+      }
+    }
+    var k = Math.floor(g * ROWS * COLS);
+    if (g < 0.999) {
+      var idx = Math.min(k, ROWS * COLS - 1);
+      var fr = Math.floor(idx / COLS), fq = idx % COLS;
+      var fx = 430 + fq * 12 + 360 * ((t * 6) % 1);
+      T.fill(ctx, fx, 90 + fr * 26, fx + 11, 110 + fr * 26, T.mix(T.ME_TEXT, 1.0), 1);
+    }
+    T.textPIL(ctx, 'me', 430, 520, T.css(T.mix(T.ME_TEXT, 0.95)), 20);
+    T.textPIL(ctx, 'you', 790, 520, T.ui(0.95), 20);
+    var ds = String(Math.floor(g * 4096));
+    while (ds.length < 4) ds = ' ' + ds;
+    T.textPIL(ctx, 'dims given: ' + ds + ' / 4096', 430, 560, T.ui(0.95), 20);
   };
 })();
