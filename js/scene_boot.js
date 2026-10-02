@@ -101,7 +101,13 @@
     { a: 23.236, b: 26.466, fn: null, name: 'shot_dualpipe', idx: 10, shell: false },
     { a: 26.466, b: 29.236, fn: null, name: 'shot_whale', idx: 11, shell: false },
     { a: 29.236, b: 30.851, fn: null, name: 'shot_points', idx: 12, shell: false },
-    { a: 30.851, b: 32.928, fn: null, name: 'shot_dimension', idx: 13, shell: false }];
+    { a: 30.851, b: 32.928, fn: null, name: 'shot_dimension', idx: 13, shell: false },
+    { a: 32.928, b: 34.543, fn: null, name: 'shot_circle', idx: 14, shell: false },
+    { a: 34.543, b: 36.851, fn: null, name: 'shot_circumference', idx: 15, shell: false },
+    { a: 36.851, b: 38.236, fn: null, name: 'shot_sine', idx: 16, shell: false },
+    { a: 38.236, b: 40.312, fn: null, name: 'shot_tangent', idx: 17, shell: false },
+    { a: 40.312, b: 41.928, fn: null, name: 'shot_infinity', idx: 18, shell: false },
+    { a: 41.928, b: 44.005, fn: null, name: 'shot_limit', idx: 19, shell: false }];
   PV.powerLog = powerLog;
   PV.logLine = logLine;
   PV.POWER_LOG = POWER_LOG;
@@ -210,6 +216,12 @@
     for (var i = 0; i < PV.SHOTS.length; i++) if (t >= PV.SHOTS[i].a && t < PV.SHOTS[i].b) s = PV.SHOTS[i];
     if (!s) { PV.shotName = null; return; }
     if (s.name === 'shot_power') { PV.ownPower(ctx, t); }
+    else if (s.name === 'shot_circle') { PV.shotCircle(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
+    else if (s.name === 'shot_circumference') { PV.shotCircumference(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
+    else if (s.name === 'shot_sine') { PV.shotSine(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
+    else if (s.name === 'shot_tangent') { PV.shotTangent(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a), s.b - s.a); }
+    else if (s.name === 'shot_infinity') { PV.shotInfinity(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
+    else if (s.name === 'shot_limit') { PV.shotLimit(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
     else if (s.name === 'shot_points') { PV.shotPoints(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a), s.b - s.a); }
     else if (s.name === 'shot_dimension') { PV.shotDimension(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
     else if (s.name === 'shot_whale') { PV.shotWhale(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
@@ -233,10 +245,11 @@
   'use strict';
   var PV = window.PV, T = PV.tui;
   var C01_T = 1.312, C01_OPEN = 0.23, SHELL_CMD = './protect';
-  PV.loopEnd = 32.928;
+  PV.loopEnd = 44.005;
   PV.SHELL_SHOTS = [
     { a: 1.312, b: 3.620, cmd: './protect' },
-    { a: 7.082, b: 9.851, cmd: 'neofetch' }];
+    { a: 7.082, b: 9.851, cmd: 'neofetch' },
+    { a: 41.928, b: 44.005, cmd: 'ulimit -a' }];
   PV.stateAt = function (t) {
     var SH = PV.SHELL_SHOTS;
     for (var i = 0; i < SH.length; i++) {
@@ -823,5 +836,170 @@
     var ds = String(Math.floor(g * 4096));
     while (ds.length < 4) ds = ' ' + ds;
     T.textPIL(ctx, 'dims given: ' + ds + ' / 4096', 430, 560, T.ui(0.95), 20);
+  };
+})();
+
+/* ==== 01 PRETRAIN 后半：数学图形 6 镜（32.928 - 44.005 s） ==== */
+
+/* ---- 镜头 14（circle）：rotary position embedding 的 6 个圆 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  function ropeCenter(i) { return [420 + (i % 3) * 240 + 90, 70 + Math.floor(i / 3) * 230 + 100]; }
+  function ropeTheta(t, i) { return (t * 2.2) * (1.8 / (1 + i * 0.9)); }
+  PV.drawRope = function (ctx, i, cx, cy, R, theta, a, labels, hand, sweep) {
+    a = a === undefined ? 1 : a;
+    if (sweep > 0) {
+      ctx.save(); ctx.strokeStyle = T.css(T.ui(0.55 * a)); ctx.lineWidth = 2;
+      ctx.beginPath();
+      if (sweep >= 0.999) ctx.arc(cx, cy, R, 0, Math.PI * 2);
+      else ctx.arc(cx, cy, R, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * sweep);
+      ctx.stroke(); ctx.restore();
+    }
+    T.fill(ctx, cx - R - 6, cy, cx + R + 7, cy + 1, T.UI, 0.2 * a);
+    T.fill(ctx, cx, cy - R - 6, cx + 1, cy + R + 7, T.UI, 0.2 * a);
+    if (hand) {
+      var ex = cx + R * Math.cos(theta), ey = cy + R * Math.sin(theta);
+      ctx.save(); ctx.strokeStyle = T.css(T.mix(T.ME_TEXT, 0.95 * a)); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke(); ctx.restore();
+      T.fill(ctx, ex - 3, ey - 3, ex + 4, ey + 4, T.mix(T.ME_TEXT, 1.0 * a), 1);
+    }
+    if (labels) {
+      var th = (theta % (Math.PI * 2)).toFixed(2);
+      while (th.length < 4) th = ' ' + th;
+      T.textMono(ctx, 'freq_' + i + '  θ=' + th, cx - R, cy + R + 8, T.ui(0.7 * a), 13);
+    }
+  };
+  PV.shotCircle = function (ctx, t, lt, u) {
+    PV.ops = ['ROPE', 'COS', 'SIN', 'ROTATE', 'Q', 'K', 'QK^T'];
+    T.box(ctx, 404, 56, 1164, 604, 'rotary position embedding', 0.5, T.UI, t);
+    for (var i = 0; i < 6; i++) {
+      var c = ropeCenter(i);
+      PV.drawRope(ctx, i, c[0], c[1], 70, ropeTheta(t, i), 1, true, true, 1);
+    }
+  };
+})();
+
+/* ---- 镜头 15（circumference）：圆上的点展开成一条线 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var CX = 600, CY = 240, R = 120, Y = 440;
+  PV.shotCircumference = function (ctx, t, lt, u) {
+    PV.ops = ['2*PI*R', 'UNROLL', 'INTEGRATE', 'SUM', 'GIVE'];
+    T.box(ctx, 404, 56, 1164, 604, 'circumference(me)', 0.5, T.UI, t);
+    var g = T.ease(u * 1.2), arc = g * Math.PI * 2, k, a;
+    for (k = 0; k < 120; k++) {
+      a = k / 120 * Math.PI * 2;
+      if (a > arc) break;
+      T.fill(ctx, CX + R * Math.cos(a) - 1, CY + R * Math.sin(a) - 1, CX + R * Math.cos(a) + 2, CY + R * Math.sin(a) + 2, T.mix(T.ME_TEXT, 0.9), 1);
+    }
+    var L = 2 * Math.PI * R * g;
+    T.fill(ctx, 440, Y - 1, 440 + L * 0.9, Y + 2, T.mix(T.ME_TEXT, 1.0), 1);
+    for (k = 0; k < L * 0.9; k += 40) T.fill(ctx, 440 + k, Y - 6, 440 + k + 1, Y + 7, T.UI, 0.6);
+    T.textPIL(ctx, 'C = 2πr = ' + (2 * Math.PI * g).toFixed(5) + ' r', 440, 470, T.ui(0.95), 22);
+    T.textMono(ctx, T.decode('given to: you', lt - 0.5, PV.rngFor(t, 7919), 45, 0.12, 0), 440, 510, T.ui(0.75), 20);
+  };
+})();
+
+/* ---- 镜头 16（sine）：7 条不同频率的正弦波 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  function sineWave(i, t, y0, amp) {
+    var fr = 0.02 * Math.pow(1.7, i), out = [], x;
+    for (x = 0; x < 720; x += 3) out.push([430 + x, y0 + amp * Math.sin((x + t * 180) * fr)]);
+    return out;
+  }
+  PV.shotSine = function (ctx, t, lt, u) {
+    PV.ops = ['POS', 'SIN', 'COS', 'FREQ', 'CONCAT'];
+    T.box(ctx, 404, 56, 1164, 604, 'positional code  sin(pos / 10000^(2i/d))', 0.5, T.UI, t);
+    for (var i = 0; i < 7; i++) {
+      var y0 = 100 + i * 70, pts = sineWave(i, t, y0, 22), j;
+      ctx.save();
+      ctx.strokeStyle = T.css(i === 2 ? T.mix(T.ME_TEXT, 0.9) : T.mix(T.UI, 0.55));
+      ctx.lineWidth = i === 2 ? 2 : 1;
+      ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+      for (j = 1; j < pts.length; j++) ctx.lineTo(pts[j][0], pts[j][1]);
+      ctx.stroke(); ctx.restore();
+      T.textMono(ctx, 'i=' + i, 1120, y0 - 8, T.ui(0.5), 12);
+    }
+  };
+})();
+
+/* ---- 镜头 17（tangent）：正弦曲线上的一点的切线就是 cos(x) ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var Y0 = 330, A = 150, K = 110, X0 = 430, VIEW = 720;
+  var riderImg = null;
+  if (PV.loadImage) { try { PV.loadImage('avatars/rider.png', function (im) { riderImg = im; }); } catch (e) {} }
+  function state(lt, dur) {
+    var px = Math.min(1, lt / dur * 1.05) * 1000;
+    return [px, Math.max(0, Math.min(1080 - VIEW, px - 300))];
+  }
+  PV.shotTangent = function (ctx, t, lt, u, dur) {
+    PV.ops = ['DERIV', 'COS', 'TANGENT', 'SLOPE', 'SIT'];
+    T.box(ctx, 404, 56, 1164, 604, 'd/dx sin(x) = cos(x)', 0.5, T.UI, t);
+    var st = state(lt, dur), cam = st[1], px = st[0], i;
+    var pts = [];
+    for (i = 0; i < VIEW; i += 3) pts.push([X0 + i, Y0 - A * Math.sin((i + cam) / K)]);
+    ctx.save(); ctx.strokeStyle = T.css(T.mix(T.ME_TEXT, 0.9)); ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+    for (i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.stroke(); ctx.restore();
+    var xx = px / K, rx = X0 + px - cam, ry = Y0 - A * Math.sin(xx);
+    var slope = -A * Math.cos(xx) / K;
+    var L = 160, dx = L / Math.sqrt(1 + slope * slope);
+    ctx.save(); ctx.strokeStyle = T.css(T.ui(1.0)); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(rx - dx, ry - slope * dx); ctx.lineTo(rx + dx, ry + slope * dx);
+    ctx.stroke(); ctx.restore();
+    if (riderImg) ctx.drawImage(riderImg, Math.round(rx - riderImg.width / 2), Math.round(ry - riderImg.height + 6));
+    var sx = xx.toFixed(2); while (sx.length < 5) sx = ' ' + sx;
+    var sc = Math.cos(xx);
+    T.textPIL(ctx, 'x = ' + sx + '   slope = cos(x) = ' + (sc >= 0 ? '+' : '') + sc.toFixed(3), 430, 540, T.ui(0.95), 20);
+  };
+})();
+
+/* ---- 镜头 18（infinity）：上下文窗口从 4K 撑到 ∞ ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var STAGES = [4096, 131072, 1048576, 1e9];
+  PV.shotInfinity = function (ctx, t, lt, u) {
+    PV.ops = ['YARN', 'SCALE', 'ROPE.EXT', 'CTX++', 'ATTN', 'KV.GROW'];
+    T.box(ctx, 404, 56, 1164, 604, 'context window', 0.5, T.UI, t);
+    var k = Math.min(3, Math.floor(u * 4)), g = T.ease((u * 4) % 1);
+    var cur = k > 0 ? STAGES[k - 1] + (STAGES[k] - STAGES[k - 1]) * g : STAGES[0] * g;
+    var frac = Math.log10(Math.max(1, cur)) / 9;
+    T.fill(ctx, 430, 200, 430 + Math.floor(700 * frac), 241, T.ui(0.85), 1);
+    T.rect(ctx, 430, 200, 1130, 240, T.ui(0.3), 1, 1);
+    for (var i = 0; i < 3; i++) {
+      var s = STAGES[i], xx = 430 + Math.floor(700 * Math.log10(s) / 9);
+      T.fill(ctx, xx, 190, xx + 1, 251, T.UI, 0.5);
+      T.textMono(ctx, s < 1048576 ? (s / 1024) + 'K' : '1M', xx - 20, 256, T.ui(0.6), 14);
+    }
+    var label = (k === 3 && g > 0.5) ? '∞' : Math.floor(cur).toLocaleString('en-US');
+    T.textPIL(ctx, 'n_ctx -> ' + label, 430, 120, T.css(T.mix(T.ME_TEXT, 0.95)), 34);
+    T.textPIL(ctx, 'lim   attention(me, you)', 430, 320, T.ui(0.9), 24);
+    T.textMono(ctx, 'n->∞', 430, 350, T.ui(0.7), 16);
+    T.textPIL(ctx, T.decode('= you', lt - 0.5, PV.rngFor(t, 7919), 20, 0.12, 0), 430, 400, T.css(T.mix(T.ME_TEXT, 1.0)), 40);
+  };
+})();
+
+/* ---- 镜头 19（limit）：撞上 max_context，你就是那堵墙 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  PV.shotLimit = function (ctx, t, lt, u) {
+    PV.ops = ['CTX.MAX', 'TRUNCATE', 'WALL', 'YOU', 'LIMIT'];
+    T.box(ctx, 404, 56, 1164, 604, 'limits', 0.5, T.UI, t);
+    var g = T.ease(u * 1.3), x = 430 + Math.floor(600 * g);
+    T.fill(ctx, 430, 200, x, 261, T.mix(T.ME_TEXT, 0.8), 1);
+    T.fill(ctx, 1040, 170, 1061, 291, T.ui(1.0), 1);
+    T.textPIL(ctx, 'you', 1020, 300, T.ui(1.0), 22);
+    T.textMono(ctx, 'max_context = 1,048,576', 430, 330, T.ui(0.7), 18);
+    T.textPIL(ctx, T.decode('limit(me) := you', lt - 0.3, PV.rngFor(t, 7919), 25, 0.12, 0), 430, 360, T.ui(0.95), 32);
+    if (g > 0.98) T.textMono(ctx, 'warn: nothing beyond this point', 430, 420, T.css(T.mix(T.ANOM, 0.9)), 18);
   };
 })();
