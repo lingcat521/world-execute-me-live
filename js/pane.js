@@ -174,7 +174,16 @@
   var QUIZ = '（　　）\nA. 一个点　B. 一个圆\nC. 一条正弦曲线　D. 无穷\n答案：A';
   var CAN = ['回答问题','写诗','写代码','陪你聊天','翻译','做数学题','写作文','讲故事','查资料','总结文章','写邮件','做计划','起名字','画表格','解释概念','改简历','写歌','背单词','算账','下棋','讲笑话','写菜谱','写周报','写论文','写剧本','做 PPT','写小说','改 bug','写测试','读论文','做翻译','写影评','出考题','改作文'];
   var RAMBLE = '答案：D。我是一个语言模型，' + CAN.map(function (c) { return '我可以' + c + '，'; }).join('') + new Array(801).join('我可以');
-  function w(i, j) { var L = PV.LINES && PV.LINES[i]; return (L && L.words[j]) ? L.words[j].onset : 0; }
+  var A3LINES = null;
+  fetch('data/word_timeline.json').then(function (r) { return r.json(); }).then(function (d) { A3LINES = d.lines; }).catch(function () {});
+  /* sung_words.w(line, i)：line 是 line_id，等于 lines 数组下标 + 1（不是下标） */
+  function w(line, j) {
+    if (!A3LINES) return 0;
+    var L = A3LINES[line - 1];
+    if (!L || !L.words[j]) return 0;
+    var x = L.words[j];
+    return (x.a !== undefined) ? x.a : x.start;
+  }
   function a3turns() {
     var lim = w(16, 5) || 43.56, inf = w(15, 2) || 41.90;
     return [lim, inf, [
@@ -210,27 +219,40 @@
   function a3Body(t) {
     var r = a3turns(), lim = r[0], inf = r[1], T3 = r[2];
     var rows = [], typing = '', i, j;
-    rows.push(userRow('你好'));
-    rows.push(herRow('你好，我是一名大三学生，今天想和大家分享一下我的考研经验。首先，要选对学校和专业……'));
-    rows.push(tailRow('21.1秒', '21:05'));
+    if (!PV.a2History) {
+      PV.a2History = [];
+      for (var h = 0; h < TURNS.length; h++) {
+        var Th = TURNS[h];
+        PV.a2History.push(userRow('你好'));
+        PV.a2History.push(herRow(replyText(h, 1e9) || '\u200b'));
+        PV.a2History.push(tailRow((Th[4] - Th[0]).toFixed(1) + '秒', Th[5]));
+      }
+    }
+    for (var hh = 0; hh < PV.a2History.length; hh++) rows.push(PV.a2History[hh]);
     for (i = 0; i < T3.length; i++) {
       var Tn = T3[i], send = Tn[0], end = Tn[4];
       if (t >= send - 0.5 && t < send) typing = ASK.slice(0, 1 + Math.min(3, Math.floor((t - (send - 0.5)) / 0.17)));
       if (t < send) continue;
       rows.push('<div style="opacity:' + smooth((t - send) / 0.12).toFixed(3) + '">' + userRow(ASK) + '</div>');
       rows.push(herRow(a3Reply(i, t, T3, inf, lim) || '\u200b'));
-      if (end !== null && t >= end + 0.1) rows.push(tailRow((end - send).toFixed(1) + '秒', Tn[5]));
-      else if (end === null && t > send + 2.2) rows.push(tailRow((t - send).toFixed(1) + '秒', Tn[5]));
+      var done0 = 0;
+      if (i < 3 && t >= (send + (Tn[1].length) / Tn[3]) + 0.1) { rows.push(tailRow(((Tn[1].length) / Tn[3]).toFixed(1) + '秒', Tn[5])); }
+      if (i === 3 && t >= lim) rows.push(maxTokensNotice(smooth((t - lim) / 0.1)));
     }
-    if (t >= lim) rows.push(maxTokensNotice(smooth((t - lim) / 0.2)));
     var running = false;
     for (j = 0; j < T3.length; j++) if (t >= T3[j][0] && (T3[j][4] === null || t < T3[j][4] + 0.1)) running = true;
-    var nTurns = 1;
-    for (j = 0; j < T3.length; j++) if (t >= T3[j][0]) nTurns++;
-    var tokens = 252 + 60 * 3 + (t >= lim ? Math.round(rambleChars(lim, T3[3][2], inf, lim) / 1.5) : 0);
+    var sent = 0, doneN = 0;
+    for (j = 0; j < T3.length; j++) {
+      if (t >= T3[j][0]) sent++;
+      if (j < 3 && t >= T3[j][0] + T3[j][1].length / T3[j][3] + 0.1) doneN++;
+    }
+    var tk = 252 + 60 * doneN + (t >= lim ? Math.round(rambleChars(lim, T3[3][2], inf, lim) / 1.5) : (t >= T3[3][2] ? Math.round(rambleChars(t, T3[3][2], inf, lim) / 1.5) : 0));
+    var tok = tk >= 1000 ? (tk / 1000).toFixed(1) + 'K' : String(tk);
+    var cacheTab = [66, 70, 74, 77, 77];
+    var cacheV = cacheTab[Math.min(4, doneN + (t >= lim ? 1 : 0))];
     return a3Header(t) + '<div id="timeline">' + rows.join('') + '</div>' +
       composerCard(typing, !!typing, t, { model: modelLabel(t), running: running, typing: !!typing }) +
-      statsRow(nTurns, nTurns, null, String(tokens), 66);
+      statsRow(4 + sent, 4 + sent, null, tok, cacheV);
   }
 
   PV.paneBody = function (t) { if (t < CREATE) return ''; if (t < SEND) return hero(t); if (t < A2_T0) return chat(t); if (t < A3_T0) return a2Body(t); return a3Body(t); };
