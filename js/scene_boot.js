@@ -250,7 +250,8 @@
     if (!s) { PV.shotName = null; return; }
     var _dl = (PV.SHOT_DELAY && PV.SHOT_DELAY[s.name]) || 0;
     /* 延迟期内 a'=t（lt=0,u=0）；过了延迟 a'=a+dl。两者合起来就是 min(t, a+dl)。 */
-    if (_dl > 0) s = { a: Math.min(t, s.a + _dl), b: s.b, name: s.name, idx: s.idx };
+    /* 必须带上 fn！否则 PV.reg 注册的镜头一带延迟就直接不画（子代理踩过：138-141s 全空） */
+    if (_dl > 0) s = { a: Math.min(t, s.a + _dl), b: s.b, name: s.name, idx: s.idx, fn: s.fn };
     if (s.name === 'shot_power') { PV.ownPower(ctx, t); }
     else if (s.name === 'shot_circle') { PV.shotCircle(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
     else if (s.name === 'shot_circumference') { PV.shotCircumference(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
