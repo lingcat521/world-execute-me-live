@@ -147,7 +147,7 @@
     try {
       PV.reveal(ctx, t,
         /* v2 C14: self.old(t, n, you=t < T-0.3) —— 窗内右侧 you 的接收格已经折成窄条，不再画 */
-        function (c) { var q = PV.shotTime('shot_dimension', t); PV.shotDimension(c, t, q[0], q[1]); },
+        function (c) { var q = PV.shotTime('shot_dimension', t); PV.shotDimension(c, t, q[0], q[1], { you: t < T0 - 0.3 }); },
         function (c) { PV.shotCircle(c, t, Math.max(0, t - T0), T.clamp01((t - T0) / (34.543 - T0))); },
         PV.radial(958, 298, T0 - 0.1, 1400),
         { region: [405, 44, 1164, 604], cell: [8, 16], dur: 0.09 });

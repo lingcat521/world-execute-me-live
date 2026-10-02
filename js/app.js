@@ -125,7 +125,20 @@
     var usingAudio = PV.audioReady && !audioEl.paused && !audioEl.ended;
     var le = songDur();
     if (usingAudio) {
-      clock = audioEl.currentTime;
+      /* 跳转保护：seek 之后 audioEl.currentTime 会有一小段时间读回旧值/0（尤其服务器不支持
+         Range 请求时），原来每帧无条件 clock=currentTime，于是"一拖进度条画面和声音就回到开头"。
+         这里在 seek 落定前把 clock 钉在目标上，音频若自己跳回去就再设一次。 */
+      if (seekTarget !== null) {
+        if (performance.now() - seekAt > 1500) { seekTarget = null; clock = audioEl.currentTime; }
+        else {
+          if (!audioEl.seeking && Math.abs(audioEl.currentTime - seekTarget) > 0.4) {
+            try { audioEl.currentTime = seekTarget; } catch (e) {}
+          }
+          clock = seekTarget;
+        }
+      } else {
+        clock = audioEl.currentTime;
+      }
     } else if (!paused && PV.started) {   /* 用户点过开始之前，画面停在第 0 帧——音画必须一起动 */
       clock += dt;
       if (clock >= le) {
@@ -141,6 +154,7 @@
     if (tcEl) tcEl.textContent = fmt(tq) + '  f' + PV.frame + (PV.shotName ? '  ' + PV.shotName : '') + (PV.audioReady ? '' : '  loop 0-' + (PV.loopEnd || 16.1).toFixed(1) + 's');
     } catch (e) { PV.loopErr = e; PV.showErr('loop ' + (e && e.message)); }
   }
+  var seekTarget = null, seekAt = 0;   /* seek 保护：目标时刻与发起时间 */
   var paused = false;
   PV.isPaused = function () { return paused; };
   PV.setPaused = function (v) {
@@ -220,6 +234,8 @@
     seekEl.addEventListener('input', function () {
       var dur = songDur();
       var target = (seekEl.value / 1000) * dur;
+      if (!isFinite(target) || target < 0) target = 0;
+      seekTarget = target; seekAt = performance.now();   /* 见主循环里的跳转保护 */
       if (PV.audioReady) { try { audioEl.currentTime = target; } catch (e) {} }
       clock = target;   /* 暂停状态下拖动进度条也要立刻跟手 */
       showBar();
