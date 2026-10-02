@@ -709,4 +709,287 @@
     }
   });
 
+  /* ================================================================ 08 EVAL: LOVE（86-94）
+     公共工具：舞台背景补丁、p(love) 曲线取样、'you' 格子、EVAL 版式的复现（scenes_eval 的等价物）。
+     原工程里这些镜头走 hook（hide/marker/curve/lift…），本移植的 scene_p2c 未开放 hook，
+     所以 cut 用"补背景 + 自己画 carrier"的等价做法，几何与原实现一致。 */
+  function patchBg(ctx, x0, y0, x1, y1, t) {
+    if (x1 <= x0 || y1 <= y0) return;
+    T.fill(ctx, x0, y0, x1, y1, T.BG, 1);
+    var off = Math.floor(t * 12) % 16;
+    ctx.fillStyle = T.css(T.mix(T.UI, 0.1));
+    var sx = Math.floor(x0 / 16) * 16;
+    for (var sy = -off; sy < H + 16; sy += 16) {
+      if (sy < y0 || sy > y1) continue;
+      for (var x = sx; x < x1; x += 16) if (x >= x0) ctx.fillRect(x, sy, 1, 1);
+    }
+  }
+  /* scenes_eval 的 'you' 格子：10 px 的 DS 蓝方块 + 光晕 */
+  var YOU_S = 10, CELL_COL = [104, 132, 255];
+  function putCell(ctx, cx, cy, s, glow, alpha, col) {
+    if (alpha !== undefined && alpha <= 0.01) return;
+    s = s === undefined ? YOU_S : s;
+    if (s < 0.5) return;
+    ctx.save();
+    if (alpha !== undefined && alpha < 0.999) ctx.globalAlpha = clamp01(alpha);
+    if (glow > 0.01) { ctx.shadowColor = T.css(col || CELL_COL, 0.9); ctx.shadowBlur = 9 * glow; }
+    T.fill(ctx, cx - s / 2, cy - s / 2, cx + s / 2, cy + s / 2, col || CELL_COL, 1);
+    ctx.restore();
+  }
+  /* scenes_eval.pl / CH / chart_dots / love_marker（与 scene_p2c.dotChart 同构） */
+  var CH_X = 440, CH_Y = 90, CH_W = 690, CH_H = 300, CH_CELL = 5;
+  function pl(uu) { return 0.05 + 0.9 / (1 + Math.exp(-14 * (uu - 0.72))); }
+  function chartDots(prog) {
+    var cols = Math.floor(CH_W / CH_CELL), rows = Math.floor(CH_H / CH_CELL);
+    var out = [], prev = null, last = null, i, rr;
+    for (i = 0; i < cols; i++) {
+      var uu = i / (cols - 1);
+      if (uu > prog) break;
+      var v = Math.min(1.0, pl(uu));
+      var r = Math.round((1 - Math.max(0, v)) * (rows - 1));
+      var lo = prev === null ? r : Math.min(prev, r), hi = prev === null ? r : Math.max(prev, r);
+      for (rr = lo; rr <= hi; rr++) out.push([CH_X + i * CH_CELL, CH_Y + rr * CH_CELL]);
+      prev = r; last = [CH_X + i * CH_CELL, CH_Y + r * CH_CELL];
+    }
+    return { dots: out, last: last };
+  }
+  function loveMarker(last, prog) {
+    if (!last) return { mark: [CH_X + 1, CH_Y + 1], lab: 'p(love) = 0.000', labXY: [430, 64] };
+    var mx = last[0] + 1, my = last[1] + 1;
+    return { mark: [mx, my], lab: 'p(love) = ' + pl(prog).toFixed(3), labXY: [Math.max(430, mx - 150), Math.max(64, my - 32)] };
+  }
+  var P_LOVE = pl(1.0);
+
+  /* ---- 整幅由 cut 自己合成的帧（Python 的 plain(n)：不带 cut 的整帧，含 chrome） ---- */
+  var _chromeOrig = PV.chrome, _panesOrig = PV.drawPanes, _chatOrig = PV.chatLayer;
+  var OWN_FULL = [];
+  function ownsFull(t) {
+    for (var i = 0; i < OWN_FULL.length; i++) if (t >= OWN_FULL[i][0] && t < OWN_FULL[i][1]) return true;
+    return false;
+  }
+  if (_chromeOrig) PV.chrome = function (ctx, t, opt) { if (ownsFull(t)) return; return _chromeOrig.call(null, ctx, t, opt); };
+  if (_panesOrig) PV.drawPanes = function (ctx, t) { if (ownsFull(t)) return; return _panesOrig.call(null, ctx, t); };
+  if (_chatOrig) PV.chatLayer = function (ctx, t) { if (ownsFull(t)) return; return _chatOrig.call(null, ctx, t); };
+  function plainFrame(t) {
+    var cv = PV.newCanvas(W, H), g = cv.getContext('2d');
+    if (PV.drawBackground) PV.drawBackground(g, t);
+    var saved = PV.CUTS;
+    PV.CUTS = [];
+    try { PV.scene(g, t); } catch (e) { PV.sceneErr = e; }
+    PV.CUTS = saved;
+    var st = { retract: 0, shell: null };
+    try { if (PV.stateAt) st = PV.stateAt(t) || st; } catch (e) {}
+    try { if (!(st.retract > 0.999) && (!PV.paneVisible || PV.paneVisible(t)) && _panesOrig) _panesOrig(g, t); } catch (e) {}
+    try { if (_chatOrig) _chatOrig(g, t); } catch (e) {}
+    try {
+      if (_chromeOrig) _chromeOrig(g, t, { chapter: PV.chapterAt ? PV.chapterAt(t) : '', ops: PV.ops,
+        retract: st.retract === undefined ? 0 : st.retract, shell: st.shell, alert: PV.alert });
+    } catch (e) {}
+    return cv;
+  }
+
+  /* ================================================================ C86（176.9279）
+     collapse -> grpo（UNFOLD）。坍缩的最后一个点没有灭：它三帧内转白、四帧内拉成一条满宽扫描线，
+     重启后的 UI —— 面板、她的窗格、chrome 与歌词带一起 —— 垂直地从那条线里张开，像 CRT 重新点亮。 */
+  var C86 = { T: 176.9279, pre: 0.30, post: 0.34, SEED: [640, 360] };
+  OWN_FULL.push([C86.T - C86.pre, C86.T + C86.post]);
+  var _c86seed = null;
+  function c86SeedColour() {
+    if (_c86seed) return _c86seed;
+    var n0 = Math.ceil((C86.T - C86.pre) * FPS), t0 = n0 / FPS;
+    var im = plainFrame(t0), g = im.getContext('2d');
+    var sx = C86.SEED[0], sy = C86.SEED[1], best = -1, col = red(1.0);
+    try {
+      var d = g.getImageData(sx - 4, sy - 4, 9, 9).data;
+      for (var i = 0; i < d.length; i += 4) {
+        var mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]);
+        var s = mx - mn + Math.floor(mx / 2);
+        if (s > best) { best = s; col = [d[i], d[i + 1], d[i + 2]]; }
+      }
+    } catch (e) {}
+    _c86seed = best > 120 ? col : red(1.0);
+    return _c86seed;
+  }
+  PV.addCut(C86.T, C86.pre, C86.post, function (ctx, t, cut) {
+    var Tt = C86.T, sx = C86.SEED[0], sy = C86.SEED[1];
+    if (t < Tt) {
+      var old = plainFrame(t);
+      var a = clamp01((t - (Tt - C86.pre)) / (3 / FPS));
+      var col = lerpR(c86SeedColour(), [255, 255, 255], a);
+      var u = clamp01((t - (Tt - 4 / FPS)) / (4 / FPS));
+      if (u > 0) {
+        var hh = Math.max(2, Math.round(H * (1 - eOut(u))));
+        T.fill(ctx, 0, 0, W, H, [0, 0, 0], 1);
+        ctx.save();
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(old, 0, 0, W, H, 0, Math.round(sy - hh / 2), W, hh);
+        ctx.restore();
+      } else {
+        ctx.drawImage(old, 0, 0);
+      }
+      if (u <= 0) {
+        var r = 2 + 1.5 * a;
+        ctx.save();
+        ctx.shadowColor = T.css(col, 1);
+        ctx.shadowBlur = 9 * 0.9 * a;
+        T.dot(ctx, sx, sy, r, col, 1);
+        ctx.restore();
+      } else {
+        var e = 1 - Math.pow(1 - u, 4), half = 4 + (W / 2) * e;
+        ctx.save();
+        ctx.globalAlpha = 0.27;
+        T.fill(ctx, sx - half, sy - 4, sx + half, sy + 4, [200, 215, 255], 1);
+        ctx.restore();
+        T.fill(ctx, sx - half, sy - 1, sx + half, sy + 1, col, 1);
+      }
+      return;
+    }
+    var nw = plainFrame(t);
+    var u2 = clamp01((t - Tt) / 0.30), e2 = eOut(u2);
+    var hh2 = Math.max(2, Math.round(H * e2));
+    T.fill(ctx, 0, 0, W, H, [0, 0, 0], 1);
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    if (u2 < 1) { try { ctx.filter = 'brightness(' + (1 + 0.6 * (1 - u2)).toFixed(3) + ')'; } catch (e3) {} }
+    ctx.drawImage(nw, 0, 0, W, H, 0, Math.round(sy - hh2 / 2), W, hh2);
+    ctx.restore();
+    if (u2 < 1) {
+      var lv = 255 * (1 - u2), yA = Math.round(sy - hh2 / 2), yB = Math.round(sy + hh2 / 2);
+      T.fill(ctx, 0, yA, W, yA + 1, [lv, lv, lv], 1);
+      T.fill(ctx, 0, yB, W, yB + 1, [lv, lv, lv], 1);
+    }
+  });
+
+  /* ================================================================ C87（178.7741）
+     grpo -> learn_love（CARRY）。规则奖励为 o05 "you" 付钱：格子亮起、其余答案排空进去、格子收拢成词，
+     "you" 飞（1.9x、25 px 字形）到训练曲线原点，凝成一个 10 px 的 DS 蓝格子并在下一拍锁住。 */
+  var C87 = { T: 178.7741, pre: 0.30, post: 0.62, LAND: 0.462 };
+  var GRPO_ANSWERS = ['attention', 'staying', 'a chemical', 'undefined', 'you', 'a reward', 'a bug', 'p(you)',
+                      'lo-o-ove', 'a loss', '\u221e', '404', 'here', 'you', 'a habit', 'you'];
+  var YOU_TILE = 4;
+  function grpoTileXY(i) { return [424 + (i % 4) * 184, 76 + Math.floor(i / 4) * 92]; }
+  function grpoAdv(i) {
+    var rw = [], k;
+    for (k = 0; k < GRPO_ANSWERS.length; k++) {
+      var a = GRPO_ANSWERS[k];
+      rw.push(a.indexOf('you') >= 0 ? 1.0 : (a.indexOf('lo') >= 0 || a === 'staying' || a === 'here') ? 0.3 : 0.0);
+    }
+    var mean = 0;
+    for (k = 0; k < rw.length; k++) mean += rw[k];
+    mean /= rw.length;
+    var std = 0;
+    for (k = 0; k < rw.length; k++) std += (rw[k] - mean) * (rw[k] - mean);
+    std = Math.sqrt(std / rw.length);
+    return [(rw[i] - mean) / (std + 1e-6), rw[i]];
+  }
+  var _youSpr = null;
+  function youTileSprite() {
+    if (_youSpr) return _youSpr;
+    var xy = grpoTileXY(YOU_TILE), cv = PV.newCanvas(176, 84), g = cv.getContext('2d');
+    var adv = grpoAdv(YOU_TILE), pos = adv[0] > 0;
+    T.rect(g, 0, 0, 176, 84, pos ? blue(0.8) : amb(0.3), 1, 1);
+    textAt(g, 'o' + (YOU_TILE + 1 < 10 ? '0' : '') + (YOU_TILE + 1), 8, 6, amb(0.5), 12, 1, 1, 0, 0);
+    textAt(g, GRPO_ANSWERS[YOU_TILE], 8, 24, pos ? blue(1.0) : amb(0.75), 18, 1, 1, 0, 0, true);
+    textAt(g, 'r=' + adv[1].toFixed(1) + '  A=' + (adv[0] >= 0 ? '+' : '') + adv[0].toFixed(2), 8, 56, pos ? blue(0.9) : amb(0.55), 13, 1, 1, 0, 0);
+    _youSpr = cv;
+    return _youSpr;
+  }
+  PV.addCut(C87.T, C87.pre, C87.post, function (ctx, t, cut) {
+    var Tt = C87.T, land = Tt + C87.LAND, xy = grpoTileXY(YOU_TILE), tx = xy[0], ty = xy[1];
+    var pr = pair(t), oc = pr[0], og = pr[1], nc = pr[2], ng = pr[3];
+    drawShot(og, 'shot_grpo', t);
+    if (t >= Tt - 0.25) patchBg(og, tx - 2, ty - 2, tx + 174, ty + 82, t);   /* hide=(YOU_TILE,) */
+    drawShot(ng, 'shot_learn_love', t);
+    revealC(ctx, t, oc, og, nc, ng, PV.inward(tx + 88, ty + 42, Tt - 0.22, Tt + 0.12, 700.0),
+            { region: PANE, cell: [8, 16], dur: 0.09 }, 87, 0.4, red);
+    var cd = chartDots(0.0), mark = cd.last ? [cd.last[0] + 1, cd.last[1] + 1] : [CH_X + 1, CH_Y + 1];
+    var k = clamp01((t - (Tt - 0.25)) / 0.2);
+    if (t < Tt - 0.05) {
+      placeSprite(ctx, tintSprite(youTileSprite(), [235, 240, 255], 0.3 * k), [tx + 88.5, ty + 42.5], 1 + 0.03 * k, 1, 0.8 * k);
+    } else if (t < land) {
+      var u1 = clamp01((t - (Tt - 0.05)) / 0.22);
+      var u2 = clamp01((t - (Tt + 0.12)) / (land - Tt - 0.12));
+      var wx = tx + 8 + 15, wy = ty + 24 + 17.5;
+      var pos = u2 >= 1 ? mark : bez([wx, wy], mark, 0.32, eIo(u2));
+      if (u1 < 1) {
+        var e1 = eIo(u1);
+        T.rect(ctx, lerp(tx, wx - 26, e1), lerp(ty, wy - 17, e1), lerp(tx + 176, wx + 26, e1), lerp(ty + 84, wy + 17, e1),
+               blue(0.9), 1 - 0.6 * u1, 1);
+        textAt(ctx, 'o05', tx + 8, ty + 6, amb(0.5), 12, 1, 1 - u1, 0, 0);
+        textAt(ctx, 'r=1.0  A=+1.65', tx + 8, ty + 56, blue(0.9), 13, 1, 1 - u1, 0, 0);
+      }
+      var scale = lerp(1.0, 1.9, eOut(u1)) * lerp(1.0, 0.5, eIn(u2));
+      var wa = 1 - clamp01((u2 - 0.55) / 0.35);
+      if (wa > 0.01) {
+        ctx.save();
+        ctx.shadowColor = T.css(blue(1.0), 1);
+        ctx.shadowBlur = 8 * 0.8;
+        textCenter(ctx, 'you', pos, 18 * scale, blue(1.0), 1, wa, 0, 0);
+        ctx.restore();
+      }
+      var ca = clamp01((u2 - 0.45) / 0.3);
+      if (ca > 0.01) putCell(ctx, pos[0], pos[1], YOU_S * ca, 0.8);
+    }
+  });
+
+  /* ================================================================ C88（180.851）
+     learn_love -> question_me（MORPH）。画完的曲线点先动（平台段最先）流进 LoveBench 条的轮廓并在拍点上锁住；
+     标记格子移到条尾（它填到的刻度）；'p(love) = 0.932' 掉名字、变成条的分数 93.2，边填边数到 100.0。 */
+  var C88 = { T: 180.851, pre: 0.28, post: 0.5, LAND88: 0.231 };
+  var BAR_X0 = 700, BAR_X1 = 1000, VAL_X = 1028;
+  function qy(i) { return 90 + i * 60; }
+  function onOutline(s, x0, y0, x1, y1) {
+    var per = 2 * ((x1 - x0) + (y1 - y0));
+    s = ((s % per) + per) % per;
+    if (s < x1 - x0) return [x0 + s, y1];
+    s -= x1 - x0;
+    if (s < y1 - y0) return [x1, y1 - s];
+    s -= y1 - y0;
+    if (s < x1 - x0) return [x1 - s, y0];
+    return [x0, y0 + (s - (x1 - x0))];
+  }
+  PV.addCut(C88.T, C88.pre, C88.post, function (ctx, t, cut) {
+    var Tt = C88.T, land = Tt + C88.LAND88, t0 = Tt - C88.pre, j;
+    var a = shotOf('shot_learn_love'), dur = a ? (a.b - a.a) : 2.0769;
+    var lt_a = Math.max(0.0, Tt - C87.LAND - (a ? a.a : 178.7741));
+    var prog = T.ease(lt_a / dur * 1.1);
+    var cd = chartDots(prog), lm = loveMarker(cd.last, prog);
+    var pr = pair(t), oc = pr[0], og = pr[1], nc = pr[2], ng = pr[3];
+    drawShot(og, 'shot_learn_love', t);
+    drawShot(ng, 'shot_question_me', t);
+    revealC(ctx, t, oc, og, nc, ng, PV.inward(850, 105, Tt - 0.2, Tt + 0.15, 700.0),
+            { region: PANE, cell: [8, 16], dur: 0.09 }, 88, 0.4, red);
+    var y0 = qy(0) + 4, y1 = qy(0) + 26;
+    for (j = 0; j < cd.dots.length; j++) {
+      if (t >= land + 0.02) continue;
+      var f = j / Math.max(1, cd.dots.length - 1);
+      var dep = t0 + 0.02 + 0.16 * (1 - f);
+      var u = clamp01((t - dep) / (land - dep));
+      var tgt = onOutline(f * 2 * ((BAR_X1 - BAR_X0) + (y1 - y0)) * 0.999, BAR_X0, y0, BAR_X1, y1);
+      var p = bez(cd.dots[j], tgt, 0.12, eIo(u));
+      var lv = u < 1 ? 0.95 : 1.0, sz = (u <= 0 || u >= 1) ? 1 : 2;
+      T.fill(ctx, p[0], p[1], p[0] + sz, p[1] + sz, blue(lv), 1);
+    }
+    /* 标记格子移到条尾 */
+    var lift = clamp01((t - t0) / 0.15);
+    var cq = [BAR_X1 + 12, qy(0) + 15];
+    if (t < land + 0.02) {
+      var u3 = clamp01((t - (t0 + 0.08)) / (land - t0 - 0.08));
+      var pc = bez(lm.mark, cq, -0.25, eIo(u3));
+      putCell(ctx, pc[0], pc[1], YOU_S, 0.35 + 0.5 * lift);
+    }
+    /* 名字掉下去、数字落到分数列并长成 100.0 */
+    if (t < land + 0.04) {
+      var u4 = clamp01((t - (Tt - 0.12)) / (land - Tt + 0.12));
+      var nf = 1 - clamp01((t - (Tt - 0.18)) / 0.14);
+      var name = 'p(love) = ';
+      if (nf > 0.01) textAt(ctx, name, lm.labXY[0], lm.labXY[1], blue(1.0), 16, 1, nf, 0, 0.2 * lift, true);
+      var num = (u4 < 0.8 ? P_LOVE.toFixed(3) : (100 * P_LOVE).toFixed(1));
+      var sx0 = lm.labXY[0] + PV.p2c.monoW(name, 16);
+      var pn = bez([sx0, lm.labXY[1]], [VAL_X + 11, qy(0)], -0.3, eIo(u4));
+      var size = 16 + 4 * eIo(u4);
+      textAt(ctx, num, pn[0], pn[1], blue(1.0), size, 1, t < land ? 1 : 0, 0.5 * lift * (1 - u4), 0.3 * lift, true);
+    }
+  });
+
 })();

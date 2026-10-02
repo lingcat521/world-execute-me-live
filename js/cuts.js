@@ -625,11 +625,16 @@
     OUT = { A: pathA, B: pathB, T: uniq, glyphs: glyphs };
     return OUT;
   }
+  function landedMap() {
+    var D = dots(), m = {};
+    for (var i = 0; i < D.length; i++) m[D[i].cell] = D[i].tl;
+    return m;
+  }
   PV.addCut(T0, PRE, 0.86, function (ctx, t, cut) {
     var land = T0 + LAND;
     PV.reveal(ctx, t,
       function (c) { PV.protectionScene(c, t, [48, 70], t - 1.312, true); },
-      function (c) { PV.shotPieces(c, t, Math.max(0, t - T0), 5.236 - T0); },
+      function (c) { PV.shotPieces(c, t, Math.max(0, t - T0), 5.236 - T0, { landed: landedMap() }); },
       function (x, y) { return T0 - 0.32 + (x - 24) / 2400; },
       { region: FULLR, cell: [8, 16], dur: 0.09 });
     var lift = T.clamp01((t - (T0 - PRE)) / 0.12);
@@ -785,7 +790,7 @@
     var land = T0 + LAND;
     PV.reveal(ctx, t,
       function (c) { PV.shotParameters(c, t, Math.max(0, t - 7.082), (t - 7.082) / (9.851 - 7.082), { counter: false }); },
-      function (c) { PV.shotInit(c, t, Math.max(0, t - T0), T.clamp01((t - T0) / (11.005 - T0)), { title: t >= land }); },
+      function (c) { PV.shotInit(c, t, Math.max(0, t - T0), T.clamp01((t - T0) / (11.005 - T0)), { title: t >= land, grow: T.ease(T.clamp01((t - (T0 + 0.20)) / 0.45)) }); },
       PV.radial(430, 90, T0 - 0.34, 2000),
       { region: [405, 44, 1164, 604], cell: [8, 16], dur: 0.09 });
     if (t < land) {
