@@ -9,7 +9,15 @@
      PV.sync(t)        —— 调用原实现之后，按时间给 #chatbox 打 transform / clip-path
    相机（C53/C54）把整幅画面绕 P0 缩放到 z 再贴到 node rect；场景内容由画布负责，
    她的窗格用同一个仿射变换交给 DOM，两边合起来才是参考帧里的"小屏幕"。
-   节点外的部分（浏览器里没有 canvas 的 her 图层）无法逐格搬，按最近的等价做法近似，注释里标了。 */
+   节点外的部分（浏览器里没有 canvas 的 her 图层）无法逐格搬，按最近的等价做法近似，注释里标了。
+
+   两条实测结论（都按原工程实现，别改回去）：
+   1) **转场里画的镜头，Ctx 的 rng 种子是帧号不是镜头序号**：cuts.py 的 body() 走 kit.sb.body(te, n, shot)
+      -> engine.render_body(t, index=n, shot) -> random.Random(n*7919)。用镜头序号会得到完全不同的乱码
+      （实测 122.00：n=2928 才和参考帧一致）。文件末尾把本段的 cut 全部包了 frameRng()。
+   2) 相机（C53/C54）只把**场景内容**缩放贴进 node rect，chrome 不缩放；她的窗格是 DOM，
+      用同一仿射变换（paneGeom）交给 #chatbox，两边合起来才是参考帧里的"小屏幕"。 */
+
 (function () {
   'use strict';
   var PV = window.PV, T = PV.tui;
@@ -66,6 +74,21 @@
     ctx.strokeRect(x0 - 0.5, y0 - 0.5, x1 - x0 + 1, y1 - y0 + 1);
     ctx.restore();
   }
+  /* 转场里画的镜头，Ctx 的 rng 种子是"帧号"而不是镜头序号：
+     cuts.py 的 body() 是 kit.sb.body(te, n, shot) -> engine.render_body(t, index=n, shot)，
+     所以场景内 random.Random(index*7919) 里的 index 被换成了帧号 n（实测 122.00 的乱码只有 n=2928 对得上）。
+     这里把 PV.mt(idx*7919) 临时重定向到 PV.mt(n*7919)，镜头自己的代码不用改。 */
+  function frameRng(fn) {
+    return function (ctx, t, cut) {
+      var n = Math.round(t * FPS), base = PV.mt;
+      PV.mt = function (seed) {
+        for (var i = 44; i <= 63; i++) if (seed === i * 7919) return base(n * 7919);
+        return base(seed);
+      };
+      try { return fn(ctx, t, cut); } finally { PV.mt = base; }
+    };
+  }
+  PV.frameRng = frameRng;
   /* 镜头查找 + 直接绘制（等价 C.body(shot, t, n, hooks)） */
   function findShot(name, t) {
     var best = null;
@@ -201,7 +224,7 @@
         } else {
           var u = clamp01((t - T0) / (land - T0)), e = eIo(u);
           var y_dst = ROW_Y + FIRST_TIMEOUT * ROW_DY;
-          var p = clamp01((u - 0.1) / 0.62), rng = PV.mt(Math.round(cut.T * 24) * 17);
+          var p = clamp01((u - 0.1) / 0.62), rng = PV.mt(Math.round(t * 24) * 17);
           var L = Math.max(SRC.length, DST.length), s = '';
           for (var j = 0; j < L; j++) {
             var pj = j / L;
@@ -445,7 +468,7 @@
           var p2 = bez([nx, ny], MSG_XY, -0.25, e);
           var size = Math.round(lerp(18, 20, u) * (1 + 0.5 * Math.sin(Math.PI * Math.min(1, u * 1.3))));
           var colr = rgbLerp(anom(1.0), amb(0.9), clamp01(u * 1.4));
-          var str = u < 0.6 ? NAME : PV.morph(NAME, PV.SR.ERASE_TXT.substr(0, 22), (u - 0.6) / 0.4, PV.mt(55));
+          var str = u < 0.6 ? NAME : PV.morph(NAME, PV.SR.ERASE_TXT.substr(0, 22), (u - 0.6) / 0.4, PV.mt(Math.round(t * 24)));
           var lock = Math.max(0, 1 - Math.abs(t - land) / 0.1);
           textAt(ctx, str, p2[0], p2[1], colr, size, 1, 1, Math.max(0.6 * (1 - u), 0.8 * lock), 0.4 * lock);
         }
@@ -585,7 +608,7 @@
         var p = clamp01((u - 0.15) / 0.8);
         var size = Math.round(lerp(20, 17, p) * (1 + 0.25 * Math.sin(Math.PI * u)));
         var col = rgbLerp(anom(0.95), amb(0.85), p);
-        var rng = PV.mt(58 * 3);
+        var rng = PV.mt(Math.round(t * 24) * 3);
         for (var j = 0; j < PV.SR.PLUS_ROWS.length; j++) {
           textAt(ctx, PV.morph(PV.SR.rewardRowText(PV.SR.PLUS_ROWS[j]), PV.SR.godLine(j), p, rng), 430, ypos(t, j),
                  col, size, 1, 1, 0.5 * lift * (1 - u), 0.3 * lift * (1 - p));
@@ -615,7 +638,7 @@
         var pos = bez(PV.SR.PROMPT_XY, DST, 0.12, e);
         var p = clamp01((t - (T0 + 0.21)) / 0.25);
         var size = Math.round(lerp(22, 20, e) * (1 + 0.22 * Math.sin(Math.PI * u)));
-        textAt(ctx, PV.morph(PV.SR.PROMPT, PV.SR.TRACE[2].replace(/^\s+/, ''), p, PV.mt(59 * 5)),
+        textAt(ctx, PV.morph(PV.SR.PROMPT, PV.SR.TRACE[2].replace(/^\s+/, ''), p, PV.mt(Math.round(t * 24) * 5)),
                pos[0], pos[1], red(1.0), size, 1, 1, 0, 0.35 * lift * (1 - e));
       }
     });
@@ -772,7 +795,7 @@
         var srcS = PV.SR.rowSumsText((T0 + DRAIN[0] - 138.1587) / 3.2308);
         var dstS = PV.SR.hitValue(T0, T0, 1.0).toFixed(1) + '%';
         var p = clamp01((u - 0.3) / 0.6);
-        var s = PV.morph(srcS, dstS, p, PV.mt(62 * 7));
+        var s = PV.morph(srcS, dstS, p, PV.mt(Math.round(t * 24) * 7));
         var e2 = settle(u, 0.05, 0.12);
         var size = Math.round(lerp(18, 64, clamp01(e2)));
         var pos = bez(SUMS_XY, [PV.SR.HIT_XY[0] + 390, PV.SR.HIT_XY[1]], 0.1, e2);
@@ -819,4 +842,13 @@
     });
   })();
 
+  /* ================================================================ 收尾：把本段注册的 cut 全部包上帧号种子 */
+  (function () {
+    var n = 0;
+    for (var i = 0; i < PV.CUTS.length; i++) {
+      var c = PV.CUTS[i];
+      if (c.T >= 110.4 && c.T <= 147.7 && !c.__p3) { c.__p3 = 1; c.fn = frameRng(c.fn); n++; }
+    }
+    PV.P3_CUTS = n;
+  })();
 })();

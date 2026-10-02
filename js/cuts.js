@@ -1112,3 +1112,125 @@
     }
   });
 })();
+
+/* ---- C24：travel -> unite（进入正歌段）。30 根 position-id bar 亮起、两两合并（BPE.MERGE），
+        成对沿弧线飞进两行 tokenizer 的 chip 槽位，在拍点上锁成 token chip；
+        unite 面板从 bars 起飞处向外解码；她的窗格自上而下逐格重绘（一条发亮的重绘前锋线）。 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var T0 = 54.159, PRE = 0.3, BEAT = 60 / 130;
+  var LAND = T0 + BEAT, MERGE = T0 - 0.1, SIDE0 = T0 - 0.08;
+  var STRIP = [428, 300, 1146, 382], SEED = [784, 345];
+  var SIDE = [20, 42, 388, 614], BODY = [400, 36, 1168, 612];
+  var SIDE_SPEED = (SIDE[3] - SIDE[1]) / (LAND - SIDE0);
+  function eIo(u) { u = T.clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
+  function bez(p0, p1, bend, u) {
+    var mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2, dx = p1[0] - p0[0], dy = p1[1] - p0[1];
+    var cx = mx - dy * bend, cy = my + dx * bend, a = 1 - u;
+    return [a * a * p0[0] + 2 * a * u * cx + u * u * p1[0], a * a * p0[1] + 2 * a * u * cy + u * u * p1[1]];
+  }
+  var BARS = null, PLAN = null;
+  function bars(t) {
+    if (BARS) return BARS;
+    var tt = Math.min(t, MERGE - 1e-6), pos0 = PV.travelPos(tt), out = [], i;
+    for (i = 0; i < 30; i++) {
+      var pos = Math.floor(pos0) - i * 173, x = 430 + i * 24, hh = 40 + 30 * Math.sin(pos * 0.01);
+      out.push([x, 380 - hh, x + 19, 381, T.ui(0.3 + 0.02 * i)]);
+    }
+    if (t >= MERGE) BARS = out;
+    return out;
+  }
+  function plan() {
+    if (PLAN) return PLAN;
+    var slots = [], row, k, x, F, i, j, p;
+    for (row = 0; row < 2; row++) {
+      var v = 70 + 30 * row;
+      F = Math.floor((LAND * v) / 90);
+      for (k = 0; k < 12; k++) {
+        x = 420 + k * 90 - (LAND * v) % 90;
+        if (x > 410 && x < 1090) slots.push([x, row, k + F]);
+      }
+    }
+    slots.sort(function (a, b) { return a[0] - b[0]; });
+    var pairs = [];
+    for (p = 0; p < 15; p++) pairs.push(430 + 48 * p + 21);
+    var n = pairs.length, m = slots.length, pick = [];
+    if (m >= n) {
+      var INF = 1e18, best = [];
+      for (i = 0; i <= n; i++) { best.push([]); for (j = 0; j <= m; j++) best[i].push(INF); }
+      for (j = 0; j <= m; j++) best[0][j] = 0;
+      for (i = 1; i <= n; i++) for (j = i; j <= m; j++)
+        best[i][j] = Math.min(best[i][j - 1], best[i - 1][j - 1] + Math.abs(pairs[i - 1] - slots[j - 1][0] - 35));
+      var jj = m;
+      for (i = n; i >= 1; i--) {
+        while (jj > i && best[i][jj] === best[i][jj - 1]) jj--;
+        pick.push(jj - 1); jj--;
+      }
+      pick.reverse();
+    } else if (n > 1) {
+      for (p = 0; p < n; p++) pick.push(Math.round(p * (m - 1) / (n - 1)));
+    } else pick.push(0);
+    PLAN = [];
+    for (p = 0; p < n; p++) {
+      var s = slots[pick[p]], sx = s[0], rw = s[1], g = s[2];
+      var kk = g - Math.floor((LAND * (70 + 30 * rw)) / 90);
+      var word = PV.VOCAB[((kk * 7 + rw * 3 + Math.floor(LAND * 2)) % PV.VOCAB.length + PV.VOCAB.length) % PV.VOCAB.length];
+      var bend;
+      if (rw === 0) {
+        var x160 = pairs[p] + 0.72 * (sx + 35 - pairs[p]);
+        bend = ((x160 < 560 || x160 > 1010) ? 0.55 : 0.2) * (pairs[p] < 784 ? -1 : 1);
+      } else bend = 0.25 * ((p % 4 === 0) ? 1 : -1);
+      PLAN.push({ p: p, row: rw, g: g, word: word, depart: MERGE + 0.012 * p, bend: bend, sx: sx });
+    }
+    return PLAN;
+  }
+  function shown(t) { plan(); return function () { return t >= LAND ? 1 : 0; }; }
+  PV.addCut(T0, PRE, 0.62, function (ctx, t, cut) {
+    var oc = PV.newCanvas(1280, 720), og = oc.getContext('2d');
+    if (PV.drawBackground) PV.drawBackground(og, t);
+    PV.shotTravel(og, t, Math.max(0, t - 50.928), { bars: false });
+    /* travel 的 bar 条被抽走了：把那一条擦成背景 */
+    var bgc = PV.newCanvas(1280, 720), bg2 = bgc.getContext('2d');
+    if (PV.drawBackground) PV.drawBackground(bg2, t);
+    og.drawImage(bgc, STRIP[0], STRIP[1], STRIP[2] - STRIP[0], STRIP[3] - STRIP[1], STRIP[0], STRIP[1], STRIP[2] - STRIP[0], STRIP[3] - STRIP[1]);
+    var nc = PV.newCanvas(1280, 720), ng = nc.getContext('2d');
+    if (PV.drawBackground) PV.drawBackground(ng, t);
+    PV.shotUnite(ng, t, Math.max(0, t - T0), 56.697 - T0, { chip: shown(t) });
+    var stage = PV.newCanvas(1280, 720), sg = stage.getContext('2d');
+    PV.reveal(sg, t, function (c) { c.drawImage(oc, 0, 0); }, function (c) { c.drawImage(nc, 0, 0); },
+      PV.radial(SEED[0], SEED[1], T0 - 0.08, 2400), { region: BODY, cell: [8, 16], dur: 0.09 });
+    PV.reveal(ctx, t, function (c) { c.drawImage(stage, 0, 0); }, function (c) { c.drawImage(nc, 0, 0); },
+      function (x, y) { return SIDE0 + (y - SIDE[1]) / SIDE_SPEED; }, { region: SIDE, cell: [8, 13], dur: 0.09 });
+    /* 她的重绘前锋线 */
+    var fy = SIDE[1] + (t - SIDE0) * SIDE_SPEED;
+    if (fy > 58 && fy < 602) T.fill(ctx, 30, fy, 378, fy + 1, T.mix(T.ME_TEXT, 0.9), 0.9);
+    /* carriers：两两合并 -> 成对飞向 chip 槽位 */
+    if (t < LAND + 0.1) {
+      var lift = T.clamp01((t - (T0 - PRE)) / 0.18), merge = eIo((t - (MERGE - 0.1)) / 0.1);
+      var B = bars(t), P = plan(), q;
+      for (q = 0; q < P.length; q++) {
+        var c = P[q], b0 = B[2 * c.p], b1 = B[2 * c.p + 1];
+        var wht = 0.55 * lift;
+        var c0 = [b0[4][0] + (236 - b0[4][0]) * wht, b0[4][1] + (240 - b0[4][1]) * wht, b0[4][2] + (252 - b0[4][2]) * wht];
+        var c1 = [b1[4][0] + (236 - b1[4][0]) * wht, b1[4][1] + (240 - b1[4][1]) * wht, b1[4][2] + (252 - b1[4][2]) * wht];
+        var cm = [(c0[0] + c1[0]) / 2, (c0[1] + c1[1]) / 2, (c0[2] + c1[2]) / 2];
+        if (t < c.depart) {
+          var hm = ((b0[3] - b0[1]) + (b1[3] - b1[1])) / 2, s0, s1, hh;
+          hh = (b0[3] - b0[1]) + (hm - (b0[3] - b0[1])) * merge; s1 = b0[2] + 3 * merge;
+          T.fill(ctx, b0[0], b0[3] - hh, s1, b0[3], c0, 1);
+          hh = (b1[3] - b1[1]) + (hm - (b1[3] - b1[1])) * merge; s0 = b1[0] - 3 * merge;
+          T.fill(ctx, s0, b1[3] - hh, b1[2], b1[3], c1, 1);
+        } else {
+          var u = eIo(T.clamp01((t - c.depart) / (LAND - c.depart)));
+          var mx = (b0[0] + b1[2]) / 2, my = 381 - ((b0[3] - b0[1]) + (b1[3] - b1[1])) / 4;
+          var tx = c.sx + 35, ty = 80 + c.row * 170 + 11;
+          var pos = bez([mx, my], [tx, ty], c.bend, u);
+          var hw = 9 + (35 - 9) * u, hh2 = 20 + (11 - 20) * u;
+          T.fill(ctx, pos[0] - hw, pos[1] - hh2, pos[0] + hw, pos[1] + hh2, cm, 1);
+          if (u > 0.55) T.textMono(ctx, c.word, pos[0] - 30, pos[1] - 8, T.BG, 15);
+        }
+      }
+    }
+  });
+})();
