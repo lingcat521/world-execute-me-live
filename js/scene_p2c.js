@@ -21,7 +21,7 @@
   function padL(s, w) { s = String(s); while (s.length < w) s = ' ' + s; return s; }
   function padRa(s, w) { s = String(s); while (s.length < w) s = s + ' '; return s; }
   function red(lv) { return T.mix(T.ERR, lv); }
-  function amb(lv) { return T.mix(T.UI, lv); }
+  function amb(lv) { return T.amb(lv); }
   function blue(lv) { return T.mix(T.ME_TEXT, lv); }
   function anom(lv) { return T.mix(T.ANOM, lv); }
 

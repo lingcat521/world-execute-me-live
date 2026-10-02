@@ -39,6 +39,7 @@
       for (var x = 0; x < W; x += 16) ctx.fillRect(x, sy, 1, 1);
   };
   PV.onWorld(function (ctx, t) {
+    T.uiGainNow = T.uiGainAt(t);   /* 系统色增益：全片逐帧更新 */
     PV.drawBackground(ctx, t);
     if (PV.scene) { try { PV.scene(ctx, t); } catch (e) { PV.sceneErr = e; } }
     if (!(PV.retract > 0.999) && (!PV.paneVisible || PV.paneVisible(t))) PV.drawPanes(ctx, t);

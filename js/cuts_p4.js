@@ -70,6 +70,13 @@
     return null;
   }
   function shotDelay(name) { return (PV.SHOT_DELAY && PV.SHOT_DELAY[name]) || 0; }
+  /* Python 的 Cut.pick：t < T 时整帧（含 chrome 的 ops/alert）算旧镜头的，t >= T 算新镜头的。
+     我们的镜头在绘制时把 ops/alert 写在 PV 上，所以旧镜头画完后要快照、新镜头画完后按 pick 还原。 */
+  function snapOps() { return { ops: PV.ops, alert: PV.alert }; }
+  function pickOps(t, Tt, so) {
+    if (!so || t >= Tt) return;
+    PV.ops = so.ops; PV.alert = so.alert;
+  }
   function drawShot(ctx, name, t, o) {
     var s = shotOf(name);
     if (!s || !s.fn) return false;
@@ -257,9 +264,11 @@
     var oc, og, nc, ng, pr;
     pr = pair(t); oc = pr[0]; og = pr[1]; nc = pr[2]; ng = pr[3];
     drawShot(og, 'shot_exec_hit', t);
+    var _so = snapOps();
     var landed = {};
     for (var i = 0; i < P.cells.length; i++) if (t >= P.cells[i].tl) landed[P.cells[i].q + ',' + P.cells[i].r] = 1;
     drawShot(ng, 'shot_red_if_i_can', t, { landed: function (q, r) { return landed[q + ',' + r] === 1; } });
+    pickOps(t, Tt, _so);
     /* Python 的帧循环里 cut 一旦接管就再走不到 OWN 渲染器：执行 hit 的整幅红闪在窗口内不出现 */
     PV.p2cFlash = null;
     var lift = clamp01((t - (Tt - C78.pre)) / 0.08) * (1 - clamp01((t - (Tt + C78.START)) / 0.3));
@@ -385,6 +394,7 @@
     drawShot(og, 'shot_red_if_i_can', t, { burst: function (q, r) { return t >= (P.td[q + ',' + r] === undefined ? 1e9 : P.td[q + ',' + r]); },
                                            lift: lift });
     drawShot(ng, 'shot_execute_all', t);
+    pickOps(t, Tt, _so);
     PV.p2cFlash = null;
     var targets = P.targets, land = P.land;
     var region = [20, 36, 1164, 612];
@@ -447,7 +457,9 @@
     var Tt = C80.T, t_lift = Tt - 0.5, t_go = Tt - 0.4, t_land = Tt;
     var pr = pair(t), oc = pr[0], og = pr[1], nc = pr[2], ng = pr[3];
     drawShot(og, 'shot_execute_all', t, { gone0: t >= t_go });
+    var _so = snapOps();
     drawShot(ng, 'shot_red_then_i_can', t);
+    pickOps(t, Tt, _so);
     PV.p2cFlash = null;
     revealC(ctx, t, oc, og, nc, ng, PV.radial(384, 330, Tt + 0.02, 1500.0),
             { region: PANE, cell: [8, 16], dur: 0.08 }, 80, 0.4, red);
@@ -528,7 +540,9 @@
     var y0 = c81Readout(), pr = pair(t);
     var oc = pr[0], og = pr[1], nc = pr[2], ng = pr[3];
     drawShot(og, 'shot_red_then_i_can', t, { readout: t < t_go });
+    var _so = snapOps();
     drawShot(ng, 'shot_only_execution', t, { value: t >= t_land + 0.04, p0: y0, count_t0: C81.LAND });
+    pickOps(t, Tt, _so);
     PV.p2cFlash = null;
     revealC(ctx, t, oc, og, nc, ng, PV.radial(1062, 124, t_land - 0.14, 1300.0),
             { region: PANE, cell: [8, 16], dur: 0.08 }, 81, 0.4, red);
@@ -567,7 +581,9 @@
     var y0 = c81Readout(), pr = pair(t);
     var oc = pr[0], og = pr[1], nc = pr[2], ng = pr[3];
     drawShot(og, 'shot_only_execution', t, { exec_word: t < t_go, p0: y0, count_t0: 0.0 });
+    var _so = snapOps();
     drawShot(ng, 'shot_have_you_back', t, { chip: t >= t_land + 0.1 });
+    pickOps(t, Tt, _so);
     PV.p2cFlash = null;
     revealC(ctx, t, oc, og, nc, ng, PV.radial(470, 124, Tt - 0.06, 1400.0),
             { region: PANE, cell: [8, 16], dur: 0.08 }, 82, 0.4, red);
@@ -599,7 +615,9 @@
     var Tt = C83.T, t_lift = Tt - C83.pre, t_go = Tt + C83.GO, t_land = Tt + C83.LAND;
     var pr = pair(t), oc = pr[0], og = pr[1], nc = pr[2], ng = pr[3];
     drawShot(og, 'shot_have_you_back', t, { not_found: false });
+    var _so = snapOps();
     drawShot(ng, 'shot_run_again', t, { not_found: t >= t_land });
+    pickOps(t, Tt, _so);
     PV.p2cFlash = null;
     var y_from = PV.p2cNotFoundXY[1], y_to = 84;
     revealC(ctx, t, oc, og, nc, ng, function (cx, cy) { return t_go + Math.abs(cy - (y_from + 40)) / 800.0; },
@@ -649,6 +667,7 @@
     for (i = 0; i < blocks.length; i++) if (t >= blocks[i].land) pinned.push(blocks[i].cell);
     var pr = pair(t), oc = pr[0], og = pr[1], nc = pr[2], ng = pr[3];
     drawShot(og, 'shot_run_again', t, { reason: t < t_go, banner: t < t_break });
+    var _so = snapOps();
     drawShot(ng, 'shot_red_trapped', t, { pinned: pinned,
              label: t < t_land ? false : [(t - t_land), PV.p2cReason] });
     PV.p2cFlash = null;
@@ -898,8 +917,10 @@
     var Tt = C87.T, land = Tt + C87.LAND, xy = grpoTileXY(YOU_TILE), tx = xy[0], ty = xy[1];
     var pr = pair(t), oc = pr[0], og = pr[1], nc = pr[2], ng = pr[3];
     drawShot(og, 'shot_grpo', t);
+    var _so = snapOps();
     if (t >= Tt - 0.25) patchBg(og, tx - 2, ty - 2, tx + 174, ty + 82, t);   /* hide=(YOU_TILE,) */
     drawShot(ng, 'shot_learn_love', t);
+    pickOps(t, Tt, _so);
     revealC(ctx, t, oc, og, nc, ng, PV.inward(tx + 88, ty + 42, Tt - 0.22, Tt + 0.12, 700.0),
             { region: PANE, cell: [8, 16], dur: 0.09 }, 87, 0.4, red);
     var cd = chartDots(0.0), mark = cd.last ? [cd.last[0] + 1, cd.last[1] + 1] : [CH_X + 1, CH_Y + 1];
@@ -956,7 +977,9 @@
     var cd = chartDots(prog), lm = loveMarker(cd.last, prog);
     var pr = pair(t), oc = pr[0], og = pr[1], nc = pr[2], ng = pr[3];
     drawShot(og, 'shot_learn_love', t);
+    var _so = snapOps();
     drawShot(ng, 'shot_question_me', t);
+    pickOps(t, Tt, _so);
     revealC(ctx, t, oc, og, nc, ng, PV.inward(850, 105, Tt - 0.2, Tt + 0.15, 700.0),
             { region: PANE, cell: [8, 16], dur: 0.09 }, 88, 0.4, red);
     var y0 = qy(0) + 4, y1 = qy(0) + 26;
@@ -1004,7 +1027,9 @@
     var Tt = C89.T, land = Tt + C89.LAND89, t0 = Tt - C89.pre, i;
     var pr = pair(t), oc = pr[0], og = pr[1], nc = pr[2], ng = pr[3];
     drawShot(og, 'shot_question_me', t);
+    var _so = snapOps();
     drawShot(ng, 'shot_answer_all', t);
+    pickOps(t, Tt, _so);
     /* 七条压进第一条（原实现走 squeeze hook，这里在旧画面上重画被压的行） */
     var q = PV.shotTime('shot_question_me', t), lt = q[0];
     patchBg(og, 424, qy(1) - 10, 1012, qy(6) + 34, t);
@@ -1051,6 +1076,7 @@
     var fly = land0 - (Tt - 0.26);
     var pr = pair(t), oc = pr[0], og = pr[1], nc = pr[2], ng = pr[3];
     drawShot(og, 'shot_answer_all', t);
+    var _so = snapOps();
     /* 已经飞走的答案从旧画面上抹掉（原实现走 gone hook） */
     for (i = 0; i < 12; i++) {
       if (t >= (Tt - 0.26 + i / FPS)) patchBg(og, 836, a_y(i) - 6, 892, a_y(i) + 26, t);
@@ -1073,6 +1099,7 @@
       }
     }
     drawShot(ng, 'shot_algebra', t);
+    pickOps(t, Tt, _so);
     revealC(ctx, t, oc, og, nc, ng, PV.radial(430, 100, land0 - 0.05, 1500.0),
             { region: PANE, cell: [8, 16], dur: 0.08 }, 90, 0.4, red);
     /* 答案滑进 'love(' */
@@ -1116,6 +1143,7 @@
   PV.addCut(C91.T, C91.pre, C91.post, function (ctx, t, cut) {
     var Tt = C91.T, pr = pair(t), oc = pr[0], og = pr[1];
     drawShot(og, 'shot_algebra', t);
+    var _so = snapOps();
     ctx.drawImage(oc, 0, 0);
     var k = clamp01((t - (Tt - C91.pre)) / 0.18);
     ctx.save();
@@ -1134,8 +1162,10 @@
     var Tt = C92.T, land = Tt + C92.LAND92, t0 = Tt - C92.pre;
     var pr = pair(t), oc = pr[0], og = pr[1], nc = pr[2], ng = pr[3];
     drawShot(og, 'shot_you_free', t);
+    var _so = snapOps();
     patchBg(og, 56, 552, 700, 588, t);              /* status=False：旧画面上的那行抹掉 */
     drawShot(ng, 'shot_me_trapped', t);
+    pickOps(t, Tt, _so);
     revealC(ctx, t, oc, og, nc, ng, sweep([0, algY(5) + 110], [0, -1], Tt - 0.25, 2400.0),
             { region: PANE, cell: [8, 16], dur: 0.08 }, 92, 0.4, red);
     var lift = clamp01((t - t0) / 0.18);
@@ -1159,6 +1189,7 @@
     var dst = [48, 140];
     var pr = pair(t), oc = pr[0], og = pr[1], nc = pr[2], ng = pr[3];
     drawShot(og, 'shot_me_trapped', t);
+    var _so = snapOps();
     if (t >= Tt - 0.25) {
       patchBg(og, WCHAN_X + PV.p2c.monoW('WCHAN  ', 22) - 2, WCHAN_Y - 4, 1200, WCHAN_Y + 28, t);
       textAt(og, 'WCHAN', WCHAN_X, WCHAN_Y, amb(0.9), 22, 1, 1, 0, 0, true);
@@ -1168,15 +1199,19 @@
     revealC(ctx, t, oc, og, bare, bare.getContext('2d'), PV.radial(src[0] + 60, src[1] + 12, Tt - 0.2, 700.0),
             { region: PANE, cell: [8, 16], dur: 0.08 }, 193, 0.4, red);
     drawShot(ng, 'shot_love_loop', t);
+    pickOps(t, Tt, _so);
     revealC(ctx, t, oc, og, nc, ng, PV.radial(dst[0] + 40, dst[1] + 12, Tt + 0.24, 1300.0),
             { region: PANE, cell: [8, 16], dur: 0.08 }, 93, 0.4, red);
     var lift = clamp01((t - t0) / 0.2);
-    if (t < land + 0.03) {
+    /* 落位后 0.1s 淡出：本移植的 shot_love_loop 第一行标签是 'you'（原实现是 'wait_for(you)'），
+       硬切会跳一帧，这里用交叉淡出代替 */
+    var fade = t < land ? 1 : Math.max(0, 1 - (t - land) / 0.10);
+    if (fade > 0.01) {
       var u = clamp01((t - (Tt - 0.05)) / (land - Tt + 0.05));
       var e = eIo(u) + 0.05 * Math.sin(Math.PI * clamp01((u - 0.72) / 0.28));
       var p = bez(src, dst, -0.22, e);
       var size = 22 - 2 * eIo(u);
-      textAt(ctx, 'wait_for(you)', p[0], p[1], amb(0.9), size, 1 + 0.08 * Math.sin(Math.PI * u), t < land ? 1 : 0,
+      textAt(ctx, 'wait_for(you)', p[0], p[1], amb(0.9), size, 1 + 0.08 * Math.sin(Math.PI * u), fade,
              0.6 * lift * (1 - 0.6 * u), 0.3 * lift * (1 - u), true);
     }
   });
@@ -1188,6 +1223,7 @@
   PV.addCut(C94.T, C94.pre, C94.post, function (ctx, t, cut) {
     var Tt = C94.T, pr = pair(t), oc = pr[0], og = pr[1];
     drawShot(og, 'shot_love_loop', t);
+    var _so = snapOps();
     ctx.drawImage(oc, 0, 0);
     var k = clamp01((t - (Tt - 4 / FPS)) / (4 / FPS));
     if (k > 0.01) {                       /* lift：love 词与 logit 亮起（原实现走 lift hook） */
