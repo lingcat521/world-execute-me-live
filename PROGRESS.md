@@ -170,3 +170,10 @@ inner 360x662  dpr 2  barH 57  portrait true  scale 0.473  stage 605x340
 
 ### 待修
 - shot_circle 的参考帧在 33.5 s 只显示 2 个圆（其余被 C14 转场逐个引入），我这边一次性画 6 个 —— 需要实现 C14 的 `circles` hook。
+
+## 移动端（已由用户确认修好）
+
+用户反馈"移动端这边的bug修好了"。相关改动：绝对定位 + `translate(-50%,-50%)` 居中（不再依赖 grid），
+`?rot=0/1` 开关，工具栏 56px + 大点击区，`#wrap` overflow 收敛。
+真机数据（Android 13 / V2230A）：inner 360x662、barH 57、portrait true、scale 0.473、stage 605x340。
+
