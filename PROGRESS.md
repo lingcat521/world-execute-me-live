@@ -177,3 +177,14 @@ inner 360x662  dpr 2  barH 57  portrait true  scale 0.473  stage 605x340
 `?rot=0/1` 开关，工具栏 56px + 大点击区，`#wrap` overflow 收敛。
 真机数据（Android 13 / V2230A）：inner 360x662、barH 57、portrait true、scale 0.473、stage 605x340。
 
+
+## 02 SFT 段进行中（44.005 - 50.928 s）
+
+| 镜头 | 时间 | 验收 |
+|---|---|---|
+| shot_current | 44.005-47.236 | ✓ 8 条 GPU 波形 + GPU0-7 标签 + 瓦数 + `mode: DC` + `DC` 反白；token `60028 50199` 一致。已知差异：波形的细小波动与参考不完全一致（DC 段参考仍显示小幅正弦，我们的更平） |
+| shot_blind | 47.236-49.082 | ✓ causal mask 阶梯矩阵、`-∞` 黑格、前沿高亮、`future: masked` 打字机、`MASK` 反白；token `38051 10000 81244` 一致 |
+| shot_dizzy | 49.082-50.928 | ✓✓ **连浮点数都一致**：`lr = 7.32e-08`、`θ = (+0.88, -0.43)`、`loss = 0.8593`、grad_norm 柱状图、旋转曲面点阵、θ 球与拖尾 |
+
+`PV.loopEnd` 已到 50.928。剩余：shot_travel / unite / deeply（50.928-58.543）与 C21-C23 转场。
+
