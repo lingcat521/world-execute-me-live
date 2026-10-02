@@ -458,3 +458,71 @@
     }
   });
 })();
+
+/* ---- C17：sine -> tangent。通道 2 长大成大正弦（其余滑走），骑手从她的窗格带残影飞向切点。 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var T0 = 38.236, PRE = 0.3, LAND = 0.45, DUR = 40.312 - 38.236;
+  function eIn(u) { u = T.clamp01(u); return u * u * u; }
+  function eIo(u) { u = T.clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
+  function bez(p0, p1, bend, u) {
+    var mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2;
+    var dx = p1[0] - p0[0], dy = p1[1] - p0[1];
+    var cx = mx - dy * bend, cy = my + dx * bend, a = 1 - u;
+    return [a * a * p0[0] + 2 * a * u * cx + u * u * p1[0], a * a * p0[1] + 2 * a * u * cy + u * u * p1[1]];
+  }
+  function stroke(ctx, pts, col, w, alpha) {
+    ctx.save(); ctx.globalAlpha = alpha === undefined ? 1 : alpha;
+    ctx.strokeStyle = T.css(col); ctx.lineWidth = w;
+    ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+    for (var i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.stroke(); ctx.restore();
+  }
+  PV.addCut(T0, PRE, 0.62, function (ctx, t, cut) {
+    function waves(i) {
+      if (i === 2) return null;
+      var u = eIn((t - (T0 - 0.2)) / 0.35);
+      if (u >= 1) return null;
+      return { y0: 100 + i * 70 + (i < 2 ? -90 : 90) * u, a: 1 - u };
+    }
+    var land = T0 + LAND;
+    PV.reveal(ctx, t,
+      function (c) { PV.shotSine(c, t, t - 36.851, (t - 36.851) / (38.236 - 36.851), waves); },
+      function (c) { PV.shotTangent(c, t, Math.max(0, t - T0), T.clamp01((t - T0) / DUR), DUR,
+                                   { curve: t >= T0 + 0.35, rider: t >= land, tangent: t >= land }); },
+      function (x, y) { return T0 + (x - 404) / 2000; },   /* 从左到右扫过 */
+      { region: [405, 44, 1164, 604], cell: [8, 16], dur: 0.09 });
+    if (t < T0 + 0.35) {
+      var e = eIo((t - (T0 - PRE)) / 0.65);
+      var cam = PV.tangentState(Math.max(0, t - T0), DUR)[1];
+      var fr = 0.02 * 1.7 * 1.7;
+      var y0 = 240 + (PV.TAN.Y0 - 240) * e, A2 = 22 + (PV.TAN.A - 22) * e, pts = [], xs, pa, pb;
+      for (xs = 0; xs < 720; xs += 3) {
+        pa = (xs + t * 180) * fr + Math.PI;
+        pb = (xs + cam) / PV.TAN.K;
+        pts.push([430 + xs, y0 - A2 * Math.sin(pa + (pb - pa) * e)]);
+      }
+      stroke(ctx, pts, T.mix(T.ME_TEXT, 0.9), e < 0.5 ? 2 : 3);
+    }
+    if (t >= T0 && t < land + 0.02) {
+      var u = T.clamp01((t - (T0 + 0.02)) / (LAND - 0.02));
+      var st = PV.tangentState(Math.max(0, t - T0), DUR);
+      var rx = PV.TAN.X0 + st[0] - st[1], ry = PV.TAN.Y0 - PV.TAN.A * Math.sin(st[0] / PV.TAN.K);
+      var sp = PV.riderSprite ? PV.riderSprite() : null;
+      if (sp) {
+        var dw = sp.width || 24, dh = sp.height || 24;
+        var dst = [rx, ry - dh / 2 + 6], src = [204, 300];
+        var trail = [[0.12, 0.25], [0.06, 0.45], [0.0, 1.0]];
+        for (var k = 0; k < 3; k++) {
+          var ug = T.clamp01(u - trail[k][0]);
+          if (ug <= 0) continue;
+          var pos = bez(src, dst, -0.35, eIo(ug)), sc = 0.7 + 0.3 * ug;
+          ctx.save(); ctx.globalAlpha = trail[k][1];
+          ctx.drawImage(sp, pos[0] - dw * sc / 2, pos[1] - dh * sc / 2, dw * sc, dh * sc);
+          ctx.restore();
+        }
+      }
+    }
+  });
+})();
