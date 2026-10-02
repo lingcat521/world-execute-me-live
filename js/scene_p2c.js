@@ -189,13 +189,13 @@
       gg.drawImage(rot, 0, 0);
       gg.globalCompositeOperation = 'source-in';
       gg.fillStyle = T.css(T.ERR, 1); gg.fillRect(0, 0, diag, diag);
-      layer.save();
-      layer.globalAlpha = 0.55 + 0.35 * heat;
-      layer.filter = 'blur(' + (5 + 5 * heat).toFixed(2) + 'px)';
-      layer.drawImage(glo, x, y);
-      layer.restore();
+      g.save();
+      g.globalAlpha = 0.55 + 0.35 * heat;
+      g.filter = 'blur(' + (5 + 5 * heat).toFixed(2) + 'px)';
+      g.drawImage(glo, x, y);
+      g.restore();
     }
-    layer.drawImage(rot, x, y);
+    g.drawImage(rot, x, y);
   }
   function f2Closeup(t, cut, land, z0, z1, until, bars) {
     var FPS = 24, fall = 3 / FPS;
@@ -488,17 +488,53 @@
     for (var i = 0; i < RED_SPANS.length; i++) if (t >= RED_SPANS[i][0] && t <= RED_SPANS[i][1]) return true;
     return false;
   };
+  /* ---- v1 的 flash_red（hit 的拍点频闪）----
+     scenes_exec.shot_exec_hit：if pulse(c.t) > 0.55: c.flash_red = lay in (0, 2)。
+     v1 的 finish() 对**整幅**（含 chrome）做 ImageOps.colorize(L, black=BG, mid=(150,30,20), white=RED)。
+     实测：hit_08(lay0) 的 155.75 参考 banner 均值 (90.0,20.8,20.3)，155.50 是 (133.2,40.1,38.5)——
+     正是 colorize 把满强度红压到 (155,31,21) 的结果；ops 列/歌词带也一起被卷进去。 */
+  function flashHit(t) {
+    var T0s = PV.p2cHitTimes;
+    if (!T0s) return false;
+    for (var k = 0; k < T0s.length; k++) {
+      var b = (k + 1 < T0s.length) ? T0s[k + 1] : 158.6972;
+      if (t < T0s[k] || t >= b) continue;
+      var lay = (k === 11) ? 4 : (k >= 12 ? 0 : k % 4);
+      if (lay !== 0 && lay !== 2) return false;
+      return (PV.pulse ? PV.pulse(t) : 0) > 0.55;
+    }
+    return false;
+  }
+  PV.p2cFlashHit = flashHit;
+  var FL_LUT = null;
+  function flashLut() {
+    if (FL_LUT) return FL_LUT;
+    FL_LUT = [];
+    for (var i = 0; i < 256; i++) {
+      if (i <= 128) { var u1 = i / 128; FL_LUT.push([4 + (150 - 4) * u1, 7 + (30 - 7) * u1, 15 + (20 - 15) * u1]); }
+      else { var u2 = (i - 128) / 127; FL_LUT.push([150 + (255 - 150) * u2, 30 + (59 - 30) * u2, 20 + (48 - 20) * u2]); }
+    }
+    return FL_LUT;
+  }
   PV.overlay = function (ctx, t) {
     if (prev) { try { prev(ctx, t); } catch (e) {} }
-    /* 直接按实测区间判定，不依赖某个镜头函数是否被调用（红色副歌走的是另一条路径） */
-    var _fl = (PV.p2cFlash !== null && PV.p2cFlash !== undefined && Math.abs(PV.p2cFlash - t) < 1e-6);
-    if (PV.p2cRedAt(t) || _fl) {
+    if (PV.p2cRedAt(t)) {                       /* 保留给以后实测到的、镜头自己没画红的区间 */
       ctx.save();
       ctx.globalCompositeOperation = 'multiply';
-      ctx.globalAlpha = 0.5 * (_fl ? (PV.p2cFlashK === undefined ? 1 : PV.p2cFlashK) : 1);   /* 折半标定；C95 命中时再乘衰减 k */
+      ctx.globalAlpha = 0.5;
       ctx.fillStyle = 'rgb(255,86,66)';
       ctx.fillRect(0, 0, W, H);
       ctx.restore();
+    }
+    if (flashHit(t)) {                          /* hit 的 flash_red：整幅 colorize 成红 */
+      var cw = ctx.canvas.width, ch = ctx.canvas.height;
+      var im = ctx.getImageData(0, 0, cw, ch), d = im.data, LUT = flashLut(), i, L, cc;
+      for (i = 0; i < d.length; i += 4) {
+        L = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) | 0;
+        cc = LUT[L > 255 ? 255 : L];
+        d[i] = cc[0]; d[i + 1] = cc[1]; d[i + 2] = cc[2];
+      }
+      ctx.putImageData(im, 0, 0);
     }
   };
 })();
