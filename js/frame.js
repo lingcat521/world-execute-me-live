@@ -62,7 +62,7 @@
          1080p（RES=1.5）下就会多出一个更大、更靠右下、发虚的"幽灵画面"。 */
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = PV.bloomGain === undefined ? 0.22 : PV.bloomGain;
+      ctx.globalAlpha = PV.bloomGain === undefined ? 0.35 : PV.bloomGain;   /* 原始 tuikit.post: add(img, blur(img)*0.35) */
       ctx.filter = 'blur(' + (4 * (PV.RES || 1)) + 'px)';   /* 重置后按设备像素给半径，观感与 720p 一致 */
       ctx.drawImage(ctx.canvas, 0, 0);
       ctx.restore();

@@ -323,32 +323,37 @@
       pill('IconDatabaseOutline16', tokens + ' tok', '缓存命中 ' + cache + '%') + '</div>';
   }
 
-  /* ================================================================ 词级时间轴（sung_words.w） */
-  var WORDS = null, WORDREQ = false;
+  /* ================================================================ 词级时间轴（sung_words.w）
+     data/pane_words.json 直接按 line_id 索引（由 world_execute_word_timing_20260927/word_timeline.json
+     生成）——pv-live 的 word_timeline.json 的 lines 数组在 line_id 65 之后错位 2，不能当索引用。 */
+  var PW = null, WORDREQ = false;
   function ensureWords() {
     if (WORDREQ) return;
     WORDREQ = true;
-    fetch('data/word_timeline.json').then(function (r) { return r.json(); }).then(function (d) {
-      WORDS = d.lines; lastBody = null;
+    fetch('data/pane_words.json').then(function (r) { return r.json(); }).then(function (d) {
+      PW = d;
+      a3T = null; A2_HIST = null; PW_READY = true;
+      SEND2 = 0; RAMBLE_FINAL = null; C_S1 = null;
+      D_STEPS_READY = false; RIPPLES = null; FORGED_KEYS = null;
+      E_READY = false; F_READY = false; F_HIST = null; G_READY = false;
+      lastBody = null;
     }).catch(function () {});
   }
   ensureWords();
-  /* w(line, i)：line 是 line_id，等于 lines 数组下标 + 1 */
+  var PW_READY = false;
   function w(line, j) {
-    if (!WORDS) return 0;
-    var L = WORDS[line - 1];
-    if (!L || !L.words[j]) return 0;
-    var x = L.words[j];
-    return (x.a !== undefined) ? x.a : x.start;
+    if (!PW) return 0;
+    var a = PW[line];
+    if (!a || !a[j]) return 0;
+    return a[j][0];
   }
   function wEnd(line, j) {
-    if (!WORDS) return 0;
-    var L = WORDS[line - 1];
-    if (!L || !L.words[j]) return 0;
-    var x = L.words[j];
-    return (x.b !== undefined) ? x.b : x.end;
+    if (!PW) return 0;
+    var a = PW[line];
+    if (!a || !a[j]) return 0;
+    return a[j][1];
   }
-  function hasWords() { return !!WORDS; }
+  function hasWords() { return !!PW; }
 
   /* ================================================================ A1（5.24 - 16.0 s，00 BOOT） */
   var CREATE = 5.24, PARAMS = 7.19, INIT = 9.75, WORLD = 10.90, BEGIN = 12.47, SEND = beat(32);
@@ -504,16 +509,15 @@
     for (var j = 0; j < k; j++) sum += a3Rate(start + (j + 0.5) / 240);
     return pyint(sum / 240);
   }
-  var A3_T = null;
   function a3Turns() {
-    if (A3_T) return A3_T;
+    if (a3T) return a3T;
     var lim = a3Limit(), inf = a3Inf();
-    A3_T = [lim, inf, [
+    a3T = [lim, inf, [
       [w(9, 0), QUIZ, w(9, 0) + 0.18, (QUIZ.length - 1) / Math.max(0.1, w(9, 5) - w(9, 0) - 0.18), null, '22:40'],
       [w(11, 0), '答案：B\n解析：位置是一个旋转角度。', w(11, 3) - 3 / 13, 13, null, '23:02'],
       [w(13, 0), '答案：C\n解析：每个位置是一组 sin 和 cos。', w(13, 3) - 3 / 13, 13, null, '23:15'],
       [w(14, 7), RAMBLE, w(14, 7) + 0.15, null, lim, '23:31']]];
-    return A3_T;
+    return a3T;
   }
   function a3ReplyEnd(i, T3) {
     var Tn = T3[i];
@@ -1925,7 +1929,10 @@
     F_WALL_T = [w(89, 0), w(89, 1), w(89, 2), w(89, 3)];
     F_ERR_T = 0.1807 + 0.46154 * 378;
     F_DUR84 = F_C85 - F_C84; F_FULL = F_C84 + F_DUR84 / 1.7; F_COMPACTING = F_C84 + 0.75 * F_DUR84;
-    F_E_TURNS = 12; F_E_STEPS = 4508; F_E_TOK = 578000;
+    /* 从 batch_e 自己的终局读数接上（Python 是 import batch_e 读 E.counters(E.FREEZE)） */
+    var er = eRowsAll(FREEZE), ec = eCounters(FREEZE, er[1], er[2]);
+    F_E_TURNS = ec[1]; F_E_STEPS = ec[2];
+    F_E_TOK = Math.round(eCtx(FREEZE) / 100 * 131072 + 5000);
   }
   function fLine() { fInit(); return (PV.p2cLineT !== undefined ? PV.p2cLineT : F_LINE); }
   function fEyeLevel(t) {
@@ -2670,6 +2677,7 @@
   function gBody(t) { gInit(); return t < G_HARD_CUT ? gChatBody(t) : gBlackBody(t); }
 
   /* ================================================================ 分派 */
+  var a3T = null;
   var A3_T0 = 29.28, C_T0 = 73.54, D_T0 = 103.0, E_T0 = 125.0, F_T0 = 147.5, G_T0 = 177.0;
   PV.paneBody = function (t) {
     if (t < CREATE) return '';

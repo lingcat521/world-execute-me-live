@@ -295,11 +295,16 @@
   var C34_U = beatT(159.5), C34_LAND = beatT(160);
   var C34_XY = [40, 320], C34_F = 28, ROLE_TXT = '  role=deploy';
   var GOD_A = 84.620, GOD_B = 86.236;
+  /* C34 的黑场从窗口起点开始（合唱第 1759 帧 = C34_T - C34_PRE）；UI 逐格展开时 chrome 也跟着
+     一层层回来（Python 里它就在 reveal 的两张图里）。逐格时刻算不出来（chrome 不归本文件画），
+     用窗口内共同的时间斜坡近似：展开从文字行出发，左窗格 ~U+0.05、顶栏 U+0.06..0.30、ops 列 ~U+0.34。 */
+  var C34_W0 = C34_T - C34_PRE, C34_CR0 = C34_U + 0.05, C34_CR1 = C34_U + 0.34;
   (function () {
     var base = PV.stateAt;
     if (typeof base !== 'function' || base.__p4x) return;
     var wrapped = function (t) {
-      if (t >= C34_PRE && t < C34_U) return { retract: 1, shell: null };
+      if (t >= C34_W0 && t < C34_CR0) return { retract: 1, shell: null };
+      if (t >= C34_CR0 && t < C34_CR1) return { retract: 1 - clamp01((t - C34_CR0) / (C34_CR1 - C34_CR0)), shell: null };
       if (t >= GOD_A && t < GOD_B + 0.35) {
         var r = eOut((t - GOD_A) / 0.3);
         if (t >= GOD_B) r *= 1 - eIo((t - GOD_B) / 0.3);
