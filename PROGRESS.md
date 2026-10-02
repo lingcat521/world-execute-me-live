@@ -411,3 +411,26 @@ cuts.js 23 + cuts_p2 3 + cuts_p3 13 + cuts_p4 17 + cuts_p4x 14 = **70 条**
    需要在浏览器里实际看一遍（用户的手机浏览器）。这是唯一还没做过的验收维度。
 2. 166s 等红色副歌帧的立绘（依赖素材，不可做）
 3. 122-133s 段（4.0s KV cache 差 38）的格子亮度分布
+
+## —— 第 57 轮补记 ——
+
+### 新验收维度：HTML class 与随包 CSS 的静态交叉核对
+左窗格是 HTML，node 画布渲染器永远看不到它。本轮做了一种**不需要浏览器**的等价检查：
+把 pane.js 输出的所有 class 名抽出来，逐一确认在**随包发送的 CSS**里有没有定义（没定义 = 浏览器里裸样式）。
+工具：`pvport/clscheck.py`（pane.js 100 个 class × css/*.css + data/*.css）。
+
+### 查出并修复的真问题
+**16 个 class 没有样式**：
+- `gNWCoW_*`（7 个）+ `cvtE3a_*`（7 个）—— cordis 的两组卡片。子代理建了 `data/pane_cordis.css` 但**只放了 `Nqubda_*`**，
+  这两组从没写进去。它们的真身在 `dshpv/film/vendor/dsh-client-ui-cordis/lib/client.js` 里，是 **CSS-in-JS 字符串常量**
+  （`const css$1 = ".gNWCoW_card{...}"`）。已写脚本抽取并补入：5784 → **12704 字节**，大括号 102/102 配平。
+- `.pv-who` —— 聊天窗头部包名字与状态的容器。`pv.css` 里有 `.pv-head/.pv-pet/.pv-name/.pv-state/.pv-dot` 但漏了它。
+  已补 `flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:2px`。
+- `pane-bare` / `pane-nopal` —— **误报**：子代理是在运行时注入 `<style>` 里定义的（`styleEl('pane-bare-css')`），
+  在浏览器里正常工作。
+
+修复后：**100 个 class 全部有样式** ✓
+
+### 教训
+这个检查值得**在每次改 pane.js 后都跑一遍**——它是一个纯静态、秒级、不需要浏览器的检查，
+却能抓住"元素在浏览器里裸奔"这类画布渲染器永远发现不了的问题。
