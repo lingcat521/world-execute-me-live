@@ -32,7 +32,7 @@
   audioEl.addEventListener('loadedmetadata', function () {
     if (isFinite(audioEl.duration) && audioEl.duration > 1) PV.audioDur = audioEl.duration;
   });
-  PV.VER = '202610030130';
+  PV.VER = '202610030230';
   var errEl = document.getElementById('err');
   PV.showErr = function (msg) {
     if (!errEl) return;
@@ -43,8 +43,19 @@
   };
   PV.clearErr = function () { if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; } };
   window.addEventListener('error', function (e) {
-    PV.showErr('JSERR ' + (e.message || '?') + ' @' + String(e.filename || '').split('/').pop() + ':' + (e.lineno || 0));
-  });
+    /* 资源加载失败（img/script/link）也会走到这里，但它不是脚本错误，
+       单独标出来，免得和真正的 JS 异常混在一起。 */
+    var tg = e && e.target;
+    if (tg && tg !== window && tg.tagName) {
+      PV.resErr = (PV.resErr || 0) + 1;
+      if (PV.resErr <= 3) PV.showErr('RES ' + tg.tagName + ' 加载失败: ' + String(tg.src || tg.href || '').split('/').slice(-2).join('/'));
+      return;
+    }
+    var msg;
+    if (e && e.error) msg = String(e.error.stack || e.error.message || e.error).split(String.fromCharCode(10)).slice(0, 2).join(' | ');
+    else msg = (e && e.message || '?') + ' @' + String(e && e.filename || '').split('/').pop() + ':' + (e && e.lineno || 0) + ':' + (e && e.colno || 0);
+    PV.showErr('JSERR ' + msg);
+  }, true);
   window.addEventListener('unhandledrejection', function (e) {
     PV.showErr('REJECT ' + ((e.reason && (e.reason.message || e.reason)) || '?'));
   });
@@ -220,6 +231,7 @@
   function boot() {
     for (var i = 0; i < PV.bootQueue.length; i++) PV.bootQueue[i]();
     PV.readyFlag = true;
+    PV.scanForeign();
     if (q.has('t')) {
       PV.hold = true;
       var tt = parseFloat(q.get('t'));
@@ -237,5 +249,20 @@
   }
   if (document.readyState === 'complete') setTimeout(boot, 0);
   else window.addEventListener('load', function () { setTimeout(boot, 0); });
+  /* "Script error." 是跨域脚本抛错的专属签名（同源脚本一定会带出堆栈）。
+     页面自己把非本源的 script / 浏览器注入物报出来，省得靠猜。 */
+  PV.scanForeign = function () {
+    try {
+      var bad = [], ss = document.getElementsByTagName('script');
+      for (var i = 0; i < ss.length; i++) {
+        var src = ss[i].src || '';
+        if (src && src.indexOf(location.origin) !== 0 && src.indexOf('blob:') !== 0 && src.indexOf('data:') !== 0)
+          bad.push(src.split('/')[2]);
+      }
+      if (document.getElementById('goog-gt-tt') || /translated/.test(document.documentElement.className || ''))
+        bad.push('google-translate');
+      if (bad.length) PV.showErr('外部脚本注入: ' + bad.join(', ') + '  (跨域脚本的报错只会显示 Script error.)');
+    } catch (e) {}
+  };
   PV.boot = boot;
 })();
