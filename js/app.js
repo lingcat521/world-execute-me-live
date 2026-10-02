@@ -24,6 +24,7 @@
     scale: 1, audioReady: false, hold: false, layers: [], bootQueue: []
   };
   PV.audio = audioEl; PV.chat = chatEl; PV.screen = screenEl;
+  PV.VER = '202610022242';
   PV.newCanvas = function (w, h) { var c = document.createElement('canvas'); c.width = Math.max(1, w | 0); c.height = Math.max(1, h | 0); return c; };
   PV.onWorld = function (fn) { PV.layers.push(fn); };
   PV.onBoot = function (fn) { PV.bootQueue.push(fn); };
@@ -36,6 +37,7 @@
     PV.scale = s;
     PV.portrait = portrait;
     wrapEl.style.bottom = barH + 'px';
+    if (document.getElementById('ver')) document.getElementById('ver').textContent = 'v' + PV.VER + (portrait ? ' 竖屏' : ' 横屏') + ' ' + Math.round(s * 100) + '%';
     screenEl.style.transform = portrait ? ('rotate(90deg) scale(' + s + ')') : ('scale(' + s + ')');
   }
   window.addEventListener('resize', layout);
@@ -115,6 +117,7 @@
     msgEl.textContent = src + (PV.offset ? '  offset ' + PV.offset + 's' : '');
   };
   if (audioEl.getAttribute('src')) PV.attachSong(audioEl.getAttribute('src'), 0);
+  if (document.getElementById('ver')) document.getElementById('ver').textContent = 'v' + PV.VER + (PV.portrait ? ' 竖屏' : ' 横屏');
   layout();
   requestAnimationFrame(loop);
   var q = new URLSearchParams(location.search);
