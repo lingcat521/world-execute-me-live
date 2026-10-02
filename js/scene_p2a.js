@@ -33,6 +33,13 @@
     ctx.restore();
   }
   function pt(ctx, x, y, col, a) { T.fill(ctx, x, y, x + 1, y + 1, col, a === undefined ? 1 : a); }
+  var CJK_FAM = 'NotoCJK, "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", "Droid Sans Fallback", system-ui, sans-serif';
+  function cjk(ctx, s, x, y, col, size) {
+    ctx.font = size + 'px ' + CJK_FAM;
+    ctx.fillStyle = typeof col === 'string' ? col : T.css(col);
+    ctx.textBaseline = 'top';
+    ctx.fillText(s, x, y);
+  }
   function pulse(t) { return PV.pulse ? PV.pulse(t) : 0; }
   function beatIndex(t) { return Math.floor((t - 0.1587) / (60 / 130) + 1e-6); }
   /* tk.dot_chart 的忠实移植：返回最后一个点 [x, y] */
@@ -243,7 +250,7 @@
     }
     /* Python: glyph_grid("starry","upper", g_cols_n=68, rows)：她那张立绘在 68 列里只占中间一条。
        我们的素材是方构图，所以直接按图幅比例取一条窄列，让她占中间约 29 列（外观等价）。 */
-    var gCols2 = Math.round(rows * ch / cw * 0.42), glines = glyphLines(gCols2, rows, 'fig', 0.30);
+    var gCols2 = Math.round(rows * ch / cw * 0.34), glines = glyphLines(gCols2, rows, 'fig', 0.30);
     var gx0 = Math.floor((cols - gCols2) / 2);
     function bRows(q, r) {
       var qq = q - gx0;
@@ -573,7 +580,7 @@
     typed(d, '[cordis] plugin mounted: execute', 780, 326, amb(0.6), 14, lt - 0.3, rng, 90, false);
     if (lt > 0.6) {
       var ask = '允许执行此操作？ [Y/n] ';
-      ctx.font = '22px ' + T.CJK;
+      ctx.font = '22px ' + CJK_FAM;
       ctx.fillStyle = amb(0.95); ctx.textBaseline = 'top';
       ctx.fillText(ask, 428, 440);
       var ax = 428 + ctx.measureText(ask).width;

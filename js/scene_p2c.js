@@ -79,7 +79,7 @@
     W: W, H: H, FPS: FPS, BEAT: BEAT, FB: FB, LEFT: LEFT, CENTER: CENTER, FULL: FULL,
     pulse: pulse, beatT: beatT, beatIndex: beatIndex, mixc: mixc, rgba: rgba, pad: pad, padL: padL, padRa: padRa,
     red: red, amb: amb, blue: blue, anom: anom, mono: mono, monoW: monoW, head: head,
-    bannerBits: bannerBits, bannerFit: bannerFit, bannerBlock: bannerBlock, MONO_ADV_W: MONO_ADV,
+    bannerBits: bannerBits, bannerFit: bannerFit, bannerBlock: bannerBlock, MONO_ADV_W: MONO_ADV, head: head,
     bannerBlockTop: bannerBlockTop, bannerBlockDraw: bannerBlockDraw
   };
 })();
@@ -150,7 +150,7 @@
     } else {
       PV.p2cPortrait(ctx, 'frightened', 'face', 420, 300, 4, 24, 70, T.ERR);
       T.box(ctx, 404, 56, 1164, 604, 'kill -9 1077  (you)', 0.8, T.ERR, t);
-      head(ctx, 'EPERM', 430, 120, anom(1.0), 110, 'left', true);
+      P.head(ctx, 'EPERM', 430, 120, anom(1.0), 110, 'left', true);
       mono(ctx, 'operation not permitted', 430, 280, anom(0.95), 26, 'left', true);
       mono(ctx, T.decode('target is outside the sandbox.', lt, PV.rngFor(t, 7919), 50, 0.12, 0), 430, 330, amb(0.8), 20);
     }
@@ -195,7 +195,7 @@
         mono(ctx, ss, xx + 80 - bt.width * 7.697 / 2, 90 + r * 15, red(hot ? 1.0 : 0.55), 14, 'left', true);
       }
       T.fill(ctx, xx, 300, xx + 160, 340, red(hot ? 0.95 : 0.3), 1);
-      head(ctx, wx, xx + 10, 306, T.BG, 22, 'left', true);
+      P.head(ctx, wx, xx + 10, 306, T.BG, 22, 'left', true);
       mono(ctx, 'id ' + T.tokenId(wx), xx + 10, 348, red(0.7), 14);
       mono(ctx, 'lang=' + lang, xx + 10, 370, lang.indexOf('?') >= 0 ? anom(0.95) : amb(0.8), 16, 'left', true);
     }
@@ -324,14 +324,17 @@
   for (var k = 0; k < 12; k++) {
     (function (k) {
       PV.p2cReg('shot_exec_hit_' + PV.p2c.pad(k, 2), T0[k], T0[k + 1] || 158.6972, function (ctx, t, lt, u, dur) {
-        PV.shotExecHit(ctx, t, lt, u, dur, { k: k });
+        var draw = function () { PV.shotExecHit(ctx, t, lt, u, dur, { k: k }); };
+        if (PV.p2cHitMode(k) === 'fullbleed') PV.p2cFullbleed(ctx, draw); else draw();
       });
     })(k);
   }
-  PV.p2cReg('shot_count', 158.6972, 161.4664, function (ctx, t, lt, u, dur) { PV.shotCount(ctx, t, lt, u, dur); });
+  PV.p2cReg('shot_count', 158.6972, 161.4664, function (ctx, t, lt, u, dur) {
+    PV.p2cFullbleed(ctx, function () { PV.shotCount(ctx, t, lt, u, dur); });
+  });
   PV.p2cReg('shot_exec_hit_12', 161.4664, 162.1587, function (ctx, t, lt, u, dur) {
     PV.shotExecHit(ctx, t, lt, u, dur, { k: 12 });
-  });
+  });   /* lay 0 -> fullbleed，见 p2cHitMode */
   /* cut 78 的出场镜头（#13）在 v2 里按名字取用，这里给它一个标准名 */
   PV.p2cReg('shot_exec_hit', 161.4664, 162.1587, function (ctx, t, lt, u, dur) {
     PV.shotExecHit(ctx, t, lt, u, dur, { k: 12 });
@@ -341,4 +344,161 @@
 
 
 
+
+
+/* ================================================================ 舞台布局（full/stage.py 的等价物）
+   参考成片 = continuity_full_v2 + dsh 补丁。v2 的帧循环里：
+     - 镜头 64-77（EXECUTION hits / count）走 v1 渲染路径（s_exec.OWN），stage.compose 会按 layout 摆放：
+       hits 的 lay 0/2/3 与 count 是 fullbleed —— body 的 FULL 区 (24,56,1164,604) 以 1280/1140 缩放后贴到 (0,30)，
+       chrome 换成 fullbleed 版（左上章节、右上时钟、648 起黑带 + 大号 token 块）。
+     - 其余镜头由 v2 循环画：body 原样 1:1（kind=full 时裁到 FULL 区），chrome 是标准版；
+       shot_collapse / shot_black 是 raw（完全不画 chrome）。
+   这里把 fullbleed 的变换与 chrome 做进本文件，raw 镜头屏蔽 chrome。 */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui, P = PV.p2c;
+  var W = 1280, H = 720;
+  var FB_S = W / (P.FULL[2] - P.FULL[0]);   /* 1280/1140 */
+  var FB_Y = 30;
+  PV.p2cFullbleedS = FB_S; PV.p2cFullbleedY = FB_Y;
+
+  /* 镜头 64-77 的 layout（full/direction.py EXEC_HIT + 计数强制 fullbleed） */
+  PV.p2cHitMode = function (k) {
+    var lay = (k === 11) ? 4 : (k >= 12 ? 0 : k % 4);
+    return (lay === 0 || lay === 2 || lay === 3) ? 'fullbleed' : 'split';
+  };
+  var FULLBLEED_SHOTS = {};
+  for (var k = 0; k < 13; k++) if (PV.p2cHitMode(k) === 'fullbleed') FULLBLEED_SHOTS['shot_exec_hit_' + P.pad(k, 2)] = 1;
+  FULLBLEED_SHOTS['shot_count'] = 1;
+  PV.p2cFullbleedShots = FULLBLEED_SHOTS;
+  var RAW_SHOTS = { shot_collapse: 1, shot_black: 1 };
+
+  PV.p2cInFullbleed = function (t) {
+    for (var n in FULLBLEED_SHOTS) { var m = PV.p2cMine[n]; if (m && t >= m.a && t < m.b) return true; }
+    return false;
+  };
+  PV.p2cInRaw = function (t) {
+    for (var n in RAW_SHOTS) { var m = PV.p2cMine[n]; if (m && t >= m.a && t < m.b) return true; }
+    return false;
+  };
+
+  /* fullbleed 变换：把 canvas 坐标画到屏幕上 */
+  PV.p2cFullbleed = function (ctx, fn) {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, FB_Y, W, (P.FULL[3] - P.FULL[1]) * FB_S); ctx.clip();
+    ctx.translate(0, FB_Y); ctx.scale(FB_S, FB_S); ctx.translate(-P.FULL[0], -P.FULL[1]);
+    fn();
+    ctx.restore();
+  };
+
+  /* ---------------- fullbleed 的歌词带（stage.token_chips, ANCHOR=1 -> 左对齐 x=74） ---------------- */
+  var KEYWORDS = {};
+  ('power protection creation parameters initialization world simulation simulations dimension circumference tangents ' +
+   'infinity limitations vision dizzy unite deeply satisfaction happy execution trapped strange nutrients antioxidants ' +
+   'enjoyment god existence trance vibrations completion left isolation fragments disheartened illegal arguments love ' +
+   'lo-o-ove free back').split(' ').forEach(function (w) { KEYWORDS[w] = 1; });
+  var WHEN = {};
+  function whenOf(ln) {
+    var key = ln.text + '|' + ln.start;
+    if (WHEN[key]) return WHEN[key];
+    var text = ln.text, when = new Array(text.length), j;
+    for (j = 0; j < text.length; j++) when[j] = Infinity;
+    for (var i = 0; i < ln.words.length; i++) {
+      var w = ln.words[i], n = w.i1 - w.i0;
+      for (j = 0; j < n; j++) when[w.i0 + j] = w.onset + w.td * j / n;
+      var nxt = (i + 1 < ln.words.length) ? ln.words[i + 1].i0 : text.length;
+      for (j = w.i1; j < nxt; j++) when[j] = w.onset + w.td;
+    }
+    WHEN[key] = when;
+    return when;
+  }
+  function lyricNow(t) {
+    var L = PV.LINES;
+    if (!L) return null;
+    for (var k2 = 0; k2 < L.length; k2++) {
+      var ln = L[k2];
+      if (ln.start <= t && t < ln.fade_until) {
+        var when = whenOf(ln), n = 0;
+        while (n < ln.text.length && when[n] <= t) n++;
+        var a = t < ln.show_until ? 1 : 1 - (t - ln.show_until) / (ln.fade_until - ln.show_until);
+        return { ln: ln, when: when, typed: n, alpha: a };
+      }
+    }
+    return null;
+  }
+  PV.p2cTokenChips = function (ctx, cx, y, size, ids, align) {
+    var st = lyricNow(ctx.__t);
+    if (!st) return;
+    var ln = st.ln, s = ln.text, typed = st.typed;
+    var fh = size, fi = Math.max(10, Math.floor(size / 2));
+    var toks = T.tokenize(s), pos = 0, x = cx, total = 0, i, tks = [];
+    for (i = 0; i < toks.length; i++) {
+      var st0 = s.indexOf(toks[i], pos);
+      if (st0 < 0) continue;
+      tks.push([toks[i], st0, st0 > pos]);
+      pos = st0 + toks[i].length;
+    }
+    for (i = 0; i < tks.length; i++) total += T.tw(tks[i][0], fh) + 6 + (tks[i][2] ? 8 : 0);
+    if (align !== 'left') x -= total / 2;
+    var h = Math.floor(size * 1.35);
+    for (i = 0; i < tks.length; i++) {
+      var tok = tks[i][0], start = tks[i][1];
+      if (start >= typed) break;
+      if (tks[i][2]) x += 8;
+      var shown = tok.slice(0, typed - start);
+      var ws = s.lastIndexOf(' ', start - 1) + 1, we = s.indexOf(' ', start);
+      if (we < 0) we = s.length;
+      var key = s.slice(ws, we).toLowerCase().replace(/[^a-z-]/g, '');
+      var tw = T.tw(tok, fh);
+      if (KEYWORDS[key] && typed >= we) {
+        var bg = (key.indexOf('exec') >= 0 || key === 'illegal' || key === 'arguments') ? P.red(0.95)
+               : (key === 'love' || key === 'lo-o-ove') ? P.blue(0.95) : P.amb(0.95);
+        T.fill(ctx, x - 3, y + 2, x + tw + 3, y + h, bg, 1);
+        T.textPIL(ctx, shown, x, y, T.css(T.BG), fh, 'left', true);
+      } else {
+        T.fill(ctx, x - 3, y + 2, x + tw + 3, y + h, P.amb(i % 2 === 0 ? 0.13 : 0.22), 1);
+        T.textPIL(ctx, shown, x, y, T.css(P.amb(0.95)), fh, 'left', true);
+      }
+      if (ids && typed >= start + tok.length) {
+        var tid = String(T.tokenId(tok));
+        T.textPIL(ctx, tid, x + (tw - T.tw(tid, fi)) / 2, y + h + 2, T.css(P.amb(0.45)), fi);
+      }
+      x += tw + 6;
+    }
+    if (typed < s.length || Math.floor(ctx.__t * 3) % 2 === 0) T.fill(ctx, x + 2, y + 4, x + 2 + size / 2, y + h - 2, P.amb(0.9), 1);
+  };
+
+  PV.p2cChromeFullbleed = function (ctx, t, opt) {
+    ctx.__t = t;
+    T.fill(ctx, 0, 0, W, 29, T.BG, 1);
+    T.textPIL(ctx, opt.chapter || PV.chapterAt(t), 16, 7, T.css(P.amb(0.8)), 13, 'left', true);
+    var mm = Math.floor(t / 60), ss = t - mm * 60;
+    T.textPIL(ctx, (mm < 10 ? '0' : '') + mm + ':' + (ss < 10 ? '0' : '') + ss.toFixed(1) + ' / 03:32',
+              W - 160, 7, T.css(P.amb(0.55)), 13);
+    T.fill(ctx, 0, 648, W, H, T.BG, 1);
+    T.fill(ctx, 0, 648, W, 649, P.amb(0.4 + 0.4 * P.pulse(t)), 1);
+    PV.p2cTokenChips(ctx, 74, 656, 30, true, 'left');
+  };
+
+  /* ---------------- chrome 接管 ---------------- */
+  var origChrome = PV.chrome;
+  PV.chrome = function (ctx, t, opt) {
+    opt = opt || {};
+    if (PV.p2cInRaw(t)) return;                        /* raw：整帧由镜头自己画 */
+    if (PV.p2cInFullbleed(t)) { PV.p2cChromeFullbleed(ctx, t, opt); return; }
+    return origChrome(ctx, t, opt);
+  };
+  /* fullbleed / raw 时：不画左右窗格、不显示 dsh 聊天窗（参考里她的窗格被移出画面） */
+  var origState = PV.stateAt;
+  PV.stateAt = function (t) {
+    var st = origState ? origState(t) : { retract: 0, shell: null };
+    if (PV.p2cInFullbleed(t) || PV.p2cInRaw(t)) return { retract: 1, shell: null };
+    return st;
+  };
+  var origPane = PV.paneVisible;
+  PV.paneVisible = function (t) {
+    if (PV.p2cInFullbleed(t) || PV.p2cInRaw(t)) return false;
+    return origPane ? origPane(t) : true;
+  };
+})();
 

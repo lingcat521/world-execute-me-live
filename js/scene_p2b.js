@@ -682,7 +682,6 @@
   }
   function sinkhorn(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
-    setGain(t);
     PV.ops = ['MHC', 'SINKHORN', 'ROW.NORM', 'COL.NORM', 'ITER', 'DIVERGE'];
     PV.alert = 'err';
     /* s_reward.setup(): DELAY["shot_sinkhorn"] = C61.ZOOM —— 镜头时钟晚 0.462 s 起而总时长不变
@@ -690,14 +689,17 @@
        {a,b,name,idx} 复制镜头对象、会把 fn 丢掉，故延迟在本函数内部实现。 */
     lt = Math.max(0, lt - SK_ZOOM);
     u = dur > 0 ? T.clamp01(lt / dur) : 0;
+    /* engine.render_body 收到的就是延后时钟 te，场景里的 c.t 也是 te —— 绝对时刻（split_at/beat 索引）都要用它 */
+    var ts = t - SK_ZOOM;
+    setGain(ts);
     var it = sinkhornIter(u), hot = it > HC_ITERS;
     if (hv(h, 'frame', true)) {
       T.box(ctx, 404, 56, 1164, 604, 'mHC residual mix  hc_mult=' + HC_MULT + '  sinkhorn iter ' + it + '/' + HC_ITERS,
-            0.6, hot ? T.ERR : T.ANOM, t);
+            0.6, hot ? T.ERR : T.UI, ts);   /* color=RED if it > ITERS else AMBER(=UI) */
     }
-    var n = HC_MULT, rnd = PV.mt(beatIndex(t));
+    var n = HC_MULT, rnd = PV.mt(beatIndex(ts));
     var splitAt = hv(h, 'split_at', SK_SPLIT_AT);
-    var warm = splitAt === null ? 0 : clamp01(1 - (t - splitAt) / BEAT);
+    var warm = splitAt === null ? 0 : clamp01(1 - (ts - splitAt) / BEAT);
     var cells = hv(h, 'cells', true);
     for (var i = 0; i < n; i++) {
       for (var j = 0; j < n; j++) {

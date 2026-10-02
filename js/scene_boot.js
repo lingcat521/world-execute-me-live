@@ -523,7 +523,7 @@
       var p = pts[i], z = p[2];
       T.textPIL(ctx, z < 0.35 ? '·' : (z < 0.75 ? 'o' : 'O'), p[0] - 4, p[1] - 8, T.ui(0.35 + 0.65 * z), 15);
     }
-    for (var k = 0; k < 2; k++) {
+    for (var k = 0; opts.markers !== false && k < 2; k++) {   /* C07：标记由转场层接管 */
       var mp = PV.markerPos(t, k, R);
       PV.drawMarker(ctx, mp[0], mp[1], k, 1.0, 0);
     }
@@ -567,10 +567,10 @@
     }
     return { width: cols, height: rows, get: function (q, r) { return bits[r][q]; } };
   };
-  PV.shotBeginSim = function (ctx, t, lt, u, dur, noRun, noBudget) {
+  PV.shotBeginSim = function (ctx, t, lt, u, dur, noRun, noBudget, noCount) {   /* noCount: C07 倒计时由转场层拼出来 */
     PV.ops = ['SIM.START', 'EPOCH 0', 'STEP 0', 'FORWARD', 'BACKWARD', 'UPDATE'];
     T.box(ctx, 404, 56, 1164, 604, 'sim.start()', 0.5, T.UI, t);
-    if (u < 0.55) {
+    if (u < 0.55 && !noCount) {
       var n = 3 - Math.min(2, Math.floor(u / 0.55 * 3));
       var bits = PV.bannerBits(String(n), 14, 2.0);
       var cw = 16 * T.MONO_ADV;
