@@ -58,7 +58,8 @@
   function loop(ts) {
     var dt = lastTs ? Math.min(0.2, (ts - lastTs) / 1000) : 0;
     lastTs = ts;
-    if (!PV.audioReady) {
+    var usingAudio = PV.audioReady && !audioEl.paused && !audioEl.ended;
+    if (!usingAudio) {
       clock += dt;
       var le = PV.loopEnd || 16.1;
       if (clock >= le) clock = 0;
@@ -86,6 +87,16 @@
     audioEl.play(); playEl.textContent = 'pause';
   };
   offEl.onchange = function () { PV.offset = parseFloat(offEl.value) || 0; };
+  PV.attachSong = function (src, off) {
+    if (!src) return;
+    audioEl.src = src;
+    audioEl.load();
+    PV.audioReady = true;
+    PV.offset = off || 0;
+    offEl.value = String(PV.offset);
+    msgEl.textContent = src + (PV.offset ? '  offset ' + PV.offset + 's' : '');
+  };
+  if (audioEl.getAttribute('src')) PV.attachSong(audioEl.getAttribute('src'), 0);
   layout();
   requestAnimationFrame(loop);
   var q = new URLSearchParams(location.search);
