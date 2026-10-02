@@ -1033,3 +1033,82 @@
     }
   });
 })();
+
+/* ---- C22：blind -> dizzy。只有窗格内容在转：遮罩矩阵躺下（镜头俯过去）、在 'So dizzy' 上开始自旋、
+        并弯成 loss 曲面；每个格子翻滚着缩成它那片碗面上的点，对角格 (9,9) 变成球 theta。 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var T0 = 49.082, PRE = 0.3;
+  var N = 12, CS = 40, MX = 470, MY = 80;
+  var M0 = [MX + N * CS / 2 - 1.5, MY + N * CS / 2 - 0.5];
+  /* 不要在模块顶层读 PV.dizzy：万一加载顺序变了会整页抛错。运行时再取。 */
+  function dzU() { return CS / PV.dizzy.DZ.kx; }
+  function dzH0() { return (CS - 3) / 2 / PV.dizzy.DZ.kx; }
+  function eIo(u) { u = T.clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
+  function eIn(u) { u = T.clamp01(u); return u * u * u; }
+  function shrinkT(i, j) {
+    var rr = PV.mt(i * 31 + j).random();
+    return T0 + 0.16 * (Math.hypot(i - 5.5, j - 5.5) / 7.8) + 0.06 * rr;
+  }
+  function parentOf(x, y, U) {
+    function f(v) { return Math.min(N - 1, Math.max(0, Math.floor(v / U + N / 2))); }
+    return [f(y), f(x)];
+  }
+  function projOf(t) {
+    var a = eIo((t - (T0 - 0.12)) / 0.45), b = eIo((t - T0) / 0.42), DZ = PV.dizzy.DZ;
+    var cx = M0[0] + (DZ.cx - M0[0]) * a, cy = M0[1] + (DZ.cy - M0[1]) * a;
+    var ky = DZ.kx + (DZ.ky - DZ.kx) * a, kz = DZ.kz * b, rot = PV.dizzyRot(t);
+    return function (x, y, z) { return PV.dizzyProject(x, y, rot, cx, cy, ky, kz, z); };
+  }
+  function cellColor(i, j) { return T.mix(T.ANOM, 0.06 + 0.94 * PV.blindCellValue(i, j)); }
+  PV.addCut(T0, PRE, 0.5, function (ctx, t, cut) {
+    var DZ = PV.dizzy.DZ, proj = projOf(t), i, j, k;
+    var oc = PV.newCanvas(1280, 720), og = oc.getContext('2d');
+    var bare = PV.newCanvas(1280, 720), bg2 = bare.getContext('2d');
+    if (PV.drawBackground) { PV.drawBackground(og, t); PV.drawBackground(bg2, t); }
+    PV.shotBlind(og, t, Math.max(0, t - 47.236), null);
+    PV.shotBlind(bg2, t, Math.max(0, t - 47.236), null);
+    var stage1 = PV.newCanvas(1280, 720), sg = stage1.getContext('2d');
+    PV.reveal(sg, t, function (c) { c.drawImage(og, 0, 0); }, function (c) { c.drawImage(bare, 0, 0); },
+      PV.radial(990, 140, T0 - 0.14, 1400), { region: [405, 44, 1164, 604], cell: [8, 16], dur: 0.09 });
+    var nc = PV.newCanvas(1280, 720), ng = nc.getContext('2d');
+    if (PV.drawBackground) PV.drawBackground(ng, t);
+    PV.shotDizzy(ng, t, Math.max(0, t - T0));
+    PV.reveal(ctx, t, function (c) { c.drawImage(stage1, 0, 0); }, function (c) { c.drawImage(nc, 0, 0); },
+      PV.radial(DZ.cx, DZ.cy, T0 + 0.12, 1500), { region: [405, 44, 1164, 604], cell: [8, 16], dur: 0.09 });
+    /* 碗面上的点：由它对应的矩阵格缩小到消失时冒出来 */
+    for (var il = 0; il < DZ.n; il++) for (var jl = 0; jl < DZ.n; jl++) {
+      var xy = PV.dizzy.gridXY(il, jl), par = parentOf(xy[0], xy[1], dzU());
+      var al = T.clamp01((t - shrinkT(par[0], par[1]) - 0.06) / 0.14);
+      if (al <= 0.01) continue;
+      var zz = PV.dizzy.surfaceZ(xy[0], xy[1]), pp = proj(xy[0], xy[1], zz);
+      if (!PV.dizzy.inside(pp[0], pp[1], 2)) continue;
+      T.fill(ctx, pp[0], pp[1], pp[0] + 2, pp[1] + 2, PV.dizzy.dotColor(zz), al);
+    }
+    /* 矩阵格子：翻滚着缩下去 */
+    for (i = 0; i < N; i++) for (j = 0; j < N; j++) {
+      var s0 = eIn((t - shrinkT(i, j)) / 0.18);
+      if (s0 >= 1) continue;
+      var U = dzU(), H0 = dzH0();
+      var x = (j - 5.5) * U, y = (i - 5.5) * U, hs = H0 * (1 - s0) + 0.01 * s0;
+      var ph = s0 * 2.4 * ((i + j) % 2 ? 1 : -1), cs = Math.cos(ph), sn = Math.sin(ph);
+      var quad = [[-hs, -hs], [hs, -hs], [hs, hs], [-hs, hs]], pts = [];
+      for (k = 0; k < 4; k++) {
+        var uu = quad[k][0], vv = quad[k][1];
+        pts.push(proj(x + cs * uu - sn * vv, y + sn * uu + cs * vv));
+      }
+      var any = false;
+      for (k = 0; k < 4; k++) if (PV.dizzy.inside(pts[k][0], pts[k][1])) any = true;
+      if (!any) continue;
+      var lift22 = T.clamp01((t - (T0 - PRE)) / 0.15);
+      var tm = PV.maskTime(i, j), masked = (tm !== null && t >= tm);
+      var col = masked ? [0, 0, 0] : cellColor(i, j);
+      if (!masked) { var w22 = 0.2 * lift22; col = [col[0] + (232 - col[0]) * w22, col[1] + (238 - col[1]) * w22, col[2] + (255 - col[2]) * w22]; }
+      if (i === 9 && j === 9) col = [col[0] + (120 - col[0]) * s0, col[1] + (148 - col[1]) * s0, col[2] + (255 - col[2]) * s0];
+      ctx.save(); ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+      for (k = 1; k < 4; k++) ctx.lineTo(pts[k][0], pts[k][1]);
+      ctx.closePath(); ctx.fillStyle = T.css(col); ctx.fill(); ctx.restore();
+    }
+  });
+})();
