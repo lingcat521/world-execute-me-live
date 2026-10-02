@@ -26,6 +26,7 @@ body[data-ds-dark-theme]{--dsw-alias-bg-base:#05080f;--dsw-specific-bubble:#1823
 #chatbox .pv-head{display:flex;align-items:center;gap:10px;padding:10px 12px 8px;border-bottom:.5px solid var(--dsw-alias-border-l1)}
 #chatbox .pv-pet{width:60px;height:60px;border-radius:14px;overflow:hidden;flex:none;background:#070b18;border:.5px solid var(--dsw-alias-border-l2)}
 #chatbox .pv-pet img{width:100%;height:100%;object-fit:cover;display:block;image-rendering:pixelated}
+#chatbox .pv-who{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:2px}
 #chatbox .pv-name{color:var(--dsw-alias-label-primary,#e6e9ef);font-size:15px;line-height:21px;font-weight:500}
 #chatbox .pv-state{color:var(--dsw-alias-label-tertiary,#8b97ae);font-size:13px;line-height:19px;display:flex;align-items:center;gap:6px}
 #chatbox .pv-dot{width:7px;height:7px;border-radius:50%}
