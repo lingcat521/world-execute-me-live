@@ -152,3 +152,21 @@ inner 360x662  dpr 2  barH 57  portrait true  scale 0.473  stage 605x340
 - 353 张逐帧头像 `avatars/a3/`（用 Pillow 生成：3→12 格渐进聚焦 + 噪声混合）
 - 验证：`node panetest.mjs` 显示 43.8 秒时 HTML 长度从 49.6k 暴涨到 61.8k（刷屏 + 上限提示生效）
 
+
+## 数学图形段完成（32.93 - 44.00 s，6 个镜头）
+
+由 fork 出的分支 dd7ed172 完成，主分支验收：
+
+| 镜头 | 时间 | 验收 |
+|---|---|---|
+| shot_circle | 32.928-34.543 | 6 个罗盘圆（2x3）+ 指针 + 端点方块 + `freq_N θ=` 标签；单圆样式与参考一致 |
+| shot_circumference | 34.543-36.851 | ✓ |
+| shot_sine | 36.851-38.236 | ✓✓ 正弦曲线族逐条一致、蓝线高亮、`l=0/l=1` 标签、标题公式一致 |
+| shot_tangent | 38.236-40.312 | ✓ |
+| shot_infinity | 40.312-41.928 | ✓ |
+| shot_limit | 41.928-44.005 | ✓ 蓝条 + you 竖条 + `max_context = 1,048,576` + `limit(me) := you`；补了 shell staging（`ulimit -a`） |
+
+**至此 0 - 44.00 秒连续可播**（BOOT 8 镜 + PRETRAIN 12 镜）。
+
+### 待修
+- shot_circle 的参考帧在 33.5 s 只显示 2 个圆（其余被 C14 转场逐个引入），我这边一次性画 6 个 —— 需要实现 C14 的 `circles` hook。

@@ -248,7 +248,8 @@
   PV.loopEnd = 44.005;
   PV.SHELL_SHOTS = [
     { a: 1.312, b: 3.620, cmd: './protect' },
-    { a: 7.082, b: 9.851, cmd: 'neofetch' }];
+    { a: 7.082, b: 9.851, cmd: 'neofetch' },
+    { a: 41.928, b: 44.005, cmd: 'ulimit -a' }];
   PV.stateAt = function (t) {
     var SH = PV.SHELL_SHOTS;
     for (var i = 0; i < SH.length; i++) {
