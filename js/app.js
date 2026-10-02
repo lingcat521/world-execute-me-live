@@ -28,7 +28,7 @@
     scale: 1, audioReady: false, hold: false, layers: [], bootQueue: []
   };
   PV.audio = audioEl; PV.chat = chatEl; PV.screen = screenEl;
-  PV.VER = '202610030015';
+  PV.VER = '202610030100';
   var errEl = document.getElementById('err');
   PV.showErr = function (msg) {
     if (!errEl) return;
@@ -92,10 +92,10 @@
   }
   PV.fmt = fmt;
   var lastTs = 0, clock = 0;
-  function pictureTime() {
-    if (PV.audioReady && !audioEl.paused && !audioEl.ended) return audioEl.currentTime - PV.offset;
-    return clock - PV.offset;
-  }
+  /* clock 永远等于「当前画面时间 + offset」。音频播放时它每一帧都被同步成 audioEl.currentTime，
+     所以暂停、拖动、恢复都不会丢位置——旧版这里读的是播放中的音频、暂停后切回没被推进过的 clock，
+     于是暂停瞬间画面和进度条一起跳回 0。 */
+  function pictureTime() { return clock - PV.offset; }
   PV.pictureTime = pictureTime;
   function loop(ts) {
     requestAnimationFrame(loop);   /* 先排队下一帧：任何异常都不能再冻住画面 */
@@ -103,10 +103,15 @@
     var dt = lastTs ? Math.min(0.2, (ts - lastTs) / 1000) : 0;
     lastTs = ts;
     var usingAudio = PV.audioReady && !audioEl.paused && !audioEl.ended;
-    if (!usingAudio && !paused) {
+    var le = (PV.audioReady && isFinite(audioEl.duration) && audioEl.duration > 1) ? audioEl.duration : (PV.loopEnd || 211.9);
+    if (usingAudio) {
+      clock = audioEl.currentTime;
+    } else if (!paused) {
       clock += dt;
-      var le = PV.loopEnd || 16.1;
-      if (clock >= le) clock = 0;
+      if (clock >= le) {
+        clock = 0;
+        if (PV.audioReady) { try { audioEl.currentTime = 0; var pr2 = audioEl.play(); if (pr2 && pr2.catch) pr2.catch(function () {}); } catch (e2) {} }
+      }
     }
     var t = pictureTime(); if (t < 0) t = 0;
     var tq = PV.hold ? PV.t : Math.floor(t * FPS) / FPS;
@@ -141,9 +146,8 @@
   function startAudio() {
     if (PV.started) return;
     PV.started = true;
-    clock = 0;
     if (PV.audioReady) {
-      try { audioEl.currentTime = 0; } catch (e) {}
+      try { audioEl.currentTime = Math.max(0, clock + PV.offset); } catch (e) {}   /* 从当前画面位置接上，不把画面拽回 0 */
       var pr = audioEl.play();
       if (pr && pr.catch) pr.catch(function () {});
       PV.setPaused(false);
@@ -167,7 +171,7 @@
       var dur = (PV.audioReady && isFinite(audioEl.duration) && audioEl.duration > 1) ? audioEl.duration : (PV.loopEnd || 211.9);
       var target = (seekEl.value / 1000) * dur;
       if (PV.audioReady) { try { audioEl.currentTime = target; } catch (e) {} }
-      else { clock = target; }
+      clock = target;   /* 暂停状态下拖动进度条也要立刻跟手 */
       showBar();
     });
   }
