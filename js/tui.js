@@ -195,3 +195,18 @@
     ctx.restore();
   };
 })();
+
+/* 空心圆（PIL 的 ellipse outline 等价物） */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  T.ring = function (ctx, cx, cy, r, col, a, lw) {
+    ctx.save();
+    ctx.strokeStyle = typeof col === 'string' ? col : T.css(col, a === undefined ? 1 : a);
+    ctx.lineWidth = lw || 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, Math.max(0.5, r), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  };
+})();

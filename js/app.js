@@ -15,6 +15,8 @@
   var playEl = document.getElementById('play');
   var barEl = document.getElementById('bar');
   var fsEl = document.getElementById('fs');
+  var seekEl = document.getElementById('seek');
+  var seekDragging = false;
   var offEl = document.getElementById('off');
   var RES = parseFloat(new URLSearchParams(location.search).get('res') || '') || 1.5;
   canvas.width = Math.round(W * RES); canvas.height = Math.round(H * RES);
@@ -26,7 +28,7 @@
     scale: 1, audioReady: false, hold: false, layers: [], bootQueue: []
   };
   PV.audio = audioEl; PV.chat = chatEl; PV.screen = screenEl;
-  PV.VER = '202610022306';
+  PV.VER = '202610022329';
   PV.loadImage = function (path, cb) {
     var im = new Image();
     im.onload = function () { cb(im); };
@@ -84,7 +86,7 @@
     var dt = lastTs ? Math.min(0.2, (ts - lastTs) / 1000) : 0;
     lastTs = ts;
     var usingAudio = PV.audioReady && !audioEl.paused && !audioEl.ended;
-    if (!usingAudio) {
+    if (!usingAudio && !paused) {
       clock += dt;
       var le = PV.loopEnd || 16.1;
       if (clock >= le) clock = 0;
@@ -93,15 +95,23 @@
     var tq = PV.hold ? PV.t : Math.floor(t * FPS) / FPS;
     draw(tq);
     if (PV.sync) PV.sync(tq);
+    if (seekEl && !seekDragging) { var dd = (PV.audioReady && isFinite(audioEl.duration) && audioEl.duration > 1) ? audioEl.duration : (PV.loopEnd || 211.9); seekEl.value = String(Math.round(1000 * Math.min(1, tq / dd))); }
     tcEl.textContent = fmt(tq) + '  f' + PV.frame + (PV.shotName ? '  ' + PV.shotName : '') + (PV.audioReady ? '' : '  loop 0-' + (PV.loopEnd || 16.1).toFixed(1) + 's');
     requestAnimationFrame(loop);
   }
-  playEl.onclick = function () {
+  var paused = false;
+  PV.isPaused = function () { return paused; };
+  PV.setPaused = function (v) {
+    paused = !!v;
     if (PV.audioReady) {
-      if (audioEl.paused) { audioEl.play(); playEl.textContent = 'pause'; }
-      else { audioEl.pause(); playEl.textContent = 'play'; }
-    } else { PV.hold = !PV.hold; }
+      if (paused) { try { audioEl.pause(); } catch (e) {} }
+      else { var pr = audioEl.play(); if (pr && pr.catch) pr.catch(function () {}); }
+    }
+    playEl.textContent = paused ? '\u25b6' : '\u23f8';
+    PV.hold = false;
+    showBar();
   };
+  playEl.onclick = function () { PV.setPaused(!paused); };
   fileEl.onchange = function () {
     var f = fileEl.files && fileEl.files[0];
     if (!f) return;
@@ -111,19 +121,46 @@
     msgEl.textContent = f.name + ' (' + (f.size / 1048576).toFixed(1) + ' MB)';
     audioEl.play(); playEl.textContent = 'pause';
   };
-  var startEl = document.getElementById('start');
-  var startBtn = document.getElementById('startbtn');
-  if (startBtn) startBtn.onclick = function () {
-    if (startEl) startEl.className = 'hide';
+  function startAudio() {
+    if (PV.started) return;
+    PV.started = true;
     clock = 0;
     if (PV.audioReady) {
       try { audioEl.currentTime = 0; } catch (e) {}
       var pr = audioEl.play();
       if (pr && pr.catch) pr.catch(function () {});
-      playEl.textContent = 'pause';
+      PV.setPaused(false);
     }
-    layout();
-  };
+    document.removeEventListener('pointerdown', startAudio, true);
+    document.removeEventListener('keydown', startAudio, true);
+  }
+  document.addEventListener('pointerdown', startAudio, true);
+  document.addEventListener('keydown', startAudio, true);
+  var hideTimer = null;
+  function showBar(autoHide) {
+    if (!barEl) return;
+    barEl.classList.remove('hide');
+    if (hideTimer) clearTimeout(hideTimer);
+    hideTimer = setTimeout(function () { barEl.classList.add('hide'); }, 15000);
+  }
+  if (seekEl) {
+    seekEl.addEventListener('pointerdown', function () { seekDragging = true; showBar(); });
+    seekEl.addEventListener('pointerup', function () { seekDragging = false; showBar(); });
+    seekEl.addEventListener('input', function () {
+      var dur = (PV.audioReady && isFinite(audioEl.duration) && audioEl.duration > 1) ? audioEl.duration : (PV.loopEnd || 211.9);
+      var target = (seekEl.value / 1000) * dur;
+      if (PV.audioReady) { try { audioEl.currentTime = target; } catch (e) {} }
+      else { clock = target; }
+      showBar();
+    });
+  }
+  document.addEventListener('pointerdown', function (e) {
+    if (barEl && barEl.contains(e.target)) { showBar(); return; }
+    if (barEl && barEl.classList.contains('hide')) showBar();
+    else if (barEl) { barEl.classList.add('hide'); if (hideTimer) clearTimeout(hideTimer); }
+  }, true);
+  showBar();
+
   if (fsEl) fsEl.onclick = function () {
     var el = document.documentElement;
     if (!document.fullscreenElement) {
@@ -157,7 +194,8 @@
       var tt = parseFloat(q.get('t'));
       var tq = Math.floor(tt * FPS) / FPS;
       draw(tq); if (PV.sync) PV.sync(tq);
-      tcEl.textContent = fmt(tq) + '  f' + PV.frame + (PV.shotName ? '  ' + PV.shotName : '') + (PV.audioReady ? '' : '  loop 0-' + (PV.loopEnd || 16.1).toFixed(1) + 's');
+      if (seekEl && !seekDragging) { var dd = (PV.audioReady && isFinite(audioEl.duration) && audioEl.duration > 1) ? audioEl.duration : (PV.loopEnd || 211.9); seekEl.value = String(Math.round(1000 * Math.min(1, tq / dd))); }
+    tcEl.textContent = fmt(tq) + '  f' + PV.frame + (PV.shotName ? '  ' + PV.shotName : '') + (PV.audioReady ? '' : '  loop 0-' + (PV.loopEnd || 16.1).toFixed(1) + 's');
       if (q.has('shot')) {
         canvas.toBlob(function (b) {
           fetch('/save?name=' + encodeURIComponent(q.get('name') || ('t' + tt)), { method: 'POST', body: b })

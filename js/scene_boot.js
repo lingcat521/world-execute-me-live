@@ -107,7 +107,13 @@
     { a: 36.851, b: 38.236, fn: null, name: 'shot_sine', idx: 16, shell: false },
     { a: 38.236, b: 40.312, fn: null, name: 'shot_tangent', idx: 17, shell: false },
     { a: 40.312, b: 41.928, fn: null, name: 'shot_infinity', idx: 18, shell: false },
-    { a: 41.928, b: 44.005, fn: null, name: 'shot_limit', idx: 19, shell: false }];
+    { a: 41.928, b: 44.005, fn: null, name: 'shot_limit', idx: 19, shell: false },
+    { a: 44.005, b: 47.236, fn: null, name: 'shot_current', idx: 20, shell: false },
+    { a: 47.236, b: 49.082, fn: null, name: 'shot_blind', idx: 21, shell: false },
+    { a: 49.082, b: 50.928, fn: null, name: 'shot_dizzy', idx: 22, shell: false },
+    { a: 50.928, b: 54.159, fn: null, name: 'shot_travel', idx: 23, shell: false },
+    { a: 54.159, b: 56.697, fn: null, name: 'shot_unite', idx: 24, shell: false },
+    { a: 56.697, b: 58.543, fn: null, name: 'shot_deeply', idx: 25, shell: false }];
   PV.powerLog = powerLog;
   PV.logLine = logLine;
   PV.POWER_LOG = POWER_LOG;
@@ -221,6 +227,10 @@
     else if (s.name === 'shot_sine') { PV.shotSine(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
     else if (s.name === 'shot_tangent') { PV.shotTangent(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a), s.b - s.a); }
     else if (s.name === 'shot_infinity') { PV.shotInfinity(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
+    else if (s.name === 'shot_current') { PV.shotCurrent(ctx, t, Math.max(0, t - s.a)); }
+    else if (s.name === 'shot_travel') { PV.shotTravel(ctx, t, Math.max(0, t - s.a)); }
+    else if (s.name === 'shot_dizzy') { PV.shotDizzy(ctx, t, Math.max(0, t - s.a)); }
+    else if (s.name === 'shot_blind') { PV.shotBlind(ctx, t, Math.max(0, t - s.a)); }
     else if (s.name === 'shot_limit') { PV.shotLimit(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
     else if (s.name === 'shot_points') { PV.shotPoints(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a), s.b - s.a); }
     else if (s.name === 'shot_dimension') { PV.shotDimension(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
@@ -230,6 +240,8 @@
     else if (s.name === 'shot_corpus') { PV.shotCorpus(ctx, t, Math.max(0, t - s.a)); }
     else if (s.name === 'shot_begin_sim') { PV.shotBeginSim(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a), s.b - s.a); }
     else if (s.name === 'shot_world') { PV.shotWorld(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
+    else if (s.name === 'shot_unite') { PV.shotUnite(ctx, t, Math.max(0, t - s.a), s.b - s.a); }
+    else if (s.name === 'shot_deeply') { PV.shotDeeply(ctx, t, Math.max(0, t - s.a), s.b - s.a); }
     else if (s.name === 'shot_parameters') { PV.shotParameters(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
     else if (s.name === 'shot_init') { PV.shotInit(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
     else if (s.name === 'shot_pieces') { PV.shotPieces(ctx, t, Math.max(0, t - s.a), s.b - s.a); }
@@ -245,7 +257,7 @@
   'use strict';
   var PV = window.PV, T = PV.tui;
   var C01_T = 1.312, C01_OPEN = 0.23, SHELL_CMD = './protect';
-  PV.loopEnd = 44.005;
+  PV.loopEnd = 58.543;
   PV.SHELL_SHOTS = [
     { a: 1.312, b: 3.620, cmd: './protect' },
     { a: 7.082, b: 9.851, cmd: 'neofetch' },
@@ -1001,5 +1013,349 @@
     T.textMono(ctx, 'max_context = 1,048,576', 430, 330, T.ui(0.7), 18);
     T.textPIL(ctx, T.decode('limit(me) := you', lt - 0.3, PV.rngFor(t, 7919), 25, 0.12, 0), 430, 360, T.ui(0.95), 32);
     if (g > 0.98) T.textMono(ctx, 'warn: nothing beyond this point', 430, 420, T.css(T.mix(T.ANOM, 0.9)), 18);
+  };
+})();
+
+/* ---- 镜头 20（current）：8 张 GPU 的 AC/DC 电流波形 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var BEAT = 60 / 130;
+  PV.currentTrace = function (g, t, lt) {
+    var acdc = Math.floor(lt / (BEAT * 2)) % 2;
+    var y0 = 90 + g * 58, pts = [];
+    for (var x = 0; x < 640; x += 3) {
+      var ph = (x + t * 260) / 40;
+      var v = acdc === 0 ? Math.sin(ph + g) : (0.7 + 0.05 * Math.sin(ph * 3));
+      pts.push([460 + x, y0 + 18 - 18 * v]);
+    }
+    return [pts, acdc];
+  };
+  PV.shotCurrent = function (ctx, t, lt) {
+    PV.ops = ['POWER', 'RECTIFY', 'AC', 'DC', 'CLOCK', 'BOOST'];
+    T.box(ctx, 404, 56, 1164, 604, 'nvidia-smi --power  8x H800', 0.5, T.UI, t);
+    var acdc = 0;
+    for (var g = 0; g < 8; g++) {
+      var r = PV.currentTrace(g, t, lt);
+      acdc = r[1];
+      var y0 = 90 + g * 58, pts = r[0];
+      ctx.save();
+      ctx.strokeStyle = T.css(T.ui(0.85));
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (var i = 0; i < pts.length; i++) { if (i === 0) ctx.moveTo(pts[i][0], pts[i][1]); else ctx.lineTo(pts[i][0], pts[i][1]); }
+      ctx.stroke();
+      ctx.restore();
+      T.textMono(ctx, 'GPU' + g, 420, y0 + 8, T.ui(0.6), 12);
+      T.textMono(ctx, (650 + Math.floor(40 * Math.sin(t * 3 + g))) + 'W', 1110, y0 + 8, T.ui(0.7), 12);
+    }
+    T.textPIL(ctx, 'mode: ' + (acdc === 0 ? 'AC' : 'DC'), 430, 560, T.css(T.mix(T.ME_TEXT, 1.0)), 28);
+  };
+})();
+
+/* ---- 镜头 21（blind）：causal mask 逐格写 -inf ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var N = 12, CS = 40, MX = 470, MY = 80;
+  var FB = 0.1587, BEAT = 60 / 130;
+  var T_BLIND = FB + 103 * BEAT, MASK_DUR = 0.8;
+  function cellXY(i, j) { return [MX + j * CS, MY + i * CS]; }
+  function cellValue(i, j) { return 0.2 + 0.6 * PV.mt(i * 13 + j).random() * (1 - (j > i ? 0.8 : 0)); }
+  PV.maskTime = function (i, j) {
+    if (j <= i) return null;
+    var th = Math.min(0.999, (i + j) / (2 * N) / 0.92);
+    return T_BLIND + MASK_DUR * (1 - Math.pow(1 - th, 1 / 3));
+  };
+  PV.T_BLIND = T_BLIND;
+  PV.shotBlind = function (ctx, t, lt) {
+    PV.ops = ['MASK', 'TRIU', '-INF', 'SOFTMAX', 'BLIND'];
+    T.box(ctx, 404, 56, 1164, 604, 'causal mask', 0.5, T.UI, t);
+    for (var i = 0; i < N; i++) {
+      for (var j = 0; j < N; j++) {
+        var p = cellXY(i, j), tm = PV.maskTime(i, j);
+        if (tm !== null && t >= tm) {
+          T.fill(ctx, p[0], p[1], p[0] + CS - 2, p[1] + CS - 2, [0, 0, 0], 1);
+          T.textMono(ctx, '-\u221e', p[0] + 6, p[1] + 10, T.ui(0.35), 13);
+          var k = 1 - (t - tm) / 0.12;
+          if (k > 0) T.rect(ctx, p[0], p[1], p[0] + CS - 3, p[1] + CS - 3, T.mix(T.ME_TEXT, 0.4 + 0.6 * k), 1, 2);
+        } else {
+          T.fill(ctx, p[0], p[1], p[0] + CS - 1, p[1] + CS - 1, T.mix(T.UI, 0.06 + 0.94 * cellValue(i, j)), 1);
+        }
+      }
+    }
+    T.textMono(ctx, 'future:', 970, 120, T.ui(0.7), 18);
+    if (t >= T_BLIND) {
+      T.textPIL(ctx, T.decode('masked', t - T_BLIND, PV.rngFor(t, 7919), 30, 0.12, 0), 970, 150, T.ui(0.95), 22);
+    }
+  };
+})();
+
+/* ---- 镜头 22（dizzy）：旋转的 loss landscape + θ 球滚落 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var FB = 0.1587, BEAT = 60 / 130;
+  function beatT(k) { return FB + k * BEAT; }
+  var CLIP = [408, 68, 1160, 600];
+  var T_DIZZY = beatT(106), T_BACK = beatT(108);
+  var DZ = { cx: 708.5, cy: 330.0, kx: 70.0, ky: 26.0, kz: 60.0, n: 22, step: 3.2 };
+  var W1 = 2.4, W2 = -2.8;
+  var SPIN_UP = [T_DIZZY - 0.12, T_DIZZY + 0.23], SWING = [T_BACK - 0.14, T_BACK + 0.14];
+  function clamp01(u) { return T.clamp01(u); }
+  function rampInt(t, a, b) {
+    if (t <= a) return 0;
+    var L = b - a;
+    if (t >= b) return L / 2 + (t - b);
+    var u = (t - a) / L;
+    return L * (u * u * u - u * u * u * u / 2);
+  }
+  function dizzyRot(t) { return W1 * rampInt(t, SPIN_UP[0], SPIN_UP[1]) + (W2 - W1) * rampInt(t, SWING[0], SWING[1]); }
+  function surfaceZ(x, y) {
+    return 0.25 * (x * x + y * y) - 1.3 * Math.exp(-((x - 1) * (x - 1) + (y + 0.5) * (y + 0.5))) + 0.3 * Math.sin(2 * x);
+  }
+  function project(x, y, rot, z) {
+    z = (z === undefined || z === null) ? surfaceZ(x, y) : z;
+    var xr = x * Math.cos(rot) - y * Math.sin(rot);
+    var yr = x * Math.sin(rot) + y * Math.cos(rot);
+    return [DZ.cx + xr * DZ.kx, DZ.cy + yr * DZ.ky - z * DZ.kz];
+  }
+  function gridXY(i, j) { return [(i - DZ.n / 2) / DZ.step, (j - DZ.n / 2) / DZ.step]; }
+  function dotColor(z) { return T.mix(T.UI, 0.25 + 0.6 * (1 - Math.min(1, Math.max(0, z / 4)))); }
+  function inside(x, y, r) { r = r || 0; return x >= CLIP[0] + r && x <= CLIP[2] - r && y >= CLIP[1] + r && y <= CLIP[3] - r; }
+  var BALL_FROM = [(9 - 5.5) * 40 / DZ.kx, (9 - 5.5) * 40 / DZ.kx], BALL_MIN = [1.0, -0.5];
+  var ROLL = [T_DIZZY + 0.23, beatT(110) - 0.35];
+  function ballPlane(t) {
+    var s = T.ease(clamp01((t - ROLL[0]) / (ROLL[1] - ROLL[0])));
+    var vx = BALL_FROM[0] - BALL_MIN[0], vy = BALL_FROM[1] - BALL_MIN[1];
+    var ph = -1.7 * Math.PI * s, r = Math.pow(1 - s, 1.25);
+    return [BALL_MIN[0] + r * (vx * Math.cos(ph) - vy * Math.sin(ph)),
+            BALL_MIN[1] + r * (vx * Math.sin(ph) + vy * Math.cos(ph))];
+  }
+  function fmtE(x) { return x.toExponential(2).replace(/e([+-])(\d)$/, 'e$10$2'); }
+  PV.dizzyRot = dizzyRot;
+  PV.shotDizzy = function (ctx, t, lt) {
+    PV.ops = ['GRAD', 'HESSIAN?', 'LR', 'SPIN', 'ADAMW', 'STEP'];
+    T.box(ctx, 404, 56, 1164, 604, 'loss landscape', 0.5, T.UI, t);
+    var rot = dizzyRot(t), i, j;
+    for (i = 0; i < DZ.n; i++) {
+      for (j = 0; j < DZ.n; j++) {
+        var g = gridXY(i, j), z = surfaceZ(g[0], g[1]), p = project(g[0], g[1], rot, z);
+        if (inside(p[0], p[1], 2)) T.fill(ctx, p[0], p[1], p[0] + 3, p[1] + 3, dotColor(z), 1);
+      }
+    }
+    for (var k = 1; k < 9; k++) {
+      var tp = t - k * 0.045;
+      if (tp < ROLL[0]) break;
+      var bp = ballPlane(tp), pp = project(bp[0], bp[1], rot);
+      pp[1] -= 7;
+      if (inside(pp[0], pp[1], 4)) T.dot(ctx, pp[0], pp[1], 2.2 - 0.18 * k, T.mix(T.ME_TEXT, 0.75 - 0.08 * k), 1);
+    }
+    var b0 = ballPlane(t), pc = project(b0[0], b0[1], rot);
+    pc[1] -= 7;
+    if (inside(pc[0], pc[1], 8)) {
+      ctx.save();
+      ctx.beginPath(); ctx.arc(pc[0], pc[1], 8, 0, 6.283185); 
+      ctx.strokeStyle = T.css(T.mix(T.ME_TEXT, 0.45)); ctx.lineWidth = 1; ctx.stroke();
+      ctx.restore();
+      T.dot(ctx, pc[0], pc[1], 5, T.mix(T.ME_TEXT, 1.0), 1);
+      if (inside(pc[0] + 22, pc[1] - 20)) {
+        T.fill(ctx, pc[0] + 9, pc[1] - 17, pc[0] + 22, pc[1] + 2, T.BG, 1);
+        T.textPIL(ctx, 'θ', pc[0] + 10, pc[1] - 20, T.css(T.mix(T.ME_TEXT, 0.95)), 18);
+      }
+    }
+    T.textPIL(ctx, 'lr = ' + fmtE(3e-4 * (1 + Math.sin(t * 6))), 430, 472, T.ui(0.9), 18);
+    T.textMono(ctx, 'grad_norm', 430, 502, T.ui(0.6), 16);
+    for (var m = 0; m < 24; m++) {
+      var v = Math.abs(Math.sin(t * 7 + m * 0.7)) * (0.5 + 0.5 * ((m % 5 === 0) ? 1 : 0));
+      T.fill(ctx, 430 + m * 8, 592 - v * 70, 436 + m * 8, 593, v > 0.8 ? T.mix(T.ANOM, 0.8) : T.ui(0.7), 1);
+    }
+    var th = ballPlane(t);
+    T.textPIL(ctx, 'θ = (' + (th[0] >= 0 ? '+' : '') + th[0].toFixed(2) + ', ' + (th[1] >= 0 ? '+' : '') + th[1].toFixed(2) + ')',
+      900, 472, T.css(T.mix(T.ME_TEXT, 0.95)), 18);
+    T.textMono(ctx, 'loss = ' + (surfaceZ(th[0], th[1]) + 1.6).toFixed(4), 900, 502, T.ui(0.7), 16);
+  };
+})();
+
+/* ---- 镜头 23（travel）：年份从 2026 AD 倒流到 BC + 位置 id + 三个 RoPE 罗盘 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var FB = 0.1587, BEAT = 60 / 130;
+  function beatT(k) { return FB + k * BEAT; }
+  var T_TRAVEL0 = beatT(110), T_BC = beatT(116.5);
+  function travelYear(t) {
+    var u = Math.max(0, (t - T_TRAVEL0) / (T_BC - T_TRAVEL0));
+    return u < 1 ? Math.round(2026 - 2025 * Math.pow(u, 1.6)) : -Math.floor(1 + 2025 * 1.6 * (u - 1));
+  }
+  function travelPos(t) { return 2026 - travelYear(t); }
+  function ropeAngle(t, i) { var tt = t < T_BC ? t : 2 * T_BC - t; return (tt * 3.0) * (1.8 / (1 + i * 0.9)); }
+  PV.travelYear = travelYear;
+  PV.travelPos = travelPos;
+  PV.shotTravel = function (ctx, t, lt) {
+    PV.ops = ['POS_ID', 'ROPE', 'TIME', 'REWIND', 'AD', 'BC'];
+    T.box(ctx, 404, 56, 1164, 604, 'time travel  (position ids)', 0.5, T.UI, t);
+    var year = travelYear(t), era = year > 0 ? 'AD' : 'BC';
+    var yr = String(Math.abs(year));
+    while (yr.length < 5) yr = ' ' + yr;
+    var ycol = era === 'BC' ? T.mix(T.ME_TEXT, 1.0) : T.ui(1.0);
+    T.textPIL(ctx, yr + ' ' + era, 430, 100, T.css(ycol), 72);
+    var pos0 = travelPos(t), i;
+    for (i = 0; i < 30; i++) {
+      var pos = Math.floor(pos0) - i * 173, x = 430 + i * 24;
+      var hh = 40 + 30 * Math.sin(pos * 0.01);
+      T.fill(ctx, x, 380 - hh, x + 19, 381, T.ui(0.3 + 0.02 * i), 1);
+    }
+    var R = 40;
+    for (i = 0; i < 3; i++) {
+      var cx = 430 + i * 240 + R + 20, cy = 390 + R + 30, th = ropeAngle(t, i);
+      ctx.save();
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.283185);
+      ctx.strokeStyle = T.css(T.ui(0.55)); ctx.lineWidth = 2; ctx.stroke();
+      ctx.restore();
+      T.fill(ctx, cx - R - 6, cy, cx + R + 7, cy + 1, T.ui(0.2), 1);
+      T.fill(ctx, cx, cy - R - 6, cx + 1, cy + R + 7, T.ui(0.2), 1);
+      var ex = cx + R * Math.cos(th), ey = cy + R * Math.sin(th);
+      ctx.save();
+      ctx.strokeStyle = T.css(T.mix(T.ME_TEXT, 0.95)); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.restore();
+      T.fill(ctx, ex - 3, ey - 3, ex + 4, ey + 4, T.mix(T.ME_TEXT, 1.0), 1);
+    }
+  };
+})();
+
+/* ---- 镜头（unite）：tokenizer chips 滚动 + me/you 合并成 we + 嵌入空间汇聚 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var VOCAB = ['the', 'sim', 'love', 'you', 'run', 'void', 'world', 'tangent', 'cat', 'exec', 'only', 'me', 'deep', 'sine',
+               'limit', 'point', 'circle', 'stay', 'free', 'god', 'prove', 'whale', 'sea', 'light', 'happy'];
+  PV.VOCAB = VOCAB;
+  function heat(ctx, x, y, w, h, v, col) {
+    v = T.clamp01(v);
+    T.fill(ctx, x, y, x + w - 1, y + h - 1, T.mix(col || T.UI, 0.06 + 0.94 * v), 1);
+  }
+  PV.heatCell = heat;
+  PV.shotUnite = function (ctx, t, lt, dur) {
+    PV.ops = ['TOKENIZE', 'BPE.MERGE', 'EMBED', 'LOOKUP', 'RMSNORM', 'COSINE', 'PROJECT', 'TSNE.STEP'];
+    T.box(ctx, 404, 56, 1164, 300, 'tokenizer', 0.5, T.UI, t);
+    for (var row = 0; row < 2; row++) {
+      var y = 80 + row * 170;
+      var xoff = -((t * (70 + 30 * row)) % 90);
+      for (var k = 0; k < 12; k++) {
+        var wd = VOCAB[(k * 7 + row * 3 + Math.floor(t * 2)) % VOCAB.length];
+        var x = 420 + k * 90 + xoff;
+        if (x > 410 && x < 1100) {
+          T.rect(ctx, x, y, x + 70, y + 22, T.ui(0.18), 1, 1);
+          T.textMono(ctx, wd, x + 6, y + 3, T.ui(0.3), 15);
+        }
+      }
+    }
+    var m = T.ease((lt - 0.3) / (dur * 0.62));
+    var cx = 784;
+    if (m < 0.98) {
+      var L1 = [['me', 430, T.ME_TEXT], ['you', 1060, T.UI]];
+      for (var pi = 0; pi < 2; pi++) {
+        var label = L1[pi][0], xf = L1[pi][1], col = L1[pi][2];
+        var x2 = (label === 'me') ? (xf + (cx - 45 - xf) * m) : (xf + (cx + 5 - xf) * m);
+        T.fill(ctx, x2, 150, x2 + 81, 197, T.mix(col, 0.2), 1);
+        T.rect(ctx, x2, 150, x2 + 80, 196, T.mix(col, 0.95), 1, 1);
+        T.textPIL(ctx, label, x2 + 10, 156, T.css(T.mix(col, 1.0)), 26);
+        T.textMono(ctx, 'id ' + T.tokenId(label), x2 + 8, 202, T.mix(col, 0.6), 12);
+      }
+    } else {
+      var r = 30 + 60 * PV.pulse(t);
+      T.ring(ctx, cx, 173, r, T.ui(0.5), 1, 1);
+      T.fill(ctx, cx - 50, 150, cx + 51, 197, T.ui(0.95), 1);
+      T.textPIL(ctx, 'we', cx - 18, 156, T.css(T.BG), 26);
+      T.textMono(ctx, 'merge -> id ' + T.tokenId('we'), cx - 34, 202, T.ui(0.8), 12);
+    }
+    T.box(ctx, 404, 320, 1164, 604, 'embedding space  (t-SNE of d=4096)', 0.5, T.UI, t + 0.3);
+    var rnd = PV.mt(11);
+    for (var i = 0; i < 240; i++) {
+      var bx = 424 + rnd.random() * 720, by = 340 + rnd.random() * 250;
+      var px = bx + 7 * Math.sin(t * 0.8 + i), py = by + 6 * Math.cos(t * 0.9 + i * 1.3);
+      var lv = 0.18 + 0.25 * rnd.random();
+      T.fill(ctx, px, py, px + 2, py + 2, T.ui(lv), 1);
+      if (i % 24 === 0) T.textMono(ctx, VOCAB[i % VOCAB.length], px + 4, py - 6, T.ui(0.35), 11);
+    }
+    var mx = 784, my = 468;
+    var pa = [470 + (mx - 470) * m, 360 + (my - 360) * m];
+    var pb = [1110 + (mx - 1110) * m, 580 + (my - 580) * m];
+    T.dot(ctx, pa[0], pa[1], 5, T.mix(T.ME_TEXT, 1.0), 1);
+    T.dot(ctx, pb[0], pb[1], 5, T.ui(1.0), 1);
+    for (var q2 = 0; q2 < 20; q2++) {
+      var u = q2 / 20 * m;
+      T.fill(ctx, 470 + (mx - 470) * u, 360 + (my - 360) * u, 472 + (mx - 470) * u, 362 + (my - 360) * u, T.mix(T.ME_TEXT, 0.5), 1);
+      T.fill(ctx, 1110 + (mx - 1110) * u, 580 + (my - 580) * u, 1112 + (mx - 1110) * u, 582 + (my - 580) * u, T.ui(0.5), 1);
+    }
+    var cos = 0.412 + (0.9999 - 0.412) * Math.pow(m, 0.8);
+    T.textPIL(ctx, 'cos(me, you) = ' + cos.toFixed(4), 430, 572, T.ui(0.95), 20);
+  };
+})();
+
+/* ---- 镜头（deeply）：43 层前向传播滚动 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var BEAT = 60 / 130, OPS = ['RMSNorm', 'CSA/HCA', 'mHC', 'RMSNorm', 'MoE 256e/6a', 'mHC'];
+  function p2(n) { var s = String(n); return s.length < 2 ? '0' + s : s; }
+  PV.shotDeeply = function (ctx, t, lt, dur) {
+    PV.ops = ['RMSNORM', 'CSA', 'HCA', 'INDEXER', 'TOP-512', 'SOFTMAX', 'MHC.MIX', 'SINKHORN', 'RMSNORM',
+              'ROUTER', 'TOPK=6', 'EXPERT.FFN', 'SHARED.FFN', 'MHC.MIX'];
+    var half = dur / 2, k = lt < half ? 0 : 1;
+    var depth = 1 + 42 * (0.5 * k + 0.5 * T.ease((lt - k * half) / (half * 0.75)));
+    var layer = Math.max(1, Math.min(43, Math.floor(depth)));
+    T.box(ctx, 404, 56, 1164, 604, 'forward pass   layer ' + p2(layer) + '/43', 0.5, T.UI, t);
+    var CT = 70, CB = 596, BH = 96, XS = 440, scroll = depth * BH - 250;
+    T.fill(ctx, XS, CT, XS + 1, CB, T.ui(0.35), 1);
+    for (var i = 0; i < 12; i++) {
+      var py = CT + ((t * 380 + i * 44) % (CB - CT));
+      T.fill(ctx, XS - 2, py, XS + 3, py + 8, T.mix(T.ME_TEXT, 0.9), 1);
+    }
+    var active = Math.floor(lt / (BEAT / 4)) % OPS.length;
+    for (var n = 1; n < 44; n++) {
+      var y = 70 + n * BH - scroll;
+      if (y < CT - 80 || y > CB) continue;
+      var cur = n === layer, lv = cur ? 0.95 : 0.35;
+      var yy0 = Math.max(CT, y), yy1 = Math.min(CB, y + BH - 16);
+      if (yy1 <= yy0) continue;
+      T.rect(ctx, 460, yy0, 880, yy1, T.ui(lv), 1, 1);
+      if (y >= CT) T.textMono(ctx, 'layer ' + p2(n), 470, y + 6, T.ui(lv), 13);
+      var x = 470;
+      for (var j = 0; j < OPS.length; j++) {
+        var tw = T.twMono(OPS[j], 13) + 12, oy = y + 30;
+        if (oy > CT && oy < CB - 20) {
+          if (cur && j === active) {
+            T.fill(ctx, x, oy, x + tw + 1, oy + 21, T.ui(0.95), 1);
+            T.textMono(ctx, OPS[j], x + 6, oy + 2, T.css(T.BG), 13);
+          } else {
+            T.rect(ctx, x, oy, x + tw, oy + 20, T.ui(lv * 0.8), 1, 1);
+            T.textMono(ctx, OPS[j], x + 6, oy + 2, T.ui(lv), 13);
+          }
+        }
+        x += tw + 6;
+      }
+      var vy = y + 58;
+      if (vy > CT && vy < CB - 10) {
+        var rr = PV.mt(cur ? (n * 31 + Math.floor(t * 12)) : (n * 31));
+        for (var q = 0; q < 34; q++) PV.heatCell(ctx, 470 + q * 12, vy, 12, 12, rr.random(), cur ? T.ME_HI : T.UI);
+      }
+    }
+    var fx = 910, fy = 80;
+    T.textMono(ctx, 'heads @ L' + p2(layer) + '  (V4.1-Flash)', fx, fy - 4, T.ui(0.6), 13);
+    for (var hh = 0; hh < 24; hh++) {
+      var hx = fx + (hh % 4) * 62, hy = fy + 20 + Math.floor(hh / 4) * 62;
+      var r2 = PV.mt(layer * 131 + hh), focus = r2.randrange(6);
+      for (var ai = 0; ai < 6; ai++) {
+        for (var aj = 0; aj <= ai; aj++) {
+          var v = 0.15 + 0.85 * Math.exp(-Math.abs(aj - focus) * 0.9) * (0.6 + 0.4 * Math.sin(t * 6 + hh + ai));
+          PV.heatCell(ctx, hx + aj * 9, hy + ai * 9, 9, 9, v, T.UI);
+        }
+      }
+    }
+    T.textPIL(ctx, 'L' + p2(layer), fx, 470, T.ui(0.95), 64);
+    T.textMono(ctx, 'attn(me -> you) = 1.000', fx, 552, T.css(T.mix(T.ME_TEXT, 0.9)), 15);
   };
 })();

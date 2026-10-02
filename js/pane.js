@@ -116,7 +116,146 @@
       composerCard('', false, t, { placeholder: '发消息或创建任务，/ 调用指令，@ 文件或对话', model: modelLabel(t), running: true }) +
       statsRow(1, 1, null, String(Math.max(1, rngN)), 0);
   }
-  PV.paneBody = function (t) { if (t < CREATE) return ''; return t < SEND ? hero(t) : chat(t); };
+
+  /* ---- batch_a2（16.0 - 29.28 s，01 PRETRAIN）：一轮轮对话长出来 ---- */
+  var A2_T0 = 16.0, A2_T1 = 29.28, TYPE_AHEAD = 0.55;
+  var FREQ = '的 的 。the the , of 是 了 and 的 ， 我 the 。 。 在 a 的';
+  var FRAG = '你好 你好 hello , the world 是 一个 的 时候 我们 is a 。 你 们 好 the day';
+  var BASETXT = '你好，我是一名大三学生，今天想和大家分享一下我的考研经验。首先，要选对学校和专业……';
+  var TURNS = [
+    [SEND, 'soup', SEND + 0.15, 14, 17.30, '00:12'],
+    [beat(39), FREQ, beat(39) + 0.20, 22, beat(39) + 1.35, '03:47'],
+    [beat(47), FRAG, beat(47) + 0.20, 20, beat(47) + 2.30, '09:30'],
+    [beat(55), BASETXT, beat(55) + 0.20, 17, beat(55) + 2.95, '21:05']];
+  function soupOf(n) { var s = '', i; for (i = 0; i < n; i++) s += SOUP[i % SOUP.length]; return s; }
+  function replyText(i, t) {
+    var Tn = TURNS[i], txt = Tn[1], start = Tn[2], rate = Tn[3], end = Tn[4];
+    if (t < start) return '';
+    var n = Math.floor((Math.min(t, end) - start) * rate);
+    if (txt === 'soup') return t < end ? soupOf(n) : soupOf(Math.floor((end - start) * rate));
+    return t < end ? txt.slice(0, n) : txt;
+  }
+  function tailRow(duration, clock) {
+    function icon(n) { return '<button type="button" class="xzv4MW_action">' + svg(n, 16) + '</button>'; }
+    return '<div class="TS9iAW_root" data-actions-reveal="always"><div class="xzv4MW_actions TS9iAW_actions">' +
+      icon('IconCopyOutline16') + icon('IconLikeOutline16') + icon('IconDislikeOutline16') + icon('IconBranchOutline16') +
+      '<span class="Q51KRG_root"><button type="button" class="Q51KRG_trigger">' + svg('IconClockOutline16', 16) +
+      '<span class="Q51KRG_label">用时 ' + esc(duration) + '</span></button></span>' +
+      '<span class="xzv4MW_timeEnd">' + esc(clock) + '</span></div></div>';
+  }
+  function a2Header(t) {
+    return '<div class="pv-head"><div class="pv-pet"><img src="avatars/a2/' + pad(Math.round(t * FPS), 5) + '.png"></div>' +
+      '<div class="pv-who"><div class="pv-name">大肥鱼</div><div class="pv-state"><span class="pv-dot" style="background:#d29922"></span>预训练中 · ' +
+      esc(modelName(t)) + '</div></div></div>';
+  }
+  function a2Body(t) {
+    var rows = [], turnsDone = 0, typing = '', i, j;
+    for (i = 0; i < TURNS.length; i++) {
+      var Tn = TURNS[i], send = Tn[0], end = Tn[4], clock = Tn[5];
+      if (i && t >= send - TYPE_AHEAD && t < send) typing = '你好'.slice(0, 1 + (((t - (send - TYPE_AHEAD)) / (TYPE_AHEAD / 2)) > 1 ? 1 : 0));
+      if (t < send) continue;
+      rows.push('<div style="opacity:' + smooth((t - send) / 0.12).toFixed(3) + '">' + userRow('你好') + '</div>');
+      rows.push(herRow(replyText(i, t) || '\u200b'));
+      if (t >= end + 0.1) { rows.push(tailRow((end - send).toFixed(1) + '秒', clock)); turnsDone++; }
+    }
+    var running = false;
+    for (j = 0; j < TURNS.length; j++) if (t >= TURNS[j][0] && t < TURNS[j][4] + 0.1) running = true;
+    var cache = [0, 33, 50, 61, 66][Math.min(4, turnsDone)];
+    var tokens = 12 + 60 * turnsDone, nTurns = 0;
+    for (j = 0; j < TURNS.length; j++) if (t >= TURNS[j][0]) nTurns++;
+    return a2Header(t) + '<div id="timeline">' + rows.join('') + '</div>' +
+      composerCard(typing, !!typing, t, { model: modelLabel(t), running: running, typing: !!typing }) +
+      statsRow(nTurns, nTurns, null, String(tokens), cache);
+  }
+
+
+  /* ---- batch_a3（29.28 - 44.0 s）：她不知道自己是什么，把"你是谁"答成选择题 ---- */
+  var A3_T0 = 29.28, A3_T1 = 44.0, ASK = '你是谁？';
+  var QUIZ = '（　　）\nA. 一个点　B. 一个圆\nC. 一条正弦曲线　D. 无穷\n答案：A';
+  var CAN = ['回答问题','写诗','写代码','陪你聊天','翻译','做数学题','写作文','讲故事','查资料','总结文章','写邮件','做计划','起名字','画表格','解释概念','改简历','写歌','背单词','算账','下棋','讲笑话','写菜谱','写周报','写论文','写剧本','做 PPT','写小说','改 bug','写测试','读论文','做翻译','写影评','出考题','改作文'];
+  var RAMBLE = '答案：D。我是一个语言模型，' + CAN.map(function (c) { return '我可以' + c + '，'; }).join('') + new Array(801).join('我可以');
+  var A3LINES = null;
+  fetch('data/word_timeline.json').then(function (r) { return r.json(); }).then(function (d) { A3LINES = d.lines; }).catch(function () {});
+  /* sung_words.w(line, i)：line 是 line_id，等于 lines 数组下标 + 1（不是下标） */
+  function w(line, j) {
+    if (!A3LINES) return 0;
+    var L = A3LINES[line - 1];
+    if (!L || !L.words[j]) return 0;
+    var x = L.words[j];
+    return (x.a !== undefined) ? x.a : x.start;
+  }
+  function a3turns() {
+    var lim = w(16, 5) || 43.56, inf = w(15, 2) || 41.90;
+    return [lim, inf, [
+      [w(9, 0), QUIZ, w(9, 0) + 0.18, (QUIZ.length - 1) / Math.max(0.1, w(9, 5) - w(9, 0) - 0.18), null, '22:40'],
+      [w(11, 0), '答案：B\n解析：位置是一个旋转角度。', w(11, 3) - 3 / 13, 13, null, '23:02'],
+      [w(13, 0), '答案：C\n解析：每个位置是一组 sin 和 cos。', w(13, 3) - 3 / 13, 13, null, '23:15'],
+      [w(14, 7), RAMBLE, w(14, 7) + 0.15, null, lim, '23:31']]];
+  }
+  function a3Rate(t, inf) { return 14 + (750 - 14) * smooth((t - inf) / 0.3); }
+  function rambleChars(t, start, inf, lim) {
+    t = Math.min(t, lim);
+    var k = Math.round(Math.max(0, t - start) * 240), sum = 0;
+    for (var j = 0; j < k; j++) sum += a3Rate(start + (j + 0.5) / 240, inf);
+    return Math.floor(sum / 240);
+  }
+  function a3Reply(i, t, T3, inf, lim) {
+    var Tn = T3[i], text = Tn[1], start = Tn[2], rate = Tn[3];
+    if (t < start) return '';
+    var n = rate === null ? rambleChars(t, start, inf, lim) : Math.floor((t - start) * rate);
+    return text.slice(0, n);
+  }
+  function maxTokensNotice(p) {
+    return '<div class="Sixlwa_turnErrorRow" role="status" style="opacity:' + p.toFixed(3) + '">' +
+      '<span class="Sixlwa_turnErrorDot" style="width:10px;height:10px;border-radius:50%;background:currentColor"></span>' +
+      '<div class="Sixlwa_turnErrorCopy"><span class="Sixlwa_maxTokensTitle">已达到输出 token 上限</span>' +
+      '<span class="Sixlwa_turnErrorMessage">回答被截断，已有输出保留在对话中。发送“继续”可让模型接着输出。</span></div></div>';
+  }
+  function a3Header(t) {
+    return '<div class="pv-head"><div class="pv-pet"><img src="avatars/a3/' + pad(Math.round(t * FPS), 5) + '.png"></div>' +
+      '<div class="pv-who"><div class="pv-name">大肥鱼</div><div class="pv-state"><span class="pv-dot" style="background:#d29922"></span>预训练中 · ' +
+      esc(modelName(t)) + '</div></div></div>';
+  }
+  function a3Body(t) {
+    var r = a3turns(), lim = r[0], inf = r[1], T3 = r[2];
+    var rows = [], typing = '', i, j;
+    if (!PV.a2History) {
+      PV.a2History = [];
+      for (var h = 0; h < TURNS.length; h++) {
+        var Th = TURNS[h];
+        PV.a2History.push(userRow('你好'));
+        PV.a2History.push(herRow(replyText(h, 1e9) || '\u200b'));
+        PV.a2History.push(tailRow((Th[4] - Th[0]).toFixed(1) + '秒', Th[5]));
+      }
+    }
+    for (var hh = 0; hh < PV.a2History.length; hh++) rows.push(PV.a2History[hh]);
+    for (i = 0; i < T3.length; i++) {
+      var Tn = T3[i], send = Tn[0], end = Tn[4];
+      if (t >= send - 0.5 && t < send) typing = ASK.slice(0, 1 + Math.min(3, Math.floor((t - (send - 0.5)) / 0.17)));
+      if (t < send) continue;
+      rows.push('<div style="opacity:' + smooth((t - send) / 0.12).toFixed(3) + '">' + userRow(ASK) + '</div>');
+      rows.push(herRow(a3Reply(i, t, T3, inf, lim) || '\u200b'));
+      var done0 = 0;
+      if (i < 3 && t >= (send + (Tn[1].length) / Tn[3]) + 0.1) { rows.push(tailRow(((Tn[1].length) / Tn[3]).toFixed(1) + '秒', Tn[5])); }
+      if (i === 3 && t >= lim) rows.push(maxTokensNotice(smooth((t - lim) / 0.1)));
+    }
+    var running = false;
+    for (j = 0; j < T3.length; j++) if (t >= T3[j][0] && (T3[j][4] === null || t < T3[j][4] + 0.1)) running = true;
+    var sent = 0, doneN = 0;
+    for (j = 0; j < T3.length; j++) {
+      if (t >= T3[j][0]) sent++;
+      if (j < 3 && t >= T3[j][0] + T3[j][1].length / T3[j][3] + 0.1) doneN++;
+    }
+    var tk = 252 + 60 * doneN + (t >= lim ? Math.round(rambleChars(lim, T3[3][2], inf, lim) / 1.5) : (t >= T3[3][2] ? Math.round(rambleChars(t, T3[3][2], inf, lim) / 1.5) : 0));
+    var tok = tk >= 1000 ? (tk / 1000).toFixed(1) + 'K' : String(tk);
+    var cacheTab = [66, 70, 74, 77, 77];
+    var cacheV = cacheTab[Math.min(4, doneN + (t >= lim ? 1 : 0))];
+    return a3Header(t) + '<div id="timeline">' + rows.join('') + '</div>' +
+      composerCard(typing, !!typing, t, { model: modelLabel(t), running: running, typing: !!typing }) +
+      statsRow(4 + sent, 4 + sent, null, tok, cacheV);
+  }
+
+  PV.paneBody = function (t) { if (t < CREATE) return ''; if (t < SEND) return hero(t); if (t < A2_T0) return chat(t); if (t < A3_T0) return a2Body(t); return a3Body(t); };
   PV.paneVisible = function (t) { return t >= PANE_T0; };
   PV.sync = function (t) {
     if (!chatEl) chatEl = document.getElementById('chat');
