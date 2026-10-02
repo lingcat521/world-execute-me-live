@@ -3,6 +3,7 @@
 (function () {
   'use strict';
   var W = 1280, H = 720, FPS = 24;
+  var wrapEl = document.getElementById('wrap');
   var screenEl = document.getElementById('screen');
   var canvas = document.getElementById('stage');
   var ctx = canvas.getContext('2d', { alpha: false });
@@ -12,6 +13,8 @@
   var audioEl = document.getElementById('song');
   var fileEl = document.getElementById('file');
   var playEl = document.getElementById('play');
+  var barEl = document.getElementById('bar');
+  var fsEl = document.getElementById('fs');
   var offEl = document.getElementById('off');
   var RES = parseFloat(new URLSearchParams(location.search).get('res') || '') || 1.5;
   canvas.width = Math.round(W * RES); canvas.height = Math.round(H * RES);
@@ -25,10 +28,15 @@
   PV.onWorld = function (fn) { PV.layers.push(fn); };
   PV.onBoot = function (fn) { PV.bootQueue.push(fn); };
   function layout() {
-    var vh = window.innerHeight - 44;
-    var s = Math.min(window.innerWidth / W, vh / H);
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var barH = barEl ? barEl.offsetHeight : 44;
+    var availH = Math.max(80, vh - barH);
+    var portrait = availH > vw;
+    var s = portrait ? Math.min(availH / W, vw / H) : Math.min(vw / W, availH / H);
     PV.scale = s;
-    screenEl.style.transform = 'scale(' + s + ')';
+    PV.portrait = portrait;
+    wrapEl.style.bottom = barH + 'px';
+    screenEl.style.transform = portrait ? ('rotate(90deg) scale(' + s + ')') : ('scale(' + s + ')');
   }
   window.addEventListener('resize', layout);
   function draw(t) {
@@ -86,6 +94,16 @@
     msgEl.textContent = f.name + ' (' + (f.size / 1048576).toFixed(1) + ' MB)';
     audioEl.play(); playEl.textContent = 'pause';
   };
+  if (fsEl) fsEl.onclick = function () {
+    var el = document.documentElement;
+    if (!document.fullscreenElement) {
+      if (el.requestFullscreen) el.requestFullscreen();
+      if (screen.orientation && screen.orientation.lock) { try { screen.orientation.lock('landscape').catch(function () {}); } catch (e) {} }
+    } else if (document.exitFullscreen) document.exitFullscreen();
+    setTimeout(layout, 400);
+  };
+  document.addEventListener('fullscreenchange', function () { setTimeout(layout, 200); });
+  document.addEventListener('orientationchange', function () { setTimeout(layout, 300); });
   offEl.onchange = function () { PV.offset = parseFloat(offEl.value) || 0; };
   PV.attachSong = function (src, off) {
     if (!src) return;
