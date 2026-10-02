@@ -407,7 +407,8 @@
     return out.replace(/\s+$/, '');
   }
   PV.mixed = mixed;
-  PV.shotParameters = function (ctx, t, lt, u) {
+  PV.shotParameters = function (ctx, t, lt, u, opts) {
+    opts = opts || {};
     PV.ops = ['CONFIG', 'PARSE', 'N_LAYERS', 'D_MODEL', 'N_EXPERTS', 'TOP_K', 'CTX_LEN'];
     T.box(ctx, 404, 56, 1164, 604, 'config.json  (DeepSeek-V4.1-Flash)', 0.5, T.UI, t);
     var rng = PV.rngFor(t, 7919);
@@ -446,7 +447,8 @@
     }
     var total = 552e9 * T.ease(u * 1.2);
     var cnt = Math.floor(total).toLocaleString('en-US') + ' params';
-    T.textPIL(ctx, T.decode(cnt, lt - 0.2, rng, 40, 0.12, 0), 430, 520, T.css(T.mix(T.ME_TEXT, 0.95)), 34);
+    /* C05：计数器由转场层接管（它要飞上去当标题），此时隐藏原地的 */
+    if (opts.counter !== false) T.textPIL(ctx, T.decode(cnt, lt - 0.2, rng, 40, 0.12, 0), 430, 520, T.css(T.mix(T.ME_TEXT, 0.95)), 34);
     T.textMono(ctx, T.decode('active 16B decode · 8B prefill · KV 890 B/token', lt - 0.6, rng, 45, 0.12, 0), 430, 568, T.ui(0.75), 16);
   };
 })();
@@ -466,7 +468,8 @@
     }
     return out;
   };
-  PV.shotInit = function (ctx, t, lt, u) {
+  PV.shotInit = function (ctx, t, lt, u, opts) {
+    opts = opts || {};
     PV.ops = ['INIT', 'NORMAL', 'STD=0.006', 'ZERO.BIAS', 'SEED', 'SYNC'];
     T.box(ctx, 404, 56, 1164, 604, 'init: normal(0, 0.006)', 0.5, T.UI, t);
     var bars = PV.initBars(t, u);
@@ -474,7 +477,7 @@
       var hh = bars[i][1];
       if (hh > 0) T.fill(ctx, bars[i][0], BASE - hh, bars[i][0] + 10, BASE + 1, T.ui(0.35 + 0.6 * bars[i][2]), 1);
     }
-    T.textPIL(ctx, '552,000,000,000 params', 430, 70, T.css(T.mix(T.ME_TEXT, 0.95)), 30);
+    if (opts.title !== false) T.textPIL(ctx, '552,000,000,000 params', 430, 70, T.css(T.mix(T.ME_TEXT, 0.95)), 30);   /* C05：等计数器飞到位 */
     T.textMono(ctx, 'seed = you', 430, 120, T.ui(0.9), 20);
   };
 })();

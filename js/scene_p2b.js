@@ -500,7 +500,7 @@
     h = h || PV.HOOK;
     PV.ops = ['DSH', 'CORDIS', 'PLUGIN', 'MOUNT', 'SYSTEM', 'OVERWRITE', 'ROOT'];
     PV.alert = u < 0.6 ? 'anom' : 'err';
-    T.box(ctx, 404, 56, 1164, 604, DSH_CMD, 0.5, u > 0.6 ? T.ERR : T.ANOM, t);
+    T.box(ctx, 404, 56, 1164, 604, DSH_CMD, 0.5, u > 0.6 ? T.ERR : T.UI, t);   /* color=RED else AMBER(=UI) */
     var headAt = hv(h, 'head_at', CG_HEAD_AT);
     for (var i = 0; i < GOD_LOG.length; i++) {
       var a = lt - i * 0.28, y = 84 + i * 34;
@@ -529,7 +529,8 @@
   var IL_BANNER = null;
   function illegalBanner() {
     if (!IL_BANNER) {
-      var bits = PV.bannerBits('ILLEGAL', 16, 7);
+      /* banner_block("ILLEGAL", 16, 7, RED, BG, 700)：bits 用 aspect=1.0，7 是像素块尺寸（上限 700/宽） */
+      var bits = PV.bannerBits('ILLEGAL', 16, 1.0);
       var px = Math.max(2, Math.min(7, Math.floor(700 / bits.width)));
       IL_BANNER = { bits: bits, px: px, x: 404 + Math.floor((760 - bits.width * px) / 2), y: 590 - bits.height * px };
     }
@@ -679,7 +680,8 @@
         var v = 0.25 + (hot ? 0.7 * rnd.random() : 0.25 * Math.exp(-it / 5) * rnd.random());
         if (!cells) continue;
         var x = 460 + j * 110, y = 100 + i * 90;
-        var base = hot ? T.ERR : T.ANOM, vv = v + (0.9 - v) * warm;
+        /* tuikit 的 AMBER == 调色板 UI（deepsea 的冷白钢色），不是 ANOM 黄 */
+        var base = hot ? T.ERR : T.UI, vv = v + (0.9 - v) * warm;
         heatCell(ctx, x, y, 104, 84, vv, lerp3(base, T.ERR, warm));
         tx(ctx, fx(v / (0.25 * n), 2), x + 22, y + 30, T.BG, 18, null, 0);
       }
@@ -760,6 +762,7 @@
     var kick = t >= tb + 0.02 ? clamp01(1 - (t - tb - 0.02) / 0.16) : 0.0;
     var fg = mixc([255, 236, 228], 0.5 * kick + (q < 2 / 24 ? 0.6 : 0), T.ERR);
     var bits = PV.bannerBits('07', 40, 1.0);
+    px = Math.max(2, Math.min(px, Math.floor((600 * px / 9) / bits.width)));   /* banner_block 的宽度上限 */
     return { bits: bits, px: px, fg: fg, width: bits.width * px, height: bits.height * px,
              x: Math.floor((1280 - 90 - bits.width * px) / 2), y: 330 - Math.floor(bits.height * px / 2) };
   }
@@ -768,7 +771,8 @@
     PV.ops = ['ME', 'ME', 'ME', 'ME', 'ME', 'ME'];
     PV.alert = 'err';
     var t0 = hv(h, 'pour_at', FLOOD_START), tFreeze = hv(h, 'freeze', HD_FREEZE);
-    var t07 = lt + T07 * dur, end = lt + dur, redSpan = end - t07 - 2 / 24;
+    var a0 = t - lt;                                   /* 镜头起点（绝对秒），t07/end 都是绝对时刻 */
+    var t07 = a0 + T07 * dur, end = a0 + dur, redSpan = end - t07 - 2 / 24;
     var rng = PV.mt(Math.trunc(t * 24) * 131);
     var tb = beatT(Math.floor((t - FB) / BEAT + 1e-6)), ring = (t - tb) * 1500;
     var cx = 200, cy = floodY(GET_R0 + 9);
