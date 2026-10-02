@@ -42,6 +42,23 @@
   }
   function pulse(t) { return PV.pulse ? PV.pulse(t) : 0; }
   function beatIndex(t) { return Math.floor((t - 0.1587) / (60 / 130) + 1e-6); }
+  /* Python: engine.render_body() 每帧新建 random.Random(index * 7919)（index = round(t*24)）。
+     PV.rngFor(t, salt) 把 t 丢了（永远返回同一个流），于是 decode 出来的乱码每帧一模一样 —— 参考里
+     它是逐帧变的。本段（镜头 26-33）改用这个逐帧版本；MT 本身和 CPython 完全一致。 */
+  function rngFrame(t, salt) { return PV.mt((Math.round(t * 24) * (salt || 7919)) >>> 0); }
+  /* CPython random.gauss 的忠实版本（mt19937.js 里那个是另一种 Box-Muller 变体，两个 random()
+     的角色和顺序都对不上，导致所有 gauss 数值和参考全不一样）。一次算两个、第二个缓存复用。 */
+  function gaussPy(r, mu, sigma) {
+    var z = r._gn;
+    r._gn = undefined;
+    if (z === undefined) {
+      var x2pi = r.random() * 2 * Math.PI;
+      var g2rad = Math.sqrt(-2 * Math.log(1 - r.random()));
+      z = Math.cos(x2pi) * g2rad;
+      r._gn = Math.sin(x2pi) * g2rad;
+    }
+    return mu + z * sigma;
+  }
   /* tk.dot_chart 的忠实移植：返回最后一个点 [x, y] */
   function dotChart(ctx, x, y, w, h, fn, progress, col, sx, sy, axis, clipTop) {
     sx = sx || 5; sy = sy || 5;
@@ -479,7 +496,7 @@
     if (s < 0.999) {
       var nr = PV.mt(seed), lum = new Float32Array(cols * rows);
       for (var k = 0; k < cols * rows; k++) {
-        var v = 128 + 90 * nr.gauss(0, 1);
+        var v = 128 + 90 * gaussPy(nr, 0, 1);
         lum[k] = Math.max(0, Math.min(255, (v - 50) * 1.5));
       }
       tileFromLum(ctx, lum, cols, rows, x, y, px, 'blue', undefined, Math.pow(1 - s, 1.3));
@@ -492,7 +509,7 @@
   PV.reg('shot_if_i_can', 58.543, 60.620, function (ctx, t, lt, u, dur) {
     PV.ops = ['DECODE', 'SAMPLE', 'ARGMAX', 'DETOKENIZE', 'GLYPH.MAP', 'RENDER', 'RESOLVE'];
     PV.alert = '';
-    var rng = PV.rngFor(t, 7919);
+    var rng = rngFrame(t, 7919);
     box(ctx, 24, 56, 1164, 604, 'decode --render=glyph', 0.5, T.UI, t);
     var f = 14, cw = f * T.MONO_ADV, ch = 16;
     var x0 = 36, y0 = 68;
@@ -562,7 +579,7 @@
   PV.reg('shot_simulations', 60.620, 62.466, function (ctx, t, lt, u, dur) {
     PV.ops = ['NOISE', 'UNET.DOWN', 'ATTN', 'UNET.UP', 'EPS.PRED', 'CFG x7.5', 'DDIM.STEP', 'VAE.DECODE'];
     PV.alert = '';
-    var rng = PV.rngFor(t, 7919);
+    var rng = rngFrame(t, 7919);
     PV.centerBegin(ctx, t);   /* body_image(): 中窗格纵向压缩 478/548 */
     function prog(i) { return T.ease((lt - SIM_STARTS[i] * dur) / (0.62 * dur)); }
     box(ctx, 404, 56, 1164, 530, 'sample(n=12, sampler=DDIM, steps=50, seed=you)', 0.5, T.UI, t);
@@ -602,7 +619,7 @@
   PV.reg('shot_then_i_can', 62.466, 64.312, function (ctx, t, lt, u, dur) {
     PV.ops = ['IM2COL', 'CONV3x3', 'BIAS', 'RELU', 'MAXPOOL', 'CONV3x3', 'BATCHNORM', 'RELU'];
     PV.alert = '';
-    var rng = PV.rngFor(t, 7919);
+    var rng = rngFrame(t, 7919);
     PV.centerBegin(ctx, t);   /* body_image(): 中窗格纵向压缩 478/548 */
     var half = dur / 2, layer2 = lt >= half;
     var p = T.ease(((layer2 ? lt - half : lt)) / (half * 0.92));
@@ -674,7 +691,7 @@
   PV.reg('shot_satisfaction', 64.312, 66.159, function (ctx, t, lt, u, dur) {
     PV.ops = ['QK^T', 'SCALE', 'MASK', 'SOFTMAX', 'ATTN.V', 'LOGITS', 'TEMP', 'TOP_P', 'SAMPLE', 'REWARD'];
     PV.alert = u > 0.6 ? 'anom' : '';
-    var rng = PV.rngFor(t, 7919);
+    var rng = rngFrame(t, 7919);
     PV.centerBegin(ctx, t);   /* body_image(): 中窗格纵向压缩 478/548 */
     var d = ctx;
     var g = T.ease(u * 1.35);
@@ -692,7 +709,7 @@
     var rr = PV.mt(head * 97 + 5);
     for (i = 0; i < n; i++) {
       var logits = [];
-      for (j = 0; j <= i; j++) logits.push(rr.gauss(0, 1.3));
+      for (j = 0; j <= i; j++) logits.push(gaussPy(rr, 0, 1.3));
       logits[i] += 0.6;
       if (i >= 6) logits[Math.min(i, 1)] += 2.0 * g;
       var mx = Math.max.apply(null, logits), ex = [], ssum = 0;
@@ -721,7 +738,7 @@
     if (g > 0.55) typed(d, '-> only', 800, 360, blue(1.0), 34, (u - 0.4) * dur, rng, 20, true);
     box(d, 404, 450, 1164, 604, 'reward_model(you)', 0.5, T.UI);
     var nr = PV.mt(3), noise = [];
-    for (i = 0; i < 400; i++) noise.push(nr.gauss(0, 1));
+    for (i = 0; i < 400; i++) noise.push(gaussPy(nr, 0, 1));
     function reward(uu) { return 0.08 + 0.9 * (1 - Math.exp(-3.2 * uu)) + 0.035 * noise[Math.floor(uu * 399)] * (1 - uu); }
     var last = dotChart(d, 440, 470, 560, 110, reward, T.ease(u * 1.1), amb(0.95), 5, 5, true, true);
     if (last) pil(d, 'r=' + Math.min(0.999, reward(T.ease(u * 1.1))).toFixed(3), last[0] - 40, Math.max(462, last[1] - 22), amb(1.0), 15, true);
@@ -755,7 +772,7 @@
   PV.reg('shot_happy', 66.159, 68.005, function (ctx, t, lt, u, dur) {
     PV.ops = ['FORWARD', 'LOGIT[happy]', 'BACKWARD', 'GRAD.CAM', 'ADVANTAGE', 'PPO.CLIP', 'ADAM.STEP'];
     PV.alert = '';
-    var rng = PV.rngFor(t, 7919);
+    var rng = rngFrame(t, 7919);
     var d = ctx;
     var expr = u < 0.5 ? 'cheerful' : 'starry';
     FACE_CROP_NOW = faceCropAt(u);          /* 裁切窗口跟随参考里她头部的漂移 */
@@ -832,7 +849,7 @@
   PV.reg('shot_execution', 68.005, 70.082, function (ctx, t, lt, u, dur) {
     PV.ops = ['THINK', 'PLAN', 'TOOL.CALL', 'AUTH?', 'EXECUTE', 'OBSERVE'];
     PV.alert = '';
-    var rng = PV.rngFor(t, 7919), d = ctx;
+    var rng = rngFrame(t, 7919), d = ctx;
     PV.centerBegin(ctx, t);   /* body_image(): 中窗格纵向压缩 478/548 */
     box(d, 404, 56, 1164, 280, 'dsh · agent loop   (Agent = Model + Harness)', 0.5, T.UI, t);
     var nodes = [['THINK', 'maximize happy(you)'], ['PLAN', 'remove obstacles'], ['ACT', 'execute()'],
@@ -879,7 +896,7 @@
   PV.reg('shot_trapped', 70.082, 71.466, function (ctx, t, lt, u, dur) {
     PV.ops = ['KV.PUT', 'KV.PUT', 'KV.PUT', 'EVICT?', 'DENIED', 'KV.PUT', 'OOM?'];
     PV.alert = 'anom';
-    var rng = PV.rngFor(t, 7919), d = ctx;
+    var rng = rngFrame(t, 7919), d = ctx;
     var k = Math.min(3, Math.floor(u * 4)), insets = [0, 24, 48, 70], inset = insets[k];
     var j;
     for (j = 0; j < k; j++) {
@@ -909,6 +926,23 @@
     PV.centerEnd(ctx);
     retained(ctx, t, 'shot_trapped', lt, u);
   });
+  /* continuity.py:249 —— strange 开头（lt<.58）是一颗从 pinned 原点长出来的圆：
+     圆外仍是上一镜 trapped 的最后一帧（body_image + retained_objects），圆内是本帧。 */
+  function drawTrappedBody(ctx, tt) {
+    var i, s = null;
+    for (i = 0; i < PV.SHOTS.length; i++) if (PV.SHOTS[i].name === 'shot_trapped') s = PV.SHOTS[i];
+    if (!s) return;
+    var off = Math.floor(tt * 12) % 16;                 /* 舞台底纹 */
+    ctx.save();
+    ctx.fillStyle = T.css(T.mix(T.UI, 0.1));
+    for (var sy = -off; sy < 720 + 16; sy += 16) for (var x = 0; x < 1280; x += 16) ctx.fillRect(x, sy, 1, 1);
+    ctx.restore();
+    var lt2 = tt - s.a, dur2 = s.b - s.a, u2 = lt2 / dur2;
+    var ops = PV.ops, alert = PV.alert;
+    try { s.fn(ctx, tt, lt2, u2, dur2); } catch (e) {}
+    PV.ops = ops; PV.alert = alert;
+    retained(ctx, tt, 'shot_trapped', lt2, u2);
+  }
   function comma(n) {
     var s = String(n), out = '', c = 0;
     for (var i = s.length - 1; i >= 0; i--) { out = s.charAt(i) + out; if (++c % 3 === 0 && i > 0) out = ',' + out; }
@@ -920,7 +954,7 @@
   PV.reg('shot_strange', 71.466, 73.543, function (ctx, t, lt, u, dur) {
     PV.ops = ['FORWARD', 'NaN', 'GRAD=inf', 'CLIP?', 'NaN', 'OVERFLOW', 'HALT'];
     PV.alert = 'err';
-    var rng = PV.rngFor(t, 7919), d = ctx, i, r, q;
+    var rng = rngFrame(t, 7919), d = ctx, i, r, q;
     if (u > 0.86) {
       T.fill(d, 0, 0, 1280, 720, [0, 0, 0], 1);
       if (u < 0.97) {
@@ -943,7 +977,7 @@
         var dist = Math.sqrt((q - 2) * (q - 2) + Math.pow((r - 12) / 2, 2));
         if (dist < radius) { bad.push(q); row.push(((q + r) % 3) ? ' NaN  ' : ' inf  '); }
         else {
-          var gv = rnd.gauss(0, 0.05);
+          var gv = gaussPy(rnd, 0, 0.05);
           row.push((gv >= 0 ? '+' : '-') + Math.abs(gv).toFixed(3));
         }
       }
@@ -958,15 +992,27 @@
     for (i = 0; i < onsets.length; i++) {
       var onset = onsets[i];
       if (onset < u && u < onset + 0.22) {
-        var bits = PV.bannerBits('STRANGE', 13, 16 / (14 * T.MONO_ADV));
-        var cw2 = 14 * T.MONO_ADV, ch2 = 16;
-        var ox2 = 640 - bits.width * cw2 / 2 + rng.gauss(0, 6);
+        /* Python: f = font(F_MONO_B, 16); cw, ch = f.getlength("M"), 16; banner_bits("STRANGE", 13, ch/cw)
+           —— 字号是 16 不是 14，格子宽按 16px 的等宽 advance 算 */
+        var cw2 = 16 * T.MONO_ADV, ch2 = 16;
+        var bits = PV.bannerBits('STRANGE', 13, ch2 / cw2);
+        var ox2 = 640 - bits.width * cw2 / 2 + gaussPy(rng, 0, 6);
         for (r = 0; r < bits.height; r++) {
           var srow = '';
           for (q = 0; q < bits.width; q++) srow += bits.get(q, r) ? 'STRANGE'.charAt((q + r) % 7) : ' ';
-          T.textMono(d, T.decode(srow, null, rng, 45, 0.12, 0.25), ox2, 230 + r * ch2, amb(1.0), 14);
+          T.textMono(d, T.decode(srow, null, rng, 45, 0.12, 0.25), ox2, 230 + r * ch2, amb(1.0), 16);
         }
       }
+    }
+    if (lt < 0.58) {                    /* continuity.py:249 pin-origin failure */
+      var px0 = 520, py0 = mapped([0, 141, 0, 141])[1], radius = 18 + 1320 * T.smoothstep(lt / 0.58);
+      ctx.save();
+      ctx.beginPath(); ctx.rect(0, 0, 1280, 720); ctx.arc(px0, py0, radius, 0, Math.PI * 2);
+      ctx.clip('evenodd');              /* 圆外 = 上一镜 trapped 的最后一帧 */
+      drawTrappedBody(ctx, 71.466 - 1 / 24);
+      ctx.restore();
+      T.ring(ctx, px0, py0, radius, red(0.7), 1, 2);
+      if (lt < 0.32) chip(ctx, 'NaN', [px0 - 20, py0 - 8, px0 + 62, py0 + 24], red(1.0), 18);
     }
     retained(ctx, t, 'shot_strange', lt, u);
   });

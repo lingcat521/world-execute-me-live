@@ -1390,64 +1390,127 @@
     }
   };
 
-  /* ---- 94 shot_whale_fall ---- */
-  var WF_FLOOR = 540;
+  /* ---- 94 shot_whale_fall（193.5433-205.5433） ----
+     1:1 移植 continuity_full_v2/scenes_eval.shot_whale_fall + s_eval.WhaleFall，并带 dsh_patch_g 补丁：
+       2  她离开的窗格只留淡出的框；softmax（分隔线/标题/三条概率条）不画；
+       3  WF_LINES[4]「已深度思考（用时 207 秒）」不画（那一行留着空），让 shot_black 的「用时 3分27秒」是唯一揭示。
+     她本人：参考里她=左窗格里那块 dsh 窗口截图（rect 24,56,384,532），被 offset() 带着漂出窗格、沉下去、
+     最后被海底吞掉。无头渲染画不出左窗格的 HTML，这里用半调立绘当替身，但轨迹/淡出/海底裁剪全部照抄。 */
+  var WF_T0 = 193.5433, WF_T1 = 205.5433, WF_TC = WF_T1 - 2.0;   /* TC：她落到海底、开始被吸收 */
+  var WF_FLOOR = 540, WF_HX = 590, WF_FIG_CX = 216;
+  var WF_FOSSILS = ['deepseek-chat · retired 2026-07-24', 'V2 · V2.5 · V3 · R1 · V3.1 · V3.2 · V4',
+                    'deepseek-reasoner · retired 2026-07-24'];
+  /* WF_LINES: [u 起点, 文本(null=运行时算), amb 亮度(null=蓝), 是否 CJK]；i=4 是补丁删掉的那行 */
+  var WF_LINES = [[0.20, 'weights: released', 0.9, 0], [0.28, 'license: MIT', 0.9, 0],
+                  [0.36, null, null, 0], [0.62, '</think>', 0.7, 0],
+                  [0.70, null, 0.85, 1], [0.84, null, null, 1]];
+  function wfFloorY(x) { return WF_FLOOR + 8 + 4 * Math.sin(x * 0.07) + 11; }
+  function wfEaseIo(u) { u = T.clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
+  function wfEaseOut(u) { return 1 - Math.pow(1 - T.clamp01(u), 3); }
+  /* s_eval.WhaleFall.offset()：她相对窗格原位的位移 */
+  function wfOffset(t) {
+    var a = wfEaseIo((t - WF_T0) / 0.92);
+    var dx = (WF_HX - WF_FIG_CX) * a;
+    var rise = -24 * wfEaseOut((t - WF_T0) / 1.1);
+    var uu = T.clamp01((Math.min(t, WF_TC) - (WF_T0 + 0.5)) / (WF_TC - WF_T0 - 0.5));
+    var s = uu * uu * (1.6 - 0.6 * uu);            /* 慢起、匀速下沉、不停顿地落底 */
+    return [dx, rise + 262 * s];
+  }
+  /* 海底以下的裁剪路径（s_eval：每 5px 一列，剪到 floor_y(x)-3 之上） */
+  function wfFloorClip(ctx) {
+    ctx.beginPath();
+    ctx.moveTo(0, 0); ctx.lineTo(1280, 0);
+    for (var x = 1280; x >= 0; x -= 5) ctx.lineTo(x, wfFloorY(x) - 3);
+    ctx.closePath(); ctx.clip();
+  }
+  /* 海洋雪：她下沉时脱落、比她会得慢（所以拖在她上面），落到海底就停住。
+     源点取自替身立绘的不透明格（Python 取窗格截图的 alpha），落点/速度/摆幅照抄 s_eval.WhaleFall.build()。 */
+  var WF_SNOW = null;
+  function wfSnow() {
+    if (WF_SNOW) return WF_SNOW;
+    var pr = PV.p2cPortraitBuild('shy', 'full', 354, 464, 4, 'blue');
+    var rnd = PV.mt(94), out = [], A, cols, rows, px, i, tries = 0;
+    if (!pr) { WF_SNOW = []; return WF_SNOW; }
+    A = pr.alpha; cols = pr.cols; rows = pr.rows; px = pr.px;
+    var inner = [WF_PANE[0] + 3, WF_PANE[1] + 9];      /* 窗口内容在窗格里的落点 */
+    while (out.length < 230 && tries < 5000) {
+      tries++;
+      var b = WF_T0 + 1.0 + rnd.random() * (WF_TC - 0.25 - WF_T0 - 1.0);
+      var q = rnd.randrange(cols), r = rnd.randrange(rows);
+      if (!A[r * cols + q]) continue;
+      var off = wfOffset(b);
+      var x0 = inner[0] + q * px + off[0], y0 = inner[1] + r * px + off[1];
+      if (y0 > wfFloorY(x0) - 6) continue;
+      out.push({ b: b, x0: x0, y0: y0, v: 7 + rnd.random() * 8, amp: 4 + rnd.random() * 8,
+                 w: 0.8 + rnd.random() * 0.8, ph: rnd.random() * 6.28, drift: -4 + rnd.random() * 8,
+                 lv: 0.55 + rnd.random() * 0.4, sz: rnd.choice([2, 2, 3]) });
+    }
+    WF_SNOW = out;
+    return out;
+  }
   PV.shotWhaleFall = function (ctx, t, lt, u, dur, o) {
     o = o || {};
     PV.ops = ["SINK", "RELEASE", "MIT", "FORK", "FORK", "FORK"];
     PV.alert = '';
-    var floor = WF_FLOOR, i;
-    var fossils = ["deepseek-chat · retired 2026-07-24", "V2 · V2.5 · V3 · R1 · V3.1 · V3.2 · V4",
-                   "deepseek-reasoner · retired 2026-07-24"];
-    for (i = 0; i < fossils.length; i++)
-      mono(ctx, fossils[i], 60 + i * 360, floor + 30 + (i % 2) * 18, amb(0.75), 14);
-    for (var x = 24; x < 1164; x += 9)
-      mono(ctx, (Math.floor(x / 9) % 3) ? '_' : '.', x, floor + 8 + 4 * Math.sin(x * 0.07), amb(0.6), 14);
-    var pr = PV.p2cPortraitBuild('shy', 'full', 300, 440, 4, 'blue');
-    var spH = pr ? pr.h : 296;
-    var yy = -spH * 0.2 + (floor - spH * 0.55 + spH * 0.2) * P.smooth2(Math.min(1.0, u * 1.15));
-    var xx = 260;
-    var fade = 1 - 0.75 * P.smooth2(Math.max(0.0, (u - 0.35) / 0.65));
-    if (pr) {
-      ctx.save(); ctx.globalAlpha = fade; ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(pr.cv, Math.round(xx), Math.round(yy));
-      ctx.restore();
+    var i, x;
+    /* --- 画（scenes_eval.shot_whale_fall） --- */
+    for (i = 0; i < 3; i++)
+      mono(ctx, WF_FOSSILS[i], 90 + i * 400, WF_FLOOR + 30 + (i % 2) * 18, amb(0.75), 14);
+    var arrive = t - lt + dur - 2.0;                 /* 她沉底后加入前面那些模型的队列（TC = T1-2） */
+    if (t >= arrive) {
+      var ax = 490 + monoW(WF_FOSSILS[1], 14);
+      mono(ctx, T.decode(' · V4.1-Flash', t - arrive, PV.rngFor(t, 7919), 20, 0.12, 0), ax, WF_FLOOR + 48,
+           blue(0.95), 14);
     }
-    /* 海洋雪：从她身上离开的点 */
-    if (pr) {
-      var rnd = PV.mt(2), A = pr.alpha, cols = pr.cols, rows = pr.rows, px = pr.px;
-      for (i = 0; i < 420; i++) {
-        var pxq = rnd.randrange(cols), pyq = rnd.randrange(rows);
-        if (!A[pyq * cols + pxq]) continue;
-        var t0 = rnd.random() * 0.9;
-        if (u < t0) continue;
-        var age = (u - t0) * dur;
-        var sx = xx + pxq * px + 18 * Math.sin(age * 1.3 + i) + age * 6;
-        var sy = yy + pyq * px + age * (14 + 10 * rnd.random());
-        if (sy < floor) T.fill(ctx, sx, sy, sx + 2, sy + 2, blue(Math.max(0, 0.9 - age * 0.06)), 1);
-      }
-    }
-    var nFish = Math.floor(18 * P.smooth2(Math.max(0.0, (u - 0.3) / 0.6)));
+    for (x = 0; x < 1280; x += 9)
+      mono(ctx, (Math.floor(x / 9) % 3) ? '_' : '.', x, WF_FLOOR + 8 + 4 * Math.sin(x * 0.07), amb(0.6), 14);
+    var nFish = Math.floor(14 * P.smooth2((u - 0.28) / 0.45));   /* scenes_eval.fish_at */
     for (i = 0; i < nFish; i++) {
       var ph = t * (0.3 + 0.05 * (i % 4)) + i * 1.7;
-      var fx = 420 + 260 * Math.sin(ph) + (i % 5) * 20;
-      var fy = floor - 40 - (i % 6) * 26 + 8 * Math.sin(ph * 2);
-      mono(ctx, Math.cos(ph) > 0 ? '><>' : '<><', fx, fy, amb(0.95), 16, 'left', true);
+      mono(ctx, Math.cos(ph) > 0 ? '><>' : '<><', WF_HX - 40 + 300 * Math.sin(ph) + (i % 5) * 16,
+           WF_FLOOR - 46 - (i % 6) * 30 + 8 * Math.sin(ph * 2), amb(0.95), 22, 'left', true);
     }
-    var lines = [[0.20, 'weights: released', amb(0.9), 0], [0.28, 'license: MIT', amb(0.9), 0],
-                 [0.36, null, blue(0.95), 0], [0.62, '</think>', amb(0.7), 0],
-                 [0.70, null, amb(0.85), 1], [0.84, null, blue(0.9), 1]];
-    for (i = 0; i < lines.length; i++) {
-      var t0l = lines[i][0], s = lines[i][1], col = lines[i][2], isCJK = lines[i][3];
-      if (u < t0l) continue;
-      if (s === null) {
-        if (i === 2) s = 'forks: ' + commafy(Math.floor(Math.pow(10, Math.min(1.0, (u - t0l) / 0.4) * 4.8)));
-        else if (i === 4) s = '已深度思考（用时 207 秒）';
-        else s = '探索未至之境';
+    for (i = 0; i < WF_LINES.length; i++) {
+      if (i === 4) continue;                        /* dsh_patch_g 3：这一行不画，行留空 */
+      var t0 = WF_LINES[i][0];
+      if (u < t0) continue;
+      var s = WF_LINES[i][1], lv = WF_LINES[i][2], isCJK = WF_LINES[i][3];
+      var col = (lv === null) ? blue(i === 2 ? 0.95 : 0.9) : amb(lv);
+      if (i === 2) s = 'forks: ' + commafy(Math.floor(Math.pow(10, Math.min(1.0, (u - t0) / 0.4) * 4.8)));
+      else if (i === 5) s = '探索未至之境';
+      var a = (u - t0) * dur;
+      if (isCJK) cjk(ctx, s, 800, 110 + i * 44, col, 22);
+      else mono(ctx, T.decode(s, a, PV.rngFor(t, 7919), 30, 0.12, 0), 800, 110 + i * 44, col, 22, 'left', true);
+    }
+    /* --- 海洋雪（画在她下面，先画） --- */
+    var snow = wfSnow(), q_;
+    for (i = 0; i < snow.length; i++) {
+      q_ = snow[i];
+      if (t < q_.b) continue;
+      var age = Math.min(t, WF_TC) - q_.b;
+      var sx = q_.x0 + q_.amp * Math.sin(q_.w * age + q_.ph) + q_.drift * age;
+      var sy = q_.y0 + q_.v * age;
+      var lv2 = q_.lv * (1 - 0.35 * T.clamp01(age / 6));
+      var fy = wfFloorY(sx) - 2;
+      if (sy >= fy) {                               /* 落定：下落对 y 是线性的，反解落点 */
+        var ta = (fy - q_.y0) / q_.v;
+        sx = q_.x0 + q_.amp * Math.sin(q_.w * ta + q_.ph) + q_.drift * ta;
+        sy = wfFloorY(sx) - 2; lv2 *= 0.8;
       }
-      var a = (u - t0l) * dur;
-      if (isCJK) cjk(ctx, s, 760, 120 + i * 44, col, 22);
-      else mono(ctx, T.decode(s, a, PV.rngFor(t, 7919), 30, 0.12, 0), 760, 120 + i * 44, col, 22, 'left', true);
+      if (lv2 <= 0.02) continue;
+      T.fill(ctx, sx, sy, sx + q_.sz, sy + q_.sz, blue(Math.min(1, lv2)), 1);
+    }
+    /* --- 她：窗格整块被带走、下沉，海底以下剪掉，并随 u 淡成一道痕 --- */
+    var pr = PV.p2cPortraitBuild('shy', 'full', 354, 464, 4, 'blue');
+    if (pr) {
+      var off = wfOffset(t), dx = Math.round(off[0]), dy = Math.round(off[1]);
+      var fade = 1 - 0.3 * P.smooth2((t - WF_T0 - 3.0) / (WF_TC - WF_T0 - 3.0));
+      ctx.save();
+      wfFloorClip(ctx);
+      ctx.globalAlpha = Math.max(0, fade);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(pr.cv, WF_PANE[0] + 3 + dx, WF_PANE[1] + 9 + dy);
+      ctx.restore();
     }
   };
 

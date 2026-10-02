@@ -243,18 +243,21 @@
     TG = cells; return cells;
   }
 
+  /* 离屏画布池：浏览器里每帧 new 4 张 1280x720 会造成明显的 GC 抖动，这里复用 */
+  var _tp = {};
+  function tmpCanvas(k) { if (!_tp[k]) _tp[k] = PV.newCanvas(W, H); return _tp[k]; }
   PV.addCut(C13_T, C13_PRE, 0.75, function (ctx, t, cut) {
     var durA = C13_B - C13_A;
     function oldBody(c, hook) { PV.shotPoints(c, t, Math.max(0, t - C13_A), T.clamp01((t - C13_A) / durA), durA, hook); }
-    var oc = PV.newCanvas(W, H), og = oc.getContext('2d');
-    var bare = PV.newCanvas(W, H), bg2 = bare.getContext('2d');
+    var oc = tmpCanvas('a'), og = oc.getContext('2d');
+    var bare = tmpCanvas('b'), bg2 = bare.getContext('2d');
     if (PV.drawBackground) { PV.drawBackground(og, t); PV.drawBackground(bg2, t); }
     oldBody(og, { points: false });
     oldBody(bg2, { points: false, labels: false });
-    var mid = PV.newCanvas(W, H), mg = mid.getContext('2d');
+    var mid = tmpCanvas('c'), mg = mid.getContext('2d');
     if (PV.drawBackground) PV.drawBackground(mg, t);
     PV.trRevealCanvas(mg, t, oc, bare, PV.trRadial(840, 170, C13_T - 0.12, 900), { seed: 113 });  /* 旧标签先走 */
-    var nc = PV.newCanvas(W, H), ng = nc.getContext('2d');
+    var nc = tmpCanvas('d'), ng = nc.getContext('2d');
     if (PV.drawBackground) PV.drawBackground(ng, t);
     var tt = Math.max(t, C13_B);
     /* 新镜头走本移植版分派器的时钟语义（含 shot_dimension 自带的 0.4s 延迟），它的 u 是标定过参考帧的 */
