@@ -321,7 +321,7 @@
   var PV = window.PV;
   var W = 1280, H = 720;
   var prev = PV.overlay;
-  PV.p2cFlash = null;
+  PV.p2cFlash = null; PV.p2cFlashK = 1;
   /* 参考成片实测的红度区间（见 pvport/redprofile.py） */
   /* 实测：场景自身在绝大部分红段已经画成红的（146.5-148.5 / 150-152 / 153.5-156 / 157.5-158 / 161.5-163 /
      166.5-168 / 172.5 都与参考吻合）。只有两处缺口需要 overlay 补（见 pvport/redneed.py 的逐点比对）。 */
@@ -333,10 +333,11 @@
   PV.overlay = function (ctx, t) {
     if (prev) { try { prev(ctx, t); } catch (e) {} }
     /* 直接按实测区间判定，不依赖某个镜头函数是否被调用（红色副歌走的是另一条路径） */
-    if (PV.p2cRedAt(t)) {
+    var _fl = (PV.p2cFlash !== null && PV.p2cFlash !== undefined && Math.abs(PV.p2cFlash - t) < 1e-6);
+    if (PV.p2cRedAt(t) || _fl) {
       ctx.save();
       ctx.globalCompositeOperation = 'multiply';
-      ctx.globalAlpha = 0.5;   /* 实测：满强度会过头约 2 倍（+55 而目标 +30），折半正好 */
+      ctx.globalAlpha = 0.5 * (_fl ? (PV.p2cFlashK === undefined ? 1 : PV.p2cFlashK) : 1);   /* 折半标定；C95 命中时再乘衰减 k */
       ctx.fillStyle = 'rgb(255,86,66)';
       ctx.fillRect(0, 0, W, H);
       ctx.restore();
@@ -1365,7 +1366,9 @@
   PV.shotLastExecution = function (ctx, t, lt, u, dur, o) {
     PV.ops = ["EXECUTE"];
     PV.alert = 'err';
-    if (lt < 0.25) PV.p2cFlash = t;
+    /* C95 的命中：前 6 帧整幅变红，强度按原作的 k = [1.0,1.0,0.8,0.55,0.3,0.12][fr] 衰减 */
+    if (lt < 0.25) { PV.p2cFlash = t; PV.p2cFlashK = [1.0, 1.0, 0.8, 0.55, 0.3, 0.12][Math.min(5, Math.round(lt * 24))]; }
+    else { PV.p2cFlash = null; PV.p2cFlashK = 1; }
     for (var x = 24; x < 1164; x += 9)
       mono(ctx, (Math.floor(x / 9) % 3) ? '_' : '.', x, 548 + 4 * Math.sin(x * 0.07), amb(0.3), 14);
     T.fill(ctx, 640, 520, 643, 523, blue(1.0), 1);
