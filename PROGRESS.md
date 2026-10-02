@@ -139,3 +139,16 @@ inner 360x662  dpr 2  barH 57  portrait true  scale 0.473  stage 605x340
 - shot_circle / circumference / sine / tangent / infinity / limit（32.928 - 44.005 s）
 - shot_current 起进入 02 SFT 段
 
+
+## A3 聊天窗（29.28 - 44.0 s）
+
+✓ 内容：她在 A3 段被反复问"你是谁？"，每次都答成一道选择题 ——
+`（　　）A. 一个点 B. 一个圆 C. 一条正弦曲线 D. 无穷`，然后选一个不同的选项，
+每轮的"解析"正好是右侧那个镜头在演示的技术（点集 / RoPE 旋转 / sin-cos / 无穷）。
+
+- 4 轮 TURNS，发送时刻锚在歌词逐词时间上（`w(9,0)` 等）
+- 第 4 轮答 D 后进入刷屏：字符速率从 14 升到 750 /秒（`_rate` 的积分实现），
+  在 `w(16,5)`（唱到 limitations）被输出上限截断，弹出"已达到输出 token 上限"提示
+- 353 张逐帧头像 `avatars/a3/`（用 Pillow 生成：3→12 格渐进聚焦 + 噪声混合）
+- 验证：`node panetest.mjs` 显示 43.8 秒时 HTML 长度从 49.6k 暴涨到 61.8k（刷屏 + 上限提示生效）
+

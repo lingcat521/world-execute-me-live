@@ -27,6 +27,11 @@
   };
   PV.audio = audioEl; PV.chat = chatEl; PV.screen = screenEl;
   PV.VER = '202610022243';
+  PV.loadImage = function (path, cb) {
+    var im = new Image();
+    im.onload = function () { cb(im); };
+    im.src = path;
+  };
   PV.newCanvas = function (w, h) { var c = document.createElement('canvas'); c.width = Math.max(1, w | 0); c.height = Math.max(1, h | 0); return c; };
   PV.onWorld = function (fn) { PV.layers.push(fn); };
   PV.onBoot = function (fn) { PV.bootQueue.push(fn); };
