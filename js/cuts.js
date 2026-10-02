@@ -547,3 +547,122 @@
     PV.crtFinish(ctx, t, { ap: ap, fa: fa, fl: lift * (1 - e), line: null, veil: 0 });
   });
 })();
+
+/* ---- C02：protection -> pieces。盾牌亮起，点按顶行优先逐个飞进权重网格的下一格（落地即加载）；
+        '#' 轮廓拉伸成 load_weights 边框并锁在拍点上。 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var T0 = 3.620, PRE = 0.32, FLY = 0.24, LAND = 0.23;
+  var FULLR = [24, 44, 1168, 608], FRAME_PATH = [[24, 56], [1164, 56], [1164, 604], [24, 604]];
+  var DOTS = null, OUT = null;
+  function eIn(u) { u = T.clamp01(u); return u * u * u; }
+  function eIo(u) { u = T.clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
+  function bez(p0, p1, bend, u) {
+    var mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2;
+    var dx = p1[0] - p0[0], dy = p1[1] - p0[1];
+    var cx = mx - dy * bend, cy = my + dx * bend, a = 1 - u;
+    return [a * a * p0[0] + 2 * a * u * cx + u * u * p1[0], a * a * p0[1] + 2 * a * u * cy + u * u * p1[1]];
+  }
+  function cellCenter(k) {
+    var G = PV.GRID;
+    return [G.x + (k % G.cols) * G.dx + G.w / 2, G.y + Math.floor(k / G.cols) * G.dy + G.h / 2];
+  }
+  function dots() {
+    if (DOTS) return DOTS;
+    var S = PV.shieldCells(), raw = S.dots || [];
+    var order = raw.slice().sort(function (a, b) { return (a[3] - b[3]) || (a[2] - b[2]); });
+    DOTS = [];
+    for (var k = 0; k < order.length; k++) {
+      var p = order[k], td = T0 - 0.22 + k * 0.010;
+      DOTS.push({ src: [p[0], p[1]], cell: k, td: td, tl: td + FLY, bend: (k % 2) ? 0.16 : 0.1 });
+    }
+    return DOTS;
+  }
+  /* 把盾牌边缘重采样成 260 个点，再与边框矩形同参数对齐 —— 轮廓就能连续拉伸过去 */
+  function resample(pts, m) {
+    var P = pts.concat([pts[0]]), seg = [], i;
+    for (i = 0; i < P.length - 1; i++) seg.push(Math.hypot(P[i + 1][0] - P[i][0], P[i + 1][1] - P[i][1]));
+    var total = 0; for (i = 0; i < seg.length; i++) total += seg[i];
+    if (!total) total = 1;
+    var out = [], frac = [], acc = 0, j = 0;
+    for (i = 0; i < seg.length; i++) { frac.push(acc / total); acc += seg[i]; }
+    acc = 0;
+    for (var k = 0; k < m; k++) {
+      var target = total * k / m;
+      while (j < seg.length - 1 && acc + seg[j] < target) { acc += seg[j]; j++; }
+      var u = seg[j] ? (target - acc) / seg[j] : 0;
+      out.push([P[j][0] + (P[j + 1][0] - P[j][0]) * u, P[j][1] + (P[j + 1][1] - P[j][1]) * u]);
+    }
+    return [out, frac];
+  }
+  function atFrac(pts, f) {
+    var P = pts.concat([pts[0]]), seg = [], i, total = 0;
+    for (i = 0; i < P.length - 1; i++) { var d = Math.hypot(P[i + 1][0] - P[i][0], P[i + 1][1] - P[i][1]); seg.push(d); total += d; }
+    if (!total) total = 1;
+    var target = total * (f % 1), acc = 0;
+    for (i = 0; i < seg.length; i++) {
+      if (acc + seg[i] >= target) { var u = seg[i] ? (target - acc) / seg[i] : 0; return [P[i][0] + (P[i + 1][0] - P[i][0]) * u, P[i][1] + (P[i + 1][1] - P[i][1]) * u]; }
+      acc += seg[i];
+    }
+    return P[P.length - 1];
+  }
+  function outline() {
+    if (OUT) return OUT;
+    var S = PV.shieldCells(), edge = S.edge || [], src = [], i;
+    for (i = 0; i < edge.length; i++) src.push([edge[i][0], edge[i][1]]);
+    var rs = resample(src, 260), pathA = rs[0], frac = rs[1];
+    var fw = FULLR[2] - FULLR[0] - 24, fh = FULLR[3] - FULLR[1] - 44, per = 2 * (fw + fh);
+    var ts = [], k;
+    for (k = 0; k < 260; k++) ts.push(k / 260);
+    ts.push(0, fw / per, (fw + fh) / per, (2 * fw + fh) / per);
+    ts.sort(function (a, b) { return a - b; });
+    var uniq = []; for (k = 0; k < ts.length; k++) if (!k || ts[k] !== ts[k - 1]) uniq.push(ts[k]);
+    var pathB = [];
+    for (k = 0; k < uniq.length; k++) pathB.push(atFrac(FRAME_PATH, uniq[k]));
+    var glyphs = [];
+    for (k = 0; k < src.length; k++) glyphs.push([src[k], atFrac(FRAME_PATH, frac[k % frac.length])]);
+    OUT = { A: pathA, B: pathB, T: uniq, glyphs: glyphs };
+    return OUT;
+  }
+  PV.addCut(T0, PRE, 0.86, function (ctx, t, cut) {
+    var land = T0 + LAND;
+    PV.reveal(ctx, t,
+      function (c) { PV.protectionScene(c, t, [48, 70], t - 1.312, true); },
+      function (c) { PV.shotPieces(c, t, Math.max(0, t - T0), 5.236 - T0); },
+      function (x, y) { return T0 - 0.32 + (x - 24) / 2400; },
+      { region: FULLR, cell: [8, 16], dur: 0.09 });
+    var lift = T.clamp01((t - (T0 - PRE)) / 0.12);
+    var u = eIo((t - (T0 - 0.15)) / (LAND + 0.15)), O = outline(), k;
+    if (t < land + 0.1 && u > 0) {
+      var kOut = t < land ? 1 : 1 - (t - land) / 0.1, pts = [];
+      for (k = 0; k < O.A.length; k++) pts.push([O.A[k][0] + (O.B[k][0] - O.A[k][0]) * u, O.A[k][1] + (O.B[k][1] - O.A[k][1]) * u]);
+      ctx.save(); ctx.globalAlpha = T.clamp01(kOut * Math.min(1, u * 4));
+      ctx.strokeStyle = T.css(T.mix(T.ANOM, 0.55 + 0.4 * (1 - u))); ctx.lineWidth = u < 0.8 ? 2 : 1;
+      ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+      for (k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
+      ctx.closePath(); ctx.stroke(); ctx.restore();
+      var al = kOut * (1 - T.clamp01((u - 0.7) / 0.3));
+      if (al > 0.02) {
+        ctx.save(); ctx.globalAlpha = al * 0.55 * lift; ctx.fillStyle = T.css(T.mix(T.ANOM, 0.9));
+        for (k = 0; k < O.glyphs.length; k++) {
+          var gx = O.glyphs[k][0][0] + (O.glyphs[k][1][0] - O.glyphs[k][0][0]) * u;
+          var gy = O.glyphs[k][0][1] + (O.glyphs[k][1][1] - O.glyphs[k][0][1]) * u;
+          ctx.fillRect(gx - 1, gy - 6, 8, 12);
+        }
+        ctx.restore();
+      }
+    }
+    var D = dots();
+    for (k = 0; k < D.length; k++) {
+      var p = D[k];
+      if (t >= p.tl) continue;
+      var cc = cellCenter(p.cell), v = T.clamp01((t - p.td) / FLY);
+      if (v <= 0) { T.fill(ctx, p.src[0] - 1.5, p.src[1] - 1.5, p.src[0] + 1.5, p.src[1] + 1.5, T.mix(T.ANOM, 0.9), 0.6 * lift); continue; }
+      var pos = bez(p.src, cc, p.bend, eIo(v)), g = T.clamp01((v - 0.55) / 0.45);
+      var s0 = 3.5 + 3.0 * Math.sin(Math.PI * Math.min(1, v / 0.55));
+      var G = PV.GRID, hw = s0 + (G.w / 2 - s0) * eIn(g), hh = s0 + (G.h / 2 - s0) * eIn(g);
+      T.fill(ctx, pos[0] - hw, pos[1] - hh, pos[0] + hw, pos[1] + hh, T.HOT || T.ui(1.0), 1);
+    }
+  });
+})();
