@@ -277,3 +277,86 @@
     }
   });
 })();
+
+/* ---- C15：circle -> circumference。其余五对缩回第一个圆，第一个移动并长大成待展开的圆。 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var T0 = 34.543, PRE = 0.3, LAND = 0.4, FPS = 24, CX = 600, CY = 240, R = 120;
+  function eIn(u) { u = T.clamp01(u); return u * u * u; }
+  function eIo(u) { u = T.clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
+  PV.addCut(T0, PRE, 0.45, function (ctx, t, cut) {
+    var c0 = PV.ropeCenter(0);
+    function circles(i) {
+      if (i === 0) return t >= T0 - 0.05 ? null : {};
+      var u = eIn((t - (T0 - PRE + (i - 1) / FPS)) / 0.2);
+      if (u >= 1) return null;
+      var c = PV.ropeCenter(i);
+      return { cx: c[0] + (c0[0] - c[0]) * u, cy: c[1] + (c0[1] - c[1]) * u,
+               R: 70 + (4 - 70) * u, a: 1 - 0.7 * u, labels: u < 0.2, hand: true, sweep: 1 };
+    }
+    PV.circleSpec = circles;
+    try {
+      PV.reveal(ctx, t,
+        function (c) { PV.shotCircle(c, t, t - 32.928, (t - 32.928) / (34.543 - 32.928)); },
+        function (c) { PV.shotCircumference(c, t, Math.max(0, t - T0), T.clamp01((t - T0) / (36.851 - T0)),
+                                            { dots: t >= T0 + LAND, labels: t >= T0 + LAND }); },
+        PV.radial(CX, CY, T0 + 0.2, 1400),
+        { region: [405, 44, 1164, 604], cell: [8, 16], dur: 0.09 });
+    } finally { PV.circleSpec = null; }
+    var land = T0 + LAND;
+    if (t >= T0 - 0.05 && t < land + 0.06) {
+      var u = eIo((t - (T0 - 0.05)) / (land - T0 + 0.05));
+      var cx = c0[0] + (CX - c0[0]) * u, cy = c0[1] + (CY - c0[1]) * u, rr = 70 + (R - 70) * u;
+      var al = T.clamp01(t < land ? 1 : 1 - (t - land) / 0.06);
+      var col = [255 + (120 - 255) * u, 204 + (148 - 204) * u, 0 + 255 * u];
+      ctx.save(); ctx.globalAlpha = al;
+      ctx.strokeStyle = T.css(col); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2); ctx.stroke();
+      var th = PV.ropeTheta(t, 0);
+      ctx.strokeStyle = T.css(T.mix(T.ME_TEXT, 0.95));
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + rr * Math.cos(th), cy + rr * Math.sin(th)); ctx.stroke();
+      ctx.restore();
+    }
+  });
+})();
+
+/* ---- C16：circumference -> sine。展开的蓝线抬到通道 2 并开始波动，其他通道逐条剥离。 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var T0 = 36.851, PRE = 0.25, FPS = 24;
+  function eOut(u) { u = T.clamp01(u); return 1 - Math.pow(1 - u, 3); }
+  function eIo(u) { u = T.clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
+  function stroke(ctx, pts, col, w, alpha) {
+    ctx.save(); ctx.globalAlpha = alpha; ctx.strokeStyle = T.css(col); ctx.lineWidth = w;
+    ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+    for (var i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.stroke(); ctx.restore();
+  }
+  PV.addCut(T0, PRE, 0.7, function (ctx, t, cut) {
+    function waves(i) {
+      if (i === 2) return t < T0 + 0.35 ? null : {};
+      var ts = T0 + 0.25 + Math.abs(i - 2) * 2 / FPS;
+      if (t < ts) return null;
+      var u = eOut((t - ts) / 0.2);
+      return { y0: 240 + (100 + i * 70 - 240) * u, amp: 22 * u, a: u };
+    }
+    PV.reveal(ctx, t,
+      function (c) { PV.shotCircumference(c, t, t - 34.543, (t - 34.543) / (36.851 - 34.543), { line: t < T0 - PRE }); },
+      function (c) { PV.shotSine(c, t, Math.max(0, t - T0), T.clamp01((t - T0) / (38.236 - T0)), waves); },
+      PV.radial(600, 440, T0 - 0.05, 1500),
+      { region: [405, 44, 1164, 604], cell: [8, 16], dur: 0.09 });
+    if (t < T0 + 0.35) {
+      var lift = T.clamp01((t - (T0 - PRE)) / 0.2);
+      var u = t >= T0 ? eIo((t - T0) / 0.35) : 0, fr = 0.02 * 1.7 * 1.7, pts = [], xs, x0, x1, y1;
+      for (xs = 0; xs < 720; xs += 3) {
+        x0 = 440 + xs * 678 / 720; x1 = 430 + xs;
+        y1 = 240 + 22 * Math.sin((xs + t * 180) * fr);
+        pts.push([x0 + (x1 - x0) * u, 440 + (y1 - 440) * u]);
+      }
+      if (lift > 0) stroke(ctx, pts, T.mix(T.ME_TEXT, 1.0), 9, 0.47 * lift);
+      stroke(ctx, pts, [120 + 100 * 0.4 * lift * (1 - u), 148 + 80 * 0.4 * lift * (1 - u), 255], 3, 1);
+    }
+  });
+})();

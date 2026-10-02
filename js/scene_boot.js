@@ -953,20 +953,29 @@
   'use strict';
   var PV = window.PV, T = PV.tui;
   var CX = 600, CY = 240, R = 120, Y = 440;
-  PV.shotCircumference = function (ctx, t, lt, u) {
+  PV.shotCircumference = function (ctx, t, lt, u, opts) {
+    opts = opts || {};
     PV.ops = ['2*PI*R', 'UNROLL', 'INTEGRATE', 'SUM', 'GIVE'];
     T.box(ctx, 404, 56, 1164, 604, 'circumference(me)', 0.5, T.UI, t);
-    var g = T.ease(u * 1.2), arc = g * Math.PI * 2, k, a;
-    for (k = 0; k < 120; k++) {
-      a = k / 120 * Math.PI * 2;
-      if (a > arc) break;
-      T.fill(ctx, CX + R * Math.cos(a) - 1, CY + R * Math.sin(a) - 1, CX + R * Math.cos(a) + 2, CY + R * Math.sin(a) + 2, T.mix(T.ME_TEXT, 0.9), 1);
+    /* 镜头自带 0.4s 前导：'新场景的时钟等圆落地'（实测参考 35.00s 时 g=ease(0.0299)=0.086） */
+    var g = T.ease(T.clamp01((lt - 0.4) / ((36.851 - 34.543) - 0.4))), arc = (1 - g) * Math.PI * 2, k, a;
+    if (opts.dots !== false) {
+      for (k = 0; k < 120; k++) {
+        a = k / 120 * Math.PI * 2;
+        if (a > arc) break;
+        /* 圆随展开淡出（实测参考：圆区亮点 1239->960->381->84->0，正比于 1-g） */
+        T.fill(ctx, CX + R * Math.cos(a) - 1, CY + R * Math.sin(a) - 1, CX + R * Math.cos(a) + 2, CY + R * Math.sin(a) + 2, T.mix(T.ME_TEXT, 0.9), 1);
+      }
     }
-    var L = 2 * Math.PI * R * g;
-    T.fill(ctx, 440, Y - 1, 440 + L * 0.9, Y + 2, T.mix(T.ME_TEXT, 1.0), 1);
-    for (k = 0; k < L * 0.9; k += 40) T.fill(ctx, 440 + k, Y - 6, 440 + k + 1, Y + 7, T.UI, 0.6);
-    T.textPIL(ctx, 'C = 2πr = ' + (2 * Math.PI * g).toFixed(5) + ' r', 440, 470, T.ui(0.95), 22);
-    T.textMono(ctx, T.decode('given to: you', lt - 0.5, PV.rngFor(t, 7919), 45, 0.12, 0), 440, 510, T.ui(0.75), 20);
+    if (opts.line !== false) {
+      var L = 2 * Math.PI * R * g;
+      T.fill(ctx, 440, Y - 1, 440 + L * 0.9, Y + 2, T.mix(T.ME_TEXT, 1.0), 1);
+      for (k = 0; k < L * 0.9; k += 40) T.fill(ctx, 440 + k, Y - 6, 440 + k + 1, Y + 7, T.UI, 0.6);
+    }
+    if (opts.labels !== false) {
+      T.textPIL(ctx, 'C = 2πr = ' + (2 * Math.PI * g).toFixed(5) + ' r', 440, 470, T.ui(0.95), 22);
+      T.textMono(ctx, T.decode('given to: you', lt - 0.5, PV.rngFor(t, 7919), 45, 0.12, 0), 440, 510, T.ui(0.75), 20);
+    }
   };
 })();
 
@@ -979,18 +988,28 @@
     for (x = 0; x < 720; x += 3) out.push([430 + x, y0 + amp * Math.sin((x + t * 180) * fr)]);
     return out;
   }
-  PV.shotSine = function (ctx, t, lt, u) {
+  PV.shotSine = function (ctx, t, lt, u, wavesHook) {
     PV.ops = ['POS', 'SIN', 'COS', 'FREQ', 'CONCAT'];
     T.box(ctx, 404, 56, 1164, 604, 'positional code  sin(pos / 10000^(2i/d))', 0.5, T.UI, t);
     for (var i = 0; i < 7; i++) {
-      var y0 = 100 + i * 70, pts = sineWave(i, t, y0, 22), j;
+      var y0 = 100 + i * 70, amp = 22, al = 1, w;
+      if (wavesHook) {
+        w = wavesHook(i);
+        if (!w) continue;                       /* C16：各通道逐条剥离入场 */
+        if (w.y0 !== undefined) y0 = w.y0;
+        if (w.amp !== undefined) amp = w.amp;
+        if (w.a !== undefined) al = w.a;
+        if (al <= 0.001) continue;
+      }
+      var pts = sineWave(i, t, y0, amp), j;
       ctx.save();
+      ctx.globalAlpha = T.clamp01(al);
       ctx.strokeStyle = T.css(i === 2 ? T.mix(T.ME_TEXT, 0.9) : T.mix(T.UI, 0.55));
       ctx.lineWidth = i === 2 ? 2 : 1;
       ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
       for (j = 1; j < pts.length; j++) ctx.lineTo(pts[j][0], pts[j][1]);
       ctx.stroke(); ctx.restore();
-      T.textMono(ctx, 'i=' + i, 1120, y0 - 8, T.ui(0.5), 12);
+      if (!wavesHook || al > 0.6) T.textMono(ctx, 'i=' + i, 1120, y0 - 8, T.ui(0.5), 12);
     }
   };
 })();
