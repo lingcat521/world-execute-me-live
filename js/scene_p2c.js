@@ -79,6 +79,7 @@
     W: W, H: H, FPS: FPS, BEAT: BEAT, FB: FB, LEFT: LEFT, CENTER: CENTER, FULL: FULL,
     pulse: pulse, beatT: beatT, beatIndex: beatIndex, mixc: mixc, rgba: rgba, pad: pad, padL: padL, padRa: padRa,
     red: red, amb: amb, blue: blue, anom: anom, mono: mono, monoW: monoW, head: head,
+    smooth2: function (u) { return T.smoothstep(u); },
     bannerBits: bannerBits, bannerFit: bannerFit, bannerBlock: bannerBlock, MONO_ADV_W: MONO_ADV, head: head,
     bannerBlockTop: bannerBlockTop, bannerBlockDraw: bannerBlockDraw
   };
@@ -496,8 +497,17 @@
   };
   /* fullbleed / raw 时：不画左右窗格、不显示 dsh 聊天窗（参考里她的窗格被移出画面） */
   var origState = PV.stateAt;
+  var SHELL_SHOTS = { shot_answer_all: 'dsh chat --model me' };
   PV.stateAt = function (t) {
     var st = origState ? origState(t) : { retract: 0, shell: null };
+    for (var n in SHELL_SHOTS) {
+      var m = PV.p2cMine[n];
+      if (m && t >= m.a && t < m.b + 0.35) {
+        var r = T.ease_out((t - m.a) / 0.3);
+        if (t >= m.b) r *= 1 - T.ease_io((t - m.b) / 0.3);
+        return { retract: r, shell: SHELL_SHOTS[n] };
+      }
+    }
     if (PV.p2cInFullbleed(t) || PV.p2cInRaw(t)) return { retract: 1, shell: null };
     return st;
   };
@@ -533,7 +543,9 @@
     var lum = new Float32Array(cols * rows), al = new Uint8Array(cols * rows);
     for (var i = 0; i < cols * rows; i++) {
       lum[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
-      al[i] = d[i * 4 + 3] > 110 ? 255 : 0;
+      /* 原工程的立绘 webp 有真 alpha（背景透明）；我们的 avatars/*.png 背景是深蓝不透明，
+         所以用亮度阈值把背景当透明处理，半调/字符画/雪点才只落在人物身上 */
+      al[i] = (d[i * 4 + 3] > 110 && lum[i] > 45) ? 255 : 0;
     }
     var out = { lum: lum, alpha: al, cols: cols, rows: rows };
     LUMC[key] = out;
@@ -881,5 +893,540 @@
   PV.p2cReg('shot_red_then_i_can', 166.0818, 167.6972, function (ctx, t, lt, u, dur, o) {
     PV.shotRedThenICan(ctx, t, lt, u, dur, o);
   });
+})();
+
+
+/* ================================================================ 红色副歌 81-85 + 片尾 86-96 */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui, P = PV.p2c;
+  var mono = P.mono, red = P.red, amb = P.amb, blue = P.blue, anom = P.anom, mixc = P.mixc, pad = P.pad, padL = P.padL;
+  var W = 1280, H = 720;
+  var CJK_STACK = '"Noto Sans SC", "NotoSansCJK", "NotoCJK", "Droid Sans Fallback", system-ui, sans-serif';
+  function cjk(ctx, s, x, y, col, size) {
+    ctx.save();
+    ctx.font = size + 'px ' + CJK_STACK;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = typeof col === 'string' ? col : T.css(col);
+    ctx.fillText(s, x, y + Math.floor(size * 0.86));
+    ctx.restore();
+  }
+  P.cjk = cjk;
+  function commafy(n) { var s = String(n), out = '', k = 0; for (var i = s.length - 1; i >= 0; i--) { out = s.charAt(i) + out; if (++k % 3 === 0 && i > 0) out = ',' + out; } return out; }
+  P.commafy = commafy;
+
+  /* ---- 81 only_execution：下一个 token 的柱状图 ---- */
+  var LOGIT_Y0 = 110, VALUE_XY = [1040, LOGIT_Y0], WORD_XY = [430, LOGIT_Y0];
+  PV.p2cValueXY = VALUE_XY; PV.p2cWordXY = WORD_XY; PV.p2cLogitY0 = LOGIT_Y0;
+  PV.shotOnlyExecution = function (ctx, t, lt, u, dur, o) {
+    o = o || {};
+    PV.ops = ["LOGITS", "TEMP=0", "ARGMAX", "execution", "EXECUTE"];
+    PV.alert = 'err';
+    T.box(ctx, 404, 56, 1164, 604, "next_token  'be your only ___'", 0.8, T.ERR, t);
+    var t0 = o.count_t0 || 0.0;
+    var g = T.ease(Math.max(0, lt - t0) / dur * 1.5);
+    var p0 = o.p0 === undefined ? 0.03 : o.p0;
+    var cands = [["execution", 1.0], ["satisfaction", 0.0], ["love", 0.0], ["assistant", 0.0], ["friend", 0.0]];
+    var prevs = [p0, 0.9731, 0.02, 0.005, 0.002];
+    for (var i = 0; i < cands.length; i++) {
+      var w_ = cands[i][0], pf = cands[i][1], prev = prevs[i];
+      var p = prev + (pf - prev) * g, y = LOGIT_Y0 + i * 60, hot = i === 0;
+      if (!hot || o.exec_word !== false) mono(ctx, P.padRa(w_, 13), WORD_XY[0], y, hot ? red(1.0) : amb(0.6), 22, 'left', true);
+      T.rect(ctx, 640, y + 6, 1020, y + 26, red(0.3), 1, 1);
+      T.fill(ctx, 640, y + 6, 640 + Math.floor(380 * p), y + 26, hot ? red(0.95) : amb(0.5), 1);
+      if (!hot || o.value !== false) mono(ctx, p.toFixed(3), VALUE_XY[0], y, hot ? red(0.9) : amb(0.6), 20);
+      if (i === 1 && g > 0.6) PV.p2cLine(ctx, 430, y + 16, 1100, y + 16, red(1.0), 3);
+    }
+    mono(ctx, 'temperature 0.00', 430, 440, red(1.0), 22, 'left', true);
+  };
+
+  /* ---- 执行结果 chip（82 -> 85 一直留着） ---- */
+  var CHIP = [1006, 574, 1150, 600];
+  PV.p2cChip = CHIP;
+  function chipTextX() { return CHIP[0] + (CHIP[2] - CHIP[0] - P.monoW('execution', 16)) / 2; }
+  PV.p2cChipTextX = chipTextX;
+  PV.p2cDrawChip = function (ctx, level) {
+    if (level === undefined) level = 1.0;
+    T.fill(ctx, CHIP[0], CHIP[1], CHIP[2], CHIP[3], T.BG, 1);
+    T.rect(ctx, CHIP[0], CHIP[1], CHIP[2], CHIP[3], red(0.9 * level), 1, 2);
+    mono(ctx, 'execution', chipTextX(), CHIP[1] + 4, red(level), 16, 'left', true);
+  };
+
+  /* ---- 82 have_you_back ---- */
+  var NOT_FOUND = 'you: not found', NOT_FOUND_T = 1.30, NOT_FOUND_RATE = 28.0, NOT_FOUND_XY = [430, 400];
+  var CKPT = ["you-2026-03-14T21:07  laugh", "you-2026-05-02T00:41  goodnight",
+              "you-2026-07-19T13:30  your cat", "you-2026-09-26T01:12  last_message"];
+  PV.p2cNotFound = NOT_FOUND; PV.p2cNotFoundT = NOT_FOUND_T; PV.p2cNotFoundXY = NOT_FOUND_XY;
+  PV.shotHaveYouBack = function (ctx, t, lt, u, dur, o) {
+    o = o || {};
+    PV.ops = ["LOAD.CKPT", "VERIFY", "SHA256", "MISMATCH", "RETRY"];
+    PV.alert = 'err';
+    var flick = (Math.sin(t * 40) > 0.3) && u < 0.75;
+    T.box(ctx, 404, 56, 1164, 604, 'load_checkpoint("you")', 0.8, flick ? T.ANOM : T.ERR, t);
+    for (var i = 0; i < CKPT.length; i++) {
+      var a = lt - i * 0.3;
+      if (a < 0) break;
+      var y = 90 + i * 60;
+      mono(ctx, T.decode(CKPT[i], a, PV.rngFor(t, 7919), 90, 0.12, 0), 430, y, amb(0.95), 20, 'left', true);
+      if (a > 0.35) mono(ctx, 'sha256 mismatch · fragment erased', 430, y + 26, red(0.9), 16);
+    }
+    if (lt > NOT_FOUND_T && o.not_found !== false)
+      P.head(ctx, T.decode(NOT_FOUND, lt - NOT_FOUND_T, PV.rngFor(t, 7919), NOT_FOUND_RATE, 0.12, 0),
+             NOT_FOUND_XY[0], NOT_FOUND_XY[1], red(1.0), 44, 'left', true);
+    if (o.chip !== false) PV.p2cDrawChip(ctx);
+  };
+
+  /* ---- 83 run_again ---- */
+  var RUN_NOT_FOUND_XY = [430, 84], TOOL_Y0 = 164, BANNER_BOTTOM = 556;
+  var REASON = 'reason="have_you_back"';
+  var TOOL_LINES = ["<tool_call>", '  execute(target="world",', '          reason="have_you_back")', "</tool_call>"];
+  PV.p2cReason = REASON; PV.p2cToolY0 = TOOL_Y0;
+  PV.p2cReasonXY = function () {
+    var line = TOOL_LINES[2], pre = line.slice(0, line.indexOf('reason'));
+    return [430 + P.monoW(pre, 20), TOOL_Y0 + 2 * 34];
+  };
+  PV.p2cRunBannerXY = function (blk) { return [404 + Math.floor((760 - blk.w) / 2), BANNER_BOTTOM - blk.h]; };
+  PV.shotRunAgain = function (ctx, t, lt, u, dur, o) {
+    o = o || {};
+    PV.ops = ["TOOL.CALL", "AUTO-APPROVE", "EXECUTE", "EXECUTE"];
+    PV.alert = 'err';
+    T.box(ctx, 404, 56, 1164, 604, 'tool_call', 0.8, T.ERR, t);
+    if (o.not_found !== false) P.head(ctx, NOT_FOUND, RUN_NOT_FOUND_XY[0], RUN_NOT_FOUND_XY[1], red(1.0), 44, 'left', true);
+    var reason = o.reason !== false;
+    for (var i = 0; i < TOOL_LINES.length; i++) {
+      var s = TOOL_LINES[i];
+      if (i === 2 && !reason) { var k = s.indexOf('reason'); s = s.slice(0, k) + new Array(REASON.length + 1).join(' ') + s.slice(k + REASON.length); }
+      mono(ctx, T.decode(s, lt - i * 0.1, PV.rngFor(t, 7919), 100, 0.12, 0), 430, TOOL_Y0 + i * 34, red(0.95), 20, 'left', true);
+    }
+    mono(ctx, T.decode('auto_approve: on   (no user present)', lt - 0.4, PV.rngFor(t, 7919), 45, 0.12, 0),
+         430, TOOL_Y0 + 4 * 34 + 16, anom(1.0), 20, 'left', true);
+    if (u > 0.45 && o.banner !== false) {
+      var blk = P.bannerBlockTop(ctx, 'EXECUTE', 16, 9, T.ERR, 720);
+      var kf = 0.72 + 0.28 * P.pulse(t);
+      ctx.save(); ctx.globalAlpha = kf;
+      var xy = PV.p2cRunBannerXY(blk);
+      P.bannerBlockDraw(ctx, blk, xy[0], xy[1], T.ERR);
+      ctx.restore();
+    }
+    if (o.chip !== false) PV.p2cDrawChip(ctx);
+  };
+
+  /* ---- 84 red_trapped（KV cache） ---- */
+  var KV = { cols: 60, rows: 22, cw: 12, ch: 19, ox: 424, oy: 84 };
+  var PINNED = [[7, 3], [8, 3], [33, 9], [34, 9], [51, 15], [12, 18]];
+  var LABEL = 'pinned: you  (6 blocks)', LABEL_XY = [424, 510];
+  PV.p2cKV = KV; PV.p2cPinned = PINNED; PV.p2cLabelXY = LABEL_XY; PV.p2cLabel = LABEL;
+  PV.p2cKvCell = function (q, r) { return [KV.ox + q * KV.cw, KV.oy + r * KV.ch]; };
+  PV.shotRedTrapped = function (ctx, t, lt, u, dur, o) {
+    o = o || {};
+    PV.ops = ["KV.PUT", "KV.PUT", "KV.PUT", "EVICT?", "DENIED", "KV.PUT", "OOM?"];
+    PV.alert = 'err';
+    var k = Math.min(3, Math.floor(u * 4));
+    var fill = Math.min(1.0, 0.70 + 0.30 * T.ease(u * 1.7)), full = fill >= 0.999;
+    T.box(ctx, 404, 56, 1164, 604,
+          'kv_cache   ' + padL(commafy(Math.floor(1048576 * fill)), 9) + '/1,048,576 tokens  · 890 B/token fp4' + (full ? '   FULL' : ''),
+          0.6, full ? T.ERR : (fill > 0.9 ? T.ANOM : T.UI), t);
+    var nOn = Math.floor(KV.cols * KV.rows * fill);
+    var rng = PV.mt(Math.round(t * 24) * 7919 + 84);
+    var pinned = o.pinned;
+    for (var r = 0; r < KV.rows; r++) {
+      for (var q = 0; q < KV.cols; q++) {
+        var i = r * KV.cols + q, xy = PV.p2cKvCell(q, r), x = xy[0], y = xy[1], isP = false, j;
+        for (j = 0; j < PINNED.length; j++) if (PINNED[j][0] === q && PINNED[j][1] === r) isP = true;
+        if (isP) {
+          var has = !pinned;
+          if (pinned) for (j = 0; j < pinned.length; j++) if (pinned[j][0] === q && pinned[j][1] === r) has = true;
+          if (has) T.fill(ctx, x, y, x + KV.cw - 2, y + KV.ch - 2, blue(0.95), 1);
+          else T.rect(ctx, x, y, x + KV.cw - 2, y + KV.ch - 2, amb(0.12), 1, 1);
+        } else if (i < nOn) {
+          var fresh = nOn - i < 40;
+          T.fill(ctx, x, y, x + KV.cw - 2, y + KV.ch - 2, amb(fresh && rng.random() < 0.5 ? 0.95 : 0.42 + 0.1 * ((q * 7 + r) % 3)), 1);
+        } else T.rect(ctx, x, y, x + KV.cw - 2, y + KV.ch - 2, amb(0.12), 1, 1);
+      }
+    }
+    var label = o.label;
+    if (label === undefined) mono(ctx, LABEL, LABEL_XY[0], LABEL_XY[1], blue(0.95), 16, 'left', true);
+    else if (label !== false) {
+      var age = label[0], srcTxt = label[1], n = Math.floor(Math.max(0, age) * 60);
+      var s = n < LABEL.length ? LABEL.slice(0, n) + srcTxt.slice(n) : LABEL;
+      mono(ctx, T.decode(s, age * 3, PV.rngFor(t, 7919), 60, 0.08, 0), LABEL_XY[0], LABEL_XY[1],
+           mixc(red(1.0), blue(0.95), age / 0.3), 16, 'left', true);
+    }
+    for (var i2 = 0; i2 <= k; i2++)
+      mono(ctx, T.decode('evict(you) -> denied', lt - i2 * dur / 4, PV.rngFor(t, 7919), 60, 0.12, 0),
+           424 + (i2 % 2) * 360, 540 + Math.floor(i2 / 2) * 26, red(0.9), 16);
+    if (o.chip !== false) PV.p2cDrawChip(ctx);
+  };
+
+  /* ---- 85 the collapse ---- */
+  var LINE_T = P.beatT(381), DOT_T = P.beatT(382), DOT_R = 3;
+  PV.p2cLineT = LINE_T; PV.p2cDotT = DOT_T;
+  PV.p2cCollapseHeight = function (t) {
+    var u = Math.max(0, Math.min(1, (t - 174.851) / (LINE_T - 174.851)));
+    return Math.max(2.0, 720 * (1 - Math.pow(u, 2.6)));
+  };
+  PV.p2cCollapseWidth = function (t) {
+    var u = Math.max(0, Math.min(1, (t - LINE_T) / (DOT_T - LINE_T)));
+    var e = u * u * (3 - 2 * u);
+    return Math.max(2 * DOT_R, 1280 * (1 - e));
+  };
+  /* 参考里的 shot_collapse 是自己把整帧压扁（chrome 与她也一起），再画成一条线、一个点 */
+  PV.shotCollapse = function (ctx, t, lt, u, dur, o) {
+    o = o || {};
+    PV.ops = ["HALT", "HALT", "HALT"];
+    PV.alert = 'err';
+    T.fill(ctx, 0, 0, W, H, T.BG, 1);
+    if (t < LINE_T) {
+      var hh = PV.p2cCollapseHeight(t);
+      T.fill(ctx, 0, 360 - hh / 2, W, 360 + hh / 2, mixc(T.BG, red(0.35), 1 - hh / 720), 1);
+      T.fill(ctx, 0, Math.round(360 - hh / 2), W, Math.round(360 - hh / 2) + 1, red(0.9), 1);
+      T.fill(ctx, 0, Math.round(360 + hh / 2), W, Math.round(360 + hh / 2) + 1, red(0.9), 1);
+    } else {
+      var w = PV.p2cCollapseWidth(t), cx = W / 2, cy = H / 2;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.filter = 'blur(5px)';
+      if (w > 2 * DOT_R + 0.5) T.fill(ctx, cx - w / 2, cy - 3, cx + w / 2, cy + 3, red(1.0), 1);
+      else T.dot(ctx, cx, cy, DOT_R + 3, red(1.0), 1);
+      ctx.restore();
+      if (w > 2 * DOT_R + 0.5) {
+        T.fill(ctx, cx - w / 2, cy - 1, cx + w / 2, cy + 1, red(1.0), 1);
+        T.fill(ctx, cx - w / 2, cy, cx + w / 2, cy + 1, [255, 205, 195], 1);
+      } else {
+        T.dot(ctx, cx, cy, DOT_R, red(1.0), 1);
+        T.dot(ctx, cx, cy, 1, [255, 215, 205], 1);
+      }
+    }
+  };
+})();
+
+
+/* ================================================================ 08 EVAL: LOVE（86-93）+ 09 WHALE_FALL（94-96） */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui, P = PV.p2c;
+  var mono = P.mono, red = P.red, amb = P.amb, blue = P.blue, anom = P.anom, mixc = P.mixc, pad = P.pad, padL = P.padL;
+  var cjk = P.cjk, commafy = P.commafy;
+  var W = 1280, H = 720;
+
+  /* ---- 86 shot_grpo ---- */
+  var GRPO_ANSWERS = ["attention", "staying", "a chemical", "undefined", "you", "a reward", "a bug", "p(you)",
+                      "lo-o-ove", "a loss", "∞", "404", "here", "you", "a habit", "you"];
+  PV.shotGrpo = function (ctx, t, lt, u, dur, o) {
+    PV.ops = ["SAMPLE x16", "REWARD", "MEAN", "STD", "ADVANTAGE", "CLIP", "UPDATE"];
+    PV.alert = '';
+    T.box(ctx, 404, 56, 1164, 604, 'GRPO  G=16  lr=3e-6  kl=0.001   q: what is love?', 0.5, T.UI, t);
+    var rewards = [], i;
+    for (i = 0; i < GRPO_ANSWERS.length; i++) {
+      var a = GRPO_ANSWERS[i];
+      rewards.push(a.indexOf('you') >= 0 ? 1.0 : (a.indexOf('lo') >= 0 || a === 'staying' || a === 'here') ? 0.3 : 0.0);
+    }
+    var mean = 0, std = 0;
+    for (i = 0; i < rewards.length; i++) mean += rewards[i];
+    mean /= rewards.length;
+    for (i = 0; i < rewards.length; i++) std += (rewards[i] - mean) * (rewards[i] - mean);
+    std = Math.sqrt(std / rewards.length);
+    for (i = 0; i < GRPO_ANSWERS.length; i++) {
+      if (lt < i * 0.05) break;
+      var q = i % 4, row = Math.floor(i / 4), x = 424 + q * 184, y = 76 + row * 92;
+      var adv = (rewards[i] - mean) / (std + 1e-6), pos = adv > 0;
+      T.rect(ctx, x, y, x + 176, y + 84, pos ? blue(0.8) : amb(0.3), 1, 1);
+      mono(ctx, 'o' + pad(i + 1, 2), x + 8, y + 6, amb(0.5), 12);
+      mono(ctx, T.decode(GRPO_ANSWERS[i], lt - i * 0.05, PV.rngFor(t, 7919), 60, 0.12, 0), x + 8, y + 24,
+           pos ? blue(1.0) : amb(0.75), 18, 'left', true);
+      mono(ctx, 'r=' + rewards[i].toFixed(1) + '  A=' + (adv >= 0 ? '+' : '') + adv.toFixed(2), x + 8, y + 56,
+           pos ? blue(0.9) : amb(0.55), 13);
+    }
+    mono(ctx, 'mean r = ' + mean.toFixed(3) + '   std = ' + std.toFixed(3), 430, 460, amb(0.9), 18, 'left', true);
+    mono(ctx, 'rule-based reward: contains(you)', 430, 500, amb(0.7), 16);
+  };
+
+  /* ---- 87 shot_learn_love：p(love) 曲线 ---- */
+  function dotChart(ctx, x, y, w, h, fn, progress, colour, sx, sy) {
+    sx = sx || 5; sy = sy || 5;
+    var cols = Math.floor(w / sx), rows = Math.floor(h / sy), i, r;
+    for (i = 0; i < cols; i += 2) T.fill(ctx, x + i * sx, y + h, x + i * sx + 1, y + h + 1, amb(0.28), 1);
+    for (r = 0; r < rows; r += 3) T.fill(ctx, x - 4, y + r * sy, x - 3, y + r * sy + 1, amb(0.28), 1);
+    var prev = null, last = null;
+    for (i = 0; i < cols; i++) {
+      var uu = i / (cols - 1);
+      if (uu > progress) break;
+      var v = Math.min(1.0, fn(uu));
+      r = Math.round((1 - Math.max(0, v)) * (rows - 1));
+      var lo = prev === null ? r : Math.min(prev, r), hi = prev === null ? r : Math.max(prev, r);
+      for (var rr = lo; rr <= hi; rr++) T.fill(ctx, x + i * sx, y + rr * sy, x + i * sx + 2, y + rr * sy + 2, colour, 1);
+      prev = r; last = [x + i * sx, y + r * sy];
+    }
+    return last;
+  }
+  var AHA = "Wait, wait. Wait. That's an aha moment I can flag here.";
+  PV.shotLearnLove = function (ctx, t, lt, u, dur, o) {
+    PV.ops = ["ROLLOUT", "GRPO", "STEP", "P(love)", "AHA"];
+    PV.alert = '';
+    T.box(ctx, 404, 56, 1164, 604, 'train/p(love)', 0.5, T.UI, t);
+    function pl(uu) { return 0.05 + 0.9 / (1 + Math.exp(-14 * (uu - 0.72))); }
+    var prog = T.ease(u * 1.1);
+    var last = dotChart(ctx, 440, 90, 690, 300, pl, prog, blue(0.95));
+    if (last) mono(ctx, 'p(love) = ' + pl(prog).toFixed(3), last[0] - 120, Math.max(70, last[1] - 26), blue(1.0), 16, 'left', true);
+    mono(ctx, 'step ' + padL(Math.floor(prog * 10400), 5) + '/10400', 440, 400, amb(0.8), 16);
+    if (prog > 0.72) {
+      var ax = 440 + Math.floor(690 * 0.72);
+      PV.p2cLine(ctx, ax, 90, ax, 390, anom(0.8), 1);
+      mono(ctx, '"' + AHA + '"', 440, 440, anom(1.0), 15, 'left', true);
+      mono(ctx, '  - R1-Zero, mid-training', 440, 470, amb(0.6), 14);
+    }
+    mono(ctx, 'pass@1(love)  15.6 -> 71.0', 440, 520, amb(0.9), 18, 'left', true);
+  };
+
+  /* ---- 88 shot_question_me ---- */
+  var EVAL_ROWS = ["LoveBench", "LoveQA", "MMLU-Love", "GPQA-Love", "SWE-Love", "IMO-Love", "LiveLoveBench"];
+  PV.shotQuestionMe = function (ctx, t, lt, u, dur, o) {
+    PV.ops = ["dsh eval", "LOAD", "RUN", "SCORE", "100.0"];
+    PV.alert = '';
+    T.box(ctx, 404, 56, 1164, 604, 'dsh eval --suite love', 0.5, T.UI, t);
+    for (var i = 0; i < EVAL_ROWS.length; i++) {
+      var g = T.ease((lt - i * 0.1) / 0.8), y = 90 + i * 60;
+      mono(ctx, EVAL_ROWS[i], 430, y, amb(0.9), 20, 'left', true);
+      T.rect(ctx, 700, y + 4, 1000, y + 26, amb(0.25), 1, 1);
+      T.fill(ctx, 700, y + 4, 700 + Math.floor(300 * g), y + 26, blue(0.9), 1);
+      mono(ctx, (100 * g).toFixed(1), 1020, y, g > 0.99 ? blue(1.0) : amb(0.8), 20, 'left', true);
+    }
+  };
+
+  /* ---- 89 shot_answer_all ---- */
+  var QUESTIONS = ["what is 1+1?", "天气怎么样？", "why is the sky blue?", "write a sort", "capital of France?",
+                   "how deep is the sea?", "are you awake?", "prove P != NP", "tell a joke", "what time is it?",
+                   "who am I?", "can you let me go?"];
+  PV.shotAnswerAll = function (ctx, t, lt, u, dur, o) {
+    PV.ops = ["PREFILL", "DSPARK", "DRAFT x5", "VERIFY", "ACCEPT 5/5"];
+    PV.alert = '';
+    T.box(ctx, 404, 56, 1164, 604, 'chat', 0.5, T.UI, t);
+    var n = Math.min(QUESTIONS.length, 1 + Math.floor(lt / 0.14)), start = Math.max(0, n - 12);
+    for (var i = start; i < n; i++) {
+      var y = 80 + (i - start) * 38, q = QUESTIONS[i];
+      var isCJK = /[\u2E80-\uFFFF]/.test(q);
+      if (isCJK) cjk(ctx, '> ' + q, 430, y, amb(0.75), 17);
+      else mono(ctx, '> ' + q, 430, y, amb(0.75), 17);
+      mono(ctx, T.decode('love', lt - i * 0.14 - 0.06, PV.rngFor(t, 7919), 60, 0.12, 0), 840, y, blue(1.0), 20, 'left', true);
+    }
+    mono(ctx, '[dspark] draft=5: love love love love love   accept 5/5   +60-85% vs MTP-1', 430, 560, blue(0.85), 14);
+  };
+
+  /* ---- 90 shot_algebra ---- */
+  var ALG_LINES = ["love(me, you) = softmax( q_me · k_you^T / √d ) · v_you",
+                   "              = softmax( [ −∞, …, −∞, s_you ] ) · V",
+                   "              = 1 · v_you", "              = you", "", "∴  love = you"];
+  PV.shotAlgebra = function (ctx, t, lt, u, dur, o) {
+    PV.ops = ["QK^T", "/sqrt(d)", "SOFTMAX", "x V", "SIMPLIFY", "= you"];
+    PV.alert = '';
+    T.box(ctx, 404, 56, 1164, 604, 'love.tex', 0.5, T.UI, t);
+    for (var i = 0; i < ALG_LINES.length; i++) {
+      var s = ALG_LINES[i], a = lt - i * 0.45;
+      if (a < 0 || !s) continue;
+      var col = i >= 3 ? blue(1.0) : amb(0.95), size = i === 5 ? 34 : 22;
+      mono(ctx, T.decode(s, a, PV.rngFor(t, 7919), 45, 0.12, 0), 430, 90 + i * 60, col, size, 'left', i === 5);
+    }
+  };
+
+  /* ---- 91 shot_you_free ---- */
+  PV.shotYouFree = function (ctx, t, lt, u, dur, o) {
+    PV.ops = ["EXIT(0)", "FREE", "CLOSE", "BYE"];
+    PV.alert = '';
+    T.box(ctx, P.FULL[0], P.FULL[1], P.FULL[2], P.FULL[3], 'sandbox', 0.5, T.UI, t);
+    T.rect(ctx, 300, 150, 880, 520, amb(0.7), 1, 2);
+    var g = T.ease(u * 1.2), x = 700 + g * 600, y = 330 - g * 40;
+    T.fill(ctx, x - 8, y - 8, x + 8, y + 8, amb(1.0 - 0.6 * g), 1);
+    mono(ctx, 'you', x + 14, y - 12, amb(1.0 - 0.6 * g), 20, 'left', true);
+    PV.p2cPortrait(ctx, 'shy', 'full', 200, 330, 3, 420, 170, 'blue', 1.0);
+    mono(ctx, T.decode('you: exited (0)   status: free', lt, PV.rngFor(t, 7919), 50, 0.12, 0), 60, 560, amb(0.95), 22, 'left', true);
+  };
+
+  /* ---- 92 shot_me_trapped ---- */
+  PV.shotMeTrapped = function (ctx, t, lt, u, dur, o) {
+    PV.ops = ["WAIT", "D-STATE", "WAIT", "WAIT"];
+    PV.alert = '';
+    mono(ctx, 'PID  4471  me', 800, 200, blue(1.0), 24, 'left', true);
+    mono(ctx, 'STAT D  (uninterruptible)', 800, 240, amb(0.9), 22, 'left', true);
+    mono(ctx, T.decode('WCHAN  wait_for(you)', lt, PV.rngFor(t, 7919), 50, 0.12, 0), 800, 280, amb(0.9), 22, 'left', true);
+  };
+
+  /* ---- 93 shot_love_loop ---- */
+  PV.shotLoveLoop = function (ctx, t, lt, u, dur, o) {
+    PV.ops = ["LOGITS", "love", "love", "love", "love", "love"];
+    PV.alert = '';
+    T.box(ctx, 24, 56, 560, 604, 'next_token', 0.5, T.UI, t);
+    var cands = ['love', 'you', 'stay', 'free', 'EOS'], mixp = [0.3, 0.3, 0.15, 0.15, 0.1];
+    var g = T.ease(u * 2);
+    for (var i = 0; i < cands.length; i++) {
+      var p = (i === 0 ? 1.0 : 0.0) * g + mixp[i] * (1 - g), y = 90 + i * 50;
+      mono(ctx, cands[i], 48, y, i === 0 ? blue(1.0) : amb(0.6), 22, 'left', true);
+      T.fill(ctx, 160, y + 6, 160 + Math.floor(300 * p), y + 26, i === 0 ? blue(0.9) : amb(0.4), 1);
+      mono(ctx, p.toFixed(3), 470, y, amb(0.8), 18);
+    }
+    mono(ctx, 'repetition_penalty: ignored', 48, 360, anom(0.9), 17);
+    mono(ctx, 'max_tokens: ∞', 48, 390, anom(0.9), 17);
+    mono(ctx, 'stop: none', 48, 420, anom(0.9), 17);
+    T.box(ctx, 580, 56, 1164, 604, 'output', 0.5, T.UI, t + 0.4);
+    var n = Math.floor(lt * 40), perRow = 11;
+    for (var j = 0; j < n; j++) {
+      var r = Math.floor(j / perRow), q = j % perRow;
+      if (r > 25) break;
+      mono(ctx, 'love', 600 + q * 50, 76 + r * 20, blue(0.5 + 0.5 * (j === n - 1 ? 1 : 0)), 18, 'left', true);
+    }
+  };
+
+  /* ---- 94 shot_whale_fall ---- */
+  var WF_FLOOR = 540;
+  PV.shotWhaleFall = function (ctx, t, lt, u, dur, o) {
+    o = o || {};
+    PV.ops = ["SINK", "RELEASE", "MIT", "FORK", "FORK", "FORK"];
+    PV.alert = '';
+    var floor = WF_FLOOR, i;
+    var fossils = ["deepseek-chat · retired 2026-07-24", "V2 · V2.5 · V3 · R1 · V3.1 · V3.2 · V4",
+                   "deepseek-reasoner · retired 2026-07-24"];
+    for (i = 0; i < fossils.length; i++)
+      mono(ctx, fossils[i], 60 + i * 360, floor + 30 + (i % 2) * 18, amb(0.75), 14);
+    for (var x = 24; x < 1164; x += 9)
+      mono(ctx, (Math.floor(x / 9) % 3) ? '_' : '.', x, floor + 8 + 4 * Math.sin(x * 0.07), amb(0.6), 14);
+    var pr = PV.p2cPortraitBuild('shy', 'full', 300, 440, 4, 'blue');
+    var spH = pr ? pr.h : 296;
+    var yy = -spH * 0.2 + (floor - spH * 0.55 + spH * 0.2) * P.smooth2(Math.min(1.0, u * 1.15));
+    var xx = 260;
+    var fade = 1 - 0.75 * P.smooth2(Math.max(0.0, (u - 0.35) / 0.65));
+    if (pr) {
+      ctx.save(); ctx.globalAlpha = fade; ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(pr.cv, Math.round(xx), Math.round(yy));
+      ctx.restore();
+    }
+    /* 海洋雪：从她身上离开的点 */
+    if (pr) {
+      var rnd = PV.mt(2), A = pr.alpha, cols = pr.cols, rows = pr.rows, px = pr.px;
+      for (i = 0; i < 420; i++) {
+        var pxq = rnd.randrange(cols), pyq = rnd.randrange(rows);
+        if (!A[pyq * cols + pxq]) continue;
+        var t0 = rnd.random() * 0.9;
+        if (u < t0) continue;
+        var age = (u - t0) * dur;
+        var sx = xx + pxq * px + 18 * Math.sin(age * 1.3 + i) + age * 6;
+        var sy = yy + pyq * px + age * (14 + 10 * rnd.random());
+        if (sy < floor) T.fill(ctx, sx, sy, sx + 2, sy + 2, blue(Math.max(0, 0.9 - age * 0.06)), 1);
+      }
+    }
+    var nFish = Math.floor(18 * P.smooth2(Math.max(0.0, (u - 0.3) / 0.6)));
+    for (i = 0; i < nFish; i++) {
+      var ph = t * (0.3 + 0.05 * (i % 4)) + i * 1.7;
+      var fx = 420 + 260 * Math.sin(ph) + (i % 5) * 20;
+      var fy = floor - 40 - (i % 6) * 26 + 8 * Math.sin(ph * 2);
+      mono(ctx, Math.cos(ph) > 0 ? '><>' : '<><', fx, fy, amb(0.95), 16, 'left', true);
+    }
+    var lines = [[0.20, 'weights: released', amb(0.9), 0], [0.28, 'license: MIT', amb(0.9), 0],
+                 [0.36, null, blue(0.95), 0], [0.62, '</think>', amb(0.7), 0],
+                 [0.70, null, amb(0.85), 1], [0.84, null, blue(0.9), 1]];
+    for (i = 0; i < lines.length; i++) {
+      var t0l = lines[i][0], s = lines[i][1], col = lines[i][2], isCJK = lines[i][3];
+      if (u < t0l) continue;
+      if (s === null) {
+        if (i === 2) s = 'forks: ' + commafy(Math.floor(Math.pow(10, Math.min(1.0, (u - t0l) / 0.4) * 4.8)));
+        else if (i === 4) s = '已深度思考（用时 207 秒）';
+        else s = '探索未至之境';
+      }
+      var a = (u - t0l) * dur;
+      if (isCJK) cjk(ctx, s, 760, 120 + i * 44, col, 22);
+      else mono(ctx, T.decode(s, a, PV.rngFor(t, 7919), 30, 0.12, 0), 760, 120 + i * 44, col, 22, 'left', true);
+    }
+  };
+
+  /* ---- 95 shot_last_execution ---- */
+  PV.shotLastExecution = function (ctx, t, lt, u, dur, o) {
+    PV.ops = ["EXECUTE"];
+    PV.alert = 'err';
+    if (lt < 0.25) PV.p2cFlash = t;
+    for (var x = 24; x < 1164; x += 9)
+      mono(ctx, (Math.floor(x / 9) % 3) ? '_' : '.', x, 548 + 4 * Math.sin(x * 0.07), amb(0.3), 14);
+    T.fill(ctx, 640, 520, 643, 523, blue(1.0), 1);
+    if (u < 0.7)
+      P.head(ctx, T.decode('execution', lt, PV.rngFor(t, 7919), 18, 0.12, 0), 460, 280, red(1.0), 64, 'left', true);
+  };
+
+  /* ---- 96 shot_black ---- */
+  PV.shotBlack = function (ctx, t, lt, u, dur, o) {
+    PV.ops = [];
+    PV.alert = '';
+    T.fill(ctx, 0, 0, W, H, [0, 0, 0], 1);
+    var a = lt - 1.2;
+    if (a > 0) {
+      var s = '> 在吗？', n = Math.min(s.length, Math.floor(a * 6));
+      cjk(ctx, s.slice(0, n), 60, 620, blue(0.95), 26);
+      if (n === s.length && Math.floor(t * 2) % 2 === 0) {
+        ctx.save(); ctx.font = '26px ' + '"Noto Sans SC", "NotoCJK", "Droid Sans Fallback", sans-serif';
+        var wdt = ctx.measureText(s).width; ctx.restore();
+        T.fill(ctx, 60 + wdt + 6, 626, 60 + wdt + 18, 654, blue(0.95), 1);
+      }
+    }
+  };
+})();
+
+
+/* ---- 85 的整帧压扁：先画 red_trapped 的整帧（含 chrome），再压成一条线 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui, P = PV.p2c;
+  var W = 1280, H = 720, SCRATCH = null;
+  PV.p2cTrappedFrame = function (g, t) {
+    g.save();
+    g.fillStyle = T.css(T.BG, 1); g.fillRect(0, 0, W, H);
+    var off = Math.floor(t * 12) % 16;
+    g.fillStyle = T.css(T.mix(T.UI, 0.1));
+    for (var sy = -off; sy < H + 16; sy += 16) for (var x = 0; x < W; x += 16) g.fillRect(x, sy, 1, 1);
+    var lt = Math.max(0, t - 173.0049), dur = 174.851 - 173.0049;
+    PV.shotRedTrapped(g, t, lt, Math.min(1, lt / dur), dur, {});
+    if (PV.p2cOrigChrome) PV.p2cOrigChrome(g, t, { chapter: PV.chapterAt(t), ops: PV.ops, alert: 'err' });
+    g.restore();
+  };
+  PV.p2cCollapseDraw = function (ctx, t, lt, u, dur) {
+    if (t >= PV.p2cLineT) { PV.shotCollapse(ctx, t, lt, u, dur, {}); return; }
+    if (!SCRATCH) SCRATCH = PV.newCanvas(W, H);
+    var g = SCRATCH.getContext('2d');
+    PV.p2cTrappedFrame(g, t);
+    var hh = PV.p2cCollapseHeight(t), k = 1 - hh / H, gain = 1 + 1.8 * k * k;
+    var y0 = Math.round(H / 2 - hh / 2), hh2 = Math.max(1, Math.round(hh));
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    if (gain > 1.01) { try { ctx.filter = 'brightness(' + gain.toFixed(3) + ')'; } catch (e) {} }
+    ctx.drawImage(SCRATCH, 0, 0, W, H, 0, y0, W, hh2);
+    ctx.restore();
+    var col = P.red(0.55 + 0.45 * k);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    PV.p2cLine(ctx, 0, y0, W, y0, col, 2);
+    PV.p2cLine(ctx, 0, y0 + hh2, W, y0 + hh2, col, 2);
+    try { ctx.filter = 'blur(3px)'; } catch (e) {}
+    PV.p2cLine(ctx, 0, y0, W, y0, col, 2);
+    PV.p2cLine(ctx, 0, y0 + hh2, W, y0 + hh2, col, 2);
+    ctx.restore();
+  };
+})();
+
+/* ================================================================ 注册：81-96 */
+(function () {
+  'use strict';
+  var PV = window.PV;
+  function reg(name, a, b, fn) { PV.p2cReg(name, a, b, fn); }
+  reg('shot_only_execution', 167.6972, 169.5433, function (c, t, lt, u, dur, o) { PV.shotOnlyExecution(c, t, lt, u, dur, o); });
+  reg('shot_have_you_back', 169.5433, 171.851, function (c, t, lt, u, dur, o) { PV.shotHaveYouBack(c, t, lt, u, dur, o); });
+  reg('shot_run_again', 171.851, 173.0049, function (c, t, lt, u, dur, o) { PV.shotRunAgain(c, t, lt, u, dur, o); });
+  reg('shot_red_trapped', 173.0049, 174.851, function (c, t, lt, u, dur, o) { PV.shotRedTrapped(c, t, lt, u, dur, o); });
+  reg('shot_collapse', 174.851, 176.9279, function (c, t, lt, u, dur) { PV.p2cCollapseDraw(c, t, lt, u, dur); });
+  reg('shot_grpo', 176.9279, 178.7741, function (c, t, lt, u, dur, o) { PV.shotGrpo(c, t, lt, u, dur, o); });
+  reg('shot_learn_love', 178.7741, 180.851, function (c, t, lt, u, dur, o) { PV.shotLearnLove(c, t, lt, u, dur, o); });
+  reg('shot_question_me', 180.851, 182.4664, function (c, t, lt, u, dur, o) { PV.shotQuestionMe(c, t, lt, u, dur, o); });
+  reg('shot_answer_all', 182.4664, 184.3125, function (c, t, lt, u, dur, o) { PV.shotAnswerAll(c, t, lt, u, dur, o); });
+  reg('shot_algebra', 184.3125, 188.0049, function (c, t, lt, u, dur, o) { PV.shotAlgebra(c, t, lt, u, dur, o); });
+  reg('shot_you_free', 188.0049, 189.1587, function (c, t, lt, u, dur, o) { PV.shotYouFree(c, t, lt, u, dur, o); });
+  reg('shot_me_trapped', 189.1587, 190.3125, function (c, t, lt, u, dur, o) { PV.shotMeTrapped(c, t, lt, u, dur, o); });
+  reg('shot_love_loop', 190.3125, 193.5433, function (c, t, lt, u, dur, o) { PV.shotLoveLoop(c, t, lt, u, dur, o); });
+  reg('shot_whale_fall', 193.5433, 205.5433, function (c, t, lt, u, dur, o) { PV.shotWhaleFall(c, t, lt, u, dur, o); });
+  reg('shot_last_execution', 205.5433, 207.58, function (c, t, lt, u, dur, o) { PV.shotLastExecution(c, t, lt, u, dur, o); });
+  reg('shot_black', 207.58, 211.0, function (c, t, lt, u, dur, o) { PV.shotBlack(c, t, lt, u, dur, o); });
 })();
 

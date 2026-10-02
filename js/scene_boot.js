@@ -1333,7 +1333,8 @@
   function ropeAngle(t, i) { var tt = t < T_BC ? t : 2 * T_BC - t; return (tt * 3.0) * (1.8 / (1 + i * 0.9)); }
   PV.travelYear = travelYear;
   PV.travelPos = travelPos;
-  PV.shotTravel = function (ctx, t, lt) {
+  PV.shotTravel = function (ctx, t, lt, opts) {
+    opts = opts || {};
     PV.ops = ['POS_ID', 'ROPE', 'TIME', 'REWIND', 'AD', 'BC'];
     T.box(ctx, 404, 56, 1164, 604, 'time travel  (position ids)', 0.5, T.UI, t);
     var year = travelYear(t), era = year > 0 ? 'AD' : 'BC';
@@ -1342,7 +1343,7 @@
     var ycol = era === 'BC' ? T.mix(T.ME_TEXT, 1.0) : T.ui(1.0);
     T.textPIL(ctx, yr + ' ' + era, 430, 100, T.css(ycol), 72);
     var pos0 = travelPos(t), i;
-    for (i = 0; i < 30; i++) {
+    for (i = 0; opts.bars !== false && i < 30; i++) {   /* C24：bar 由转场层接管（要合并、要飞） */
       var pos = Math.floor(pos0) - i * 173, x = 430 + i * 24;
       var hh = 40 + 30 * Math.sin(pos * 0.01);
       T.fill(ctx, x, 380 - hh, x + 19, 381, T.ui(0.3 + 0.02 * i), 1);
@@ -1378,7 +1379,8 @@
     T.fill(ctx, x, y, x + w - 1, y + h - 1, T.mix(col || T.UI, 0.06 + 0.94 * v), 1);
   }
   PV.heatCell = heat;
-  PV.shotUnite = function (ctx, t, lt, dur) {
+  PV.shotUnite = function (ctx, t, lt, dur, opts) {
+    opts = opts || {};
     PV.ops = ['TOKENIZE', 'BPE.MERGE', 'EMBED', 'LOOKUP', 'RMSNORM', 'COSINE', 'PROJECT', 'TSNE.STEP'];
     T.box(ctx, 404, 56, 1164, 300, 'tokenizer', 0.5, T.UI, t);
     for (var row = 0; row < 2; row++) {
@@ -1388,6 +1390,7 @@
         var wd = VOCAB[(k * 7 + row * 3 + Math.floor(t * 2)) % VOCAB.length];
         var x = 420 + k * 90 + xoff;
         if (x > 410 && x < 1100) {
+          if (opts.chip && !opts.chip(row, k + Math.floor((t * (70 + 30 * row)) / 90))) continue;
           T.rect(ctx, x, y, x + 70, y + 22, T.ui(0.18), 1, 1);
           T.textMono(ctx, wd, x + 6, y + 3, T.ui(0.3), 15);
         }
