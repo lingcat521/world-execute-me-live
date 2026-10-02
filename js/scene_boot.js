@@ -1061,10 +1061,15 @@
     var px = Math.min(1, lt / dur * 1.05) * 1000;
     return [px, Math.max(0, Math.min(1080 - VIEW, px - 300))];
   }
-  PV.shotTangent = function (ctx, t, lt, u, dur) {
+  PV.tangentState = state;
+  PV.TAN = { Y0: Y0, A: A, K: K, X0: X0, VIEW: VIEW };
+  PV.riderSprite = function () { return riderImg; };
+  PV.shotTangent = function (ctx, t, lt, u, dur, opts) {
+    opts = opts || {};
     PV.ops = ['DERIV', 'COS', 'TANGENT', 'SLOPE', 'SIT'];
     T.box(ctx, 404, 56, 1164, 604, 'd/dx sin(x) = cos(x)', 0.5, T.UI, t);
     var st = state(lt, dur), cam = st[1], px = st[0], i;
+    if (opts.curve === false) { PV.shotName = 'shot_tangent'; return; }   /* C17：曲线与切线由转场层接管 */
     var pts = [];
     for (i = 0; i < VIEW; i += 3) pts.push([X0 + i, Y0 - A * Math.sin((i + cam) / K)]);
     ctx.save(); ctx.strokeStyle = T.css(T.mix(T.ME_TEXT, 0.9)); ctx.lineWidth = 3;
@@ -1077,7 +1082,7 @@
     ctx.save(); ctx.strokeStyle = T.css(T.ui(1.0)); ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(rx - dx, ry - slope * dx); ctx.lineTo(rx + dx, ry + slope * dx);
     ctx.stroke(); ctx.restore();
-    if (riderImg) ctx.drawImage(riderImg, Math.round(rx - riderImg.width / 2), Math.round(ry - riderImg.height + 6));
+    if (riderImg && opts.rider !== false) ctx.drawImage(riderImg, Math.round(rx - riderImg.width / 2), Math.round(ry - riderImg.height + 6));
     var sx = xx.toFixed(2); while (sx.length < 5) sx = ' ' + sx;
     var sc = Math.cos(xx);
     T.textPIL(ctx, 'x = ' + sx + '   slope = cos(x) = ' + (sc >= 0 ? '+' : '') + sc.toFixed(3), 430, 540, T.ui(0.95), 20);
