@@ -905,3 +905,39 @@
     }
   });
 })();
+
+/* ---- C23：dizzy -> travel。只在窗格内后拉：旋转的碗向右离开，年份条（已在 2026 AD）从左边进来，
+        落在第 110.5 拍（'Oh, we can travel'）；窗格标题条从左逐格解码。 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var T0 = 50.928, PRE = 0.25, BEAT = 60 / 130;
+  var X0 = 406, Y0 = 68, X1 = 1163, Y1 = 603, W = X1 - X0, H = Y1 - Y0;
+  var TITLE = [404, 44, 1164, 68];
+  function eIo(u) { u = T.clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
+  function mk() { var c = PV.newCanvas(1280, 720); return c; }
+  PV.addCut(T0, PRE, 0.3, function (ctx, t, cut) {
+    var oc = mk(), nc = mk();
+    if (PV.drawBackground) { PV.drawBackground(oc.getContext('2d'), t); PV.drawBackground(nc.getContext('2d'), t); }
+    PV.shotDizzy(oc.getContext('2d'), t, Math.max(0, t - 49.082));
+    PV.shotTravel(nc.getContext('2d'), t, Math.max(0, t - T0));
+    var e = eIo((t - (T0 - BEAT / 2)) / BEAT);
+    /* 底：整幅按 pick 取旧或新 */
+    ctx.drawImage(t < T0 ? oc : nc, 0, 0);
+    /* 标题条：逐格从左扫过 */
+    ctx.save(); ctx.beginPath(); ctx.rect(TITLE[0], TITLE[1], TITLE[2] - TITLE[0], TITLE[3] - TITLE[1]); ctx.clip();
+    PV.reveal(ctx, t,
+      function (c) { c.drawImage(oc, 0, 0); },
+      function (c) { c.drawImage(nc, 0, 0); },
+      function (x) { return T0 - 0.2 + (x - 404) / 1900; },
+      { region: TITLE, cell: [8, 12], dur: 0.09 });
+    ctx.restore();
+    /* 窗格主体：后拉平移——旧内容向右退出，新内容从左进入 */
+    ctx.save(); ctx.beginPath(); ctx.rect(X0, Y0, W, H); ctx.clip();
+    if (PV.drawBackground) PV.drawBackground(ctx, t);
+    var off = Math.round(W * e), h = H;
+    if (off < W) ctx.drawImage(oc, X0, Y0, W - off, h, X0 + off, Y0, W - off, h);
+    if (off > 0) ctx.drawImage(nc, X1 - off, Y0, off, h, X0, Y0, off, h);
+    ctx.restore();
+  });
+})();
