@@ -87,6 +87,33 @@
     if (t >= POST_T) powerLog(ctx, t, POWER_LOG[0], POWER_LOG[1]);
     PV.crtFinish(ctx, t, st);
   }
+  /* 镜头自带启动延迟（原始工程 continuity_full_v2 的 DELAY / SHOT_HOOKS 表）：
+     shot_circumference = C15.LAND 0.4（新场景的时钟等圆落地）、shot_dimension = 0.4（她的向量先传完）、
+     shot_dualpipe = C10.LAND 0.42（首格落地后调度才展开）。 */
+  PV.SHOT_DELAY = { shot_circumference: 0.4, shot_dimension: 0.4, shot_dualpipe: 0.42 };
+  /* 转场层复用同一套延迟：返回 [lt, u] */
+  PV.shotTime = function (name, t) {
+    var s = null;
+    for (var i = 0; i < PV.SHOTS.length; i++) if (PV.SHOTS[i].name === name) s = PV.SHOTS[i];
+    if (!s) return [0, 0];
+    var d = (PV.SHOT_DELAY && PV.SHOT_DELAY[name]) || 0;
+    var lt = Math.max(0, t - s.a - d), dur = s.b - s.a - d;
+    return [lt, dur > 0 ? T.clamp01(lt / dur) : 0];
+  };
+  /* 供并行开发的独立文件注册镜头：PV.reg(name, a, b, fn)。
+     这样后续各段镜头可以写在各自的 js/scene_*.js 里，不必改本文件。 */
+  PV.reg = function (name, a, b, fn) {
+    PV.SHOTS.push({ a: a, b: b, fn: fn, name: name, idx: PV.SHOTS.length });
+    PV.SHOTS.sort(function (x, y) { return x.a - y.a; });
+    return fn;
+  };
+  /* 供并行开发的独立文件注册镜头：PV.reg(name, a, b, fn)。
+     这样后续各段镜头可以写在各自的 js/scene_*.js 里，不必改本文件。 */
+  PV.reg = function (name, a, b, fn) {
+    PV.SHOTS.push({ a: a, b: b, fn: fn, name: name, idx: PV.SHOTS.length });
+    PV.SHOTS.sort(function (x, y) { return x.a - y.a; });
+    return fn;
+  };
   PV.SHOTS = [
     { a: 0.0, b: 1.312, fn: ownPower, name: 'shot_power', idx: 0, shell: true },
     { a: 1.312, b: 3.620, fn: null, name: 'shot_protection', idx: 1, shell: true },
@@ -221,6 +248,9 @@
     var s = null;
     for (var i = 0; i < PV.SHOTS.length; i++) if (t >= PV.SHOTS[i].a && t < PV.SHOTS[i].b) s = PV.SHOTS[i];
     if (!s) { PV.shotName = null; return; }
+    var _dl = (PV.SHOT_DELAY && PV.SHOT_DELAY[s.name]) || 0;
+    /* 延迟期内 a'=t（lt=0,u=0）；过了延迟 a'=a+dl。两者合起来就是 min(t, a+dl)。 */
+    if (_dl > 0) s = { a: Math.min(t, s.a + _dl), b: s.b, name: s.name, idx: s.idx };
     if (s.name === 'shot_power') { PV.ownPower(ctx, t); }
     else if (s.name === 'shot_circle') { PV.shotCircle(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
     else if (s.name === 'shot_circumference') { PV.shotCircumference(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
@@ -248,6 +278,12 @@
     else if (s.name === 'shot_creation') { PV.shotCreation(ctx, t, Math.max(0, t - s.a), s.b - s.a); }
     else if (s.name === 'shot_protection') {
       PV.protectionScene(ctx, t, [48, 70], Math.max(0, t - s.a));
+    }
+    else if (s.fn) {
+      /* 由 PV.reg 注册的镜头（各段独立文件），统一签名 fn(ctx, t, lt, u, dur) */
+      var _d2 = (PV.SHOT_DELAY && PV.SHOT_DELAY[s.name]) || 0;
+      var _a2 = Math.min(t, s.a + _d2), _lt = Math.max(0, t - _a2), _dur = s.b - _a2;
+      s.fn(ctx, t, _lt, _dur > 0 ? T.clamp01(_lt / _dur) : 0, _dur);
     }
     PV.shotName = s.name;
   };
@@ -870,7 +906,7 @@
   PV.shotDimension = function (ctx, t, lt, u) {
     PV.ops = ['HIDDEN', 'D_MODEL', 'COPY', 'SEND', 'RECV', 'you.ADD'];
     T.box(ctx, 404, 56, 1164, 604, 'transfer  me.hidden[0:4096]  ->  you', 0.5, T.UI, t);
-    var g = T.ease(u * 1.2), V = vals();
+    var g = T.ease(u), V = vals();   /* 实测参考 31.50s 进度 1525/4096=37% => g=ease(0.148)=0.371，不带 1.2 系数 */
     for (var r = 0; r < ROWS; r++) {
       for (var q = 0; q < COLS; q++) {
         var sent = (r * COLS + q) / (ROWS * COLS) < g;
@@ -957,8 +993,8 @@
     opts = opts || {};
     PV.ops = ['2*PI*R', 'UNROLL', 'INTEGRATE', 'SUM', 'GIVE'];
     T.box(ctx, 404, 56, 1164, 604, 'circumference(me)', 0.5, T.UI, t);
-    /* 镜头自带 0.4s 前导：'新场景的时钟等圆落地'（实测参考 35.00s 时 g=ease(0.0299)=0.086） */
-    var g = T.ease(T.clamp01((lt - 0.4) / ((36.851 - 34.543) - 0.4))), arc = (1 - g) * Math.PI * 2, k, a;
+    /* 0.4s 前导由 PV.SHOT_DELAY.shot_circumference 提供（'新场景的时钟等圆落地'） */
+    var g = T.ease(u), arc = (1 - g) * Math.PI * 2, k, a;
     if (opts.dots !== false) {
       for (k = 0; k < 120; k++) {
         a = k / 120 * Math.PI * 2;
@@ -1110,11 +1146,13 @@
     }
     return [pts, acdc];
   };
-  PV.shotCurrent = function (ctx, t, lt) {
+  PV.shotCurrent = function (ctx, t, lt, opts) {
+    opts = opts || {};
     PV.ops = ['POWER', 'RECTIFY', 'AC', 'DC', 'CLOCK', 'BOOST'];
     T.box(ctx, 404, 56, 1164, 604, 'nvidia-smi --power  8x H800', 0.5, T.UI, t);
     var acdc = 0;
     for (var g = 0; g < 8; g++) {
+      if (opts.traces === false) { acdc = PV.currentTrace(g, t, lt)[1]; continue; }   /* C20：DONE 之前轨迹由转场层画 */
       var r = PV.currentTrace(g, t, lt);
       acdc = r[1];
       var y0 = 90 + g * 58, pts = r[0];

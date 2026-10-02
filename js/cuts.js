@@ -146,7 +146,7 @@
     PV.circleSpec = circles;
     try {
       PV.reveal(ctx, t,
-        function (c) { PV.shotDimension(c, t, t - 30.851, (t - 30.851) / (32.928 - 30.851)); },
+        function (c) { var q = PV.shotTime('shot_dimension', t); PV.shotDimension(c, t, q[0], q[1]); },
         function (c) { PV.shotCircle(c, t, Math.max(0, t - T0), T.clamp01((t - T0) / (34.543 - T0))); },
         PV.radial(958, 298, T0 - 0.1, 1400),
         { region: [405, 44, 1164, 604], cell: [8, 16], dur: 0.09 });
@@ -254,7 +254,7 @@
     var prog = Math.max(0.02, T.clamp01(1 - eIo((t - t1) / (t2 - t1))));
     PV.reveal(ctx, t,
       function (c) { PV.shotLossCurve(c, t, t - 19.700, (t - 19.700) / (23.236 - 19.700), null, prog); },
-      function (c) { PV.shotDualPipe(c, t, Math.max(0, t - T0), 26.466 - T0); },
+      function (c) { var q = PV.shotTime('shot_dualpipe', t); PV.shotDualPipe(c, t, q[0], q[1]); },
       PV.inward(O[0], O[1], T0 - 0.15, T0 + 0.32, 760),
       { region: [405, 44, 1164, 604], cell: [8, 16], dur: 0.09 });
     var ep = PV.lossEndPoint(prog, 440, 80, 690, 240, 5, 5);
@@ -422,6 +422,38 @@
       for (var q = 0; q < sh.length; q++) {
         var x = sh[q][0] + sh[q][2] * f, y2 = sh[q][1] + sh[q][3] * f + 700 * f * f;
         T.fill(ctx, x, y2, x + 5, y2 + 5, T.mix(T.ANOM, 0.85), al);
+      }
+    }
+  });
+})();
+
+/* ---- C20：limit -> current。抵墙的条裂成八条线（每 GPU 一条），散开到各自轨迹行并开始 AC/DC 交替。 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var T0 = 44.005, PRE = 0.15, DONE = 0.4;
+  function eIo(u) { u = T.clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
+  PV.addCut(T0, PRE, 0.55, function (ctx, t, cut) {
+    PV.reveal(ctx, t,
+      function (c) { PV.shotLimit(c, t, t - 41.928, (t - 41.928) / (44.005 - 41.928), { drawBar: t < T0 - PRE }); },
+      function (c) { PV.shotCurrent(c, t, Math.max(0, t - T0), { traces: t >= T0 + DONE }); },
+      PV.radial(740, 230, T0 - 0.05, 1500),
+      { region: [405, 44, 1164, 604], cell: [8, 16], dur: 0.09 });
+    if (t < T0 + DONE + 0.02) {
+      for (var g = 0; g < 8; g++) {
+        var u = eIo((t - (T0 - PRE) - Math.abs(g - 3.5) * 0.015) / (DONE + PRE));
+        var live = PV.currentTrace(g, t, Math.max(0, t - T0))[0];
+        var thick = 7.5 + (1.0 - 7.5) * u;
+        ctx.save();
+        ctx.strokeStyle = T.css([120 + 135 * u, 148 + 56 * u, 255 - 255 * u]);   /* 蓝 -> 琥珀 */
+        ctx.lineWidth = Math.max(1, Math.round(thick));
+        ctx.beginPath();
+        for (var j = 0; j < live.length; j++) {
+          var bx = 430 + j * 3 * 600 / 640, by = 200 + g * 7.5 + 3.75;
+          var px = bx + (live[j][0] - bx) * u, py = by + (live[j][1] - by) * u;
+          if (j === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.stroke(); ctx.restore();
       }
     }
   });
