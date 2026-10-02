@@ -745,3 +745,25 @@
     }
   });
 })();
+
+/* ---- C04：creation -> parameters。RETAIN：me.* 块先亮起但留在原地；
+        chrome 收回 shell staging，Object() 框随之淡出。她不变。 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var T0 = 7.082, PRE = 0.22;
+  PV.addCut(T0, PRE, 0.34, function (ctx, t, cut) {
+    var k = T.clamp01((t - (T0 - PRE)) / 0.12) * (1 - T.clamp01((t - T0) / 0.16));
+    if (t < T0) {
+      PV.shotCreation(ctx, t, Math.max(0, t - 5.236), 7.082 - 5.236);
+    } else {
+      var lt = t - T0;
+      PV.shotParameters(ctx, t, lt, T.clamp01(lt / (9.851 - T0)));
+      var e = 1 - Math.pow(1 - Math.min(1, lt / 0.3), 3);
+      ctx.save(); ctx.globalAlpha = Math.max(0, 1 - e);
+      T.box(ctx, 404, 56, 1164, 604, 'me = Object()', 0.5, T.UI, t);
+      ctx.restore();
+    }
+    /* 原始实现的 lift 是提亮「被点亮的元素」（B.lit(col,k)），不是整块蒙版；我们的镜头暂无该参数，宁可不做也不要白蒙一层（实测会引入 13+ 的假运动量）。 */
+  });
+})();

@@ -529,7 +529,8 @@
   var IL_BANNER = null;
   function illegalBanner() {
     if (!IL_BANNER) {
-      var bits = PV.bannerBits('ILLEGAL', 16, 7);
+      /* banner_block("ILLEGAL", 16, 7, RED, BG, 700)：bits 用 aspect=1.0，7 是像素块尺寸（上限 700/宽） */
+      var bits = PV.bannerBits('ILLEGAL', 16, 1.0);
       var px = Math.max(2, Math.min(7, Math.floor(700 / bits.width)));
       IL_BANNER = { bits: bits, px: px, x: 404 + Math.floor((760 - bits.width * px) / 2), y: 590 - bits.height * px };
     }
@@ -660,6 +661,11 @@
     h = h || PV.HOOK;
     PV.ops = ['MHC', 'SINKHORN', 'ROW.NORM', 'COL.NORM', 'ITER', 'DIVERGE'];
     PV.alert = 'err';
+    /* s_reward.setup(): DELAY["shot_sinkhorn"] = C61.ZOOM —— 镜头时钟晚 0.462 s 起而总时长不变
+       （c.u = (t - start - delay) / (end - start)）。PV.SHOT_DELAY 的派发分支在 _dl > 0 时用
+       {a,b,name,idx} 复制镜头对象、会把 fn 丢掉，故延迟在本函数内部实现。 */
+    lt = Math.max(0, lt - SK_ZOOM);
+    u = dur > 0 ? T.clamp01(lt / dur) : 0;
     var it = sinkhornIter(u), hot = it > HC_ITERS;
     if (hv(h, 'frame', true)) {
       T.box(ctx, 404, 56, 1164, 604, 'mHC residual mix  hc_mult=' + HC_MULT + '  sinkhorn iter ' + it + '/' + HC_ITERS,
@@ -755,6 +761,7 @@
     var kick = t >= tb + 0.02 ? clamp01(1 - (t - tb - 0.02) / 0.16) : 0.0;
     var fg = mixc([255, 236, 228], 0.5 * kick + (q < 2 / 24 ? 0.6 : 0), T.ERR);
     var bits = PV.bannerBits('07', 40, 1.0);
+    px = Math.max(2, Math.min(px, Math.floor((600 * px / 9) / bits.width)));   /* banner_block 的宽度上限 */
     return { bits: bits, px: px, fg: fg, width: bits.width * px, height: bits.height * px,
              x: Math.floor((1280 - 90 - bits.width * px) / 2), y: 330 - Math.floor(bits.height * px / 2) };
   }
@@ -763,7 +770,8 @@
     PV.ops = ['ME', 'ME', 'ME', 'ME', 'ME', 'ME'];
     PV.alert = 'err';
     var t0 = hv(h, 'pour_at', FLOOD_START), tFreeze = hv(h, 'freeze', HD_FREEZE);
-    var t07 = lt + T07 * dur, end = lt + dur, redSpan = end - t07 - 2 / 24;
+    var a0 = t - lt;                                   /* 镜头起点（绝对秒），t07/end 都是绝对时刻 */
+    var t07 = a0 + T07 * dur, end = a0 + dur, redSpan = end - t07 - 2 / 24;
     var rng = PV.mt(Math.trunc(t * 24) * 131);
     var tb = beatT(Math.floor((t - FB) / BEAT + 1e-6)), ring = (t - tb) * 1500;
     var cx = 200, cy = floodY(GET_R0 + 9);
@@ -828,8 +836,7 @@
   reg('shot_sinkhorn', 138.1587, 141.3895, sinkhorn, { idx: 61 });
   reg('shot_hoard', 141.3895, 144.1587, hoard, { idx: 62 });
   reg('shot_flood', 144.1587, 147.6202, flood, { idx: 63 });
-  PV.SHOT_DELAY = PV.SHOT_DELAY || {};
-  PV.SHOT_DELAY.shot_sinkhorn = SK_ZOOM;   /* s_reward.setup(): DELAY["shot_sinkhorn"] = C61.ZOOM */
+  /* shot_sinkhorn 的 DELAY（C61.ZOOM）在 sinkhorn() 内部实现，不要写进 PV.SHOT_DELAY。 */
 
   /* ================================================================ 场景级工具（转场层用） */
   PV.SU = {
