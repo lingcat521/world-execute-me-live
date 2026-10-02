@@ -473,19 +473,21 @@
     var d = ctx;
     var expr = u < 0.5 ? 'cheerful' : 'starry';
     box(d, 24, 56, 700, 604, 'dsh web  grad-cam  L61  class=happy(you)', 0.55 + 0.3 * pulse(t), T.UI, t);
-    var px = 5, sz = herSize(650, 520, px, 'face'), cols = sz[0], rows = sz[1];
+    /* Python: halfblock(expr,"face",650,520,5) —— 实际画出来约 360x290（参考帧实测），这里按同样尺寸对齐 */
+    var px = 5, FACE_W = 360, FACE_H = 238;
+    var sz = herSize(FACE_W, FACE_H, px, 'bust'), cols = sz[0], rows = sz[1];
     var spW = cols * px, spH = rows * px;
-    var sx = 24 + Math.floor((676 - spW) / 2), sy = 70;
-    var cells = herCells(cols, rows, 'face');
+    var sx = 24 + Math.floor((676 - spW) / 2), sy = 76;
+    var cells = herCells(cols, rows, 'bust');
     if (cells) {
       if (u > 0.47 && u < 0.53) glitchPaste(d, cells, cols, rows, px, sx, sy, 0.6, rng, 'color');
-      else halfblock(d, sx, sy, 650, 520, px, 'face', 'color', 1);
+      else halfblock(d, sx, sy, FACE_W, FACE_H, px, 'bust', 'color', 1);
     }
     /* heat map：三个热斑 + 一条扫描带 */
     var blobs = [[0.40, 0.58, 0.10], [0.63, 0.58, 0.10], [0.52, 0.80, 0.12 + 0.05 * T.ease(u)]];
     var band = (lt * 1.3) % 1.0, cell = 20;
     var hc = Math.max(1, Math.floor(spW / cell)), hr = Math.max(1, Math.floor(spH / cell));
-    var hd = herCells(hc, hr, 'face');
+    var hd = herCells(hc, hr, 'bust');
     if (hd) {
       for (var gy = 0; gy < hr; gy++) for (var gx = 0; gx < hc; gx++) {
         var i2 = (gy * hc + gx) * 4;

@@ -767,3 +767,34 @@
     /* 原始实现的 lift 是提亮「被点亮的元素」（B.lit(col,k)），不是整块蒙版；我们的镜头暂无该参数，宁可不做也不要白蒙一层（实测会引入 13+ 的假运动量）。 */
   });
 })();
+
+/* ---- C05：parameters -> init。CARRY：算完的 '552,000,000,000 params' 亮起、
+        沿弧线升起、落在直方图标题位上（带一点过冲），落地后才成为标题。 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var T0 = 9.851, PRE = 0.3, LAND = 0.46, TEXT = '552,000,000,000 params';
+  function eIo(u) { u = T.clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
+  function eBack(u, s) { u = T.clamp01(u); var c = s * 1.70158; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); }
+  function bez(p0, p1, bend, u) {
+    var mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2, dx = p1[0] - p0[0], dy = p1[1] - p0[1];
+    var cx = mx - dy * bend, cy = my + dx * bend, a = 1 - u;
+    return [a * a * p0[0] + 2 * a * u * cx + u * u * p1[0], a * a * p0[1] + 2 * a * u * cy + u * u * p1[1]];
+  }
+  PV.addCut(T0, PRE, 0.62, function (ctx, t, cut) {
+    var land = T0 + LAND;
+    PV.reveal(ctx, t,
+      function (c) { PV.shotParameters(c, t, Math.max(0, t - 7.082), (t - 7.082) / (9.851 - 7.082), { counter: false }); },
+      function (c) { PV.shotInit(c, t, Math.max(0, t - T0), T.clamp01((t - T0) / (11.005 - T0)), { title: t >= land }); },
+      PV.radial(430, 90, T0 - 0.34, 2000),
+      { region: [405, 44, 1164, 604], cell: [8, 16], dur: 0.09 });
+    if (t < land) {
+      var u = T.clamp01((t - (T0 - 0.06)) / (LAND + 0.06));
+      var pos = bez([430, 520], [430, 70], -0.1, eBack(u, 0.35));
+      var sc = (1 + (30 / 34 - 1) * eIo(u)) * (1 + 0.1 * Math.sin(Math.PI * u));
+      ctx.save(); ctx.translate(pos[0], pos[1]); ctx.scale(sc, sc);
+      T.textPIL(ctx, TEXT, 0, 0, T.css(T.mix(T.ME_TEXT, 0.95)), 34);
+      ctx.restore();
+    }
+  });
+})();

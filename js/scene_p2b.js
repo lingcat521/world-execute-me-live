@@ -500,7 +500,7 @@
     h = h || PV.HOOK;
     PV.ops = ['DSH', 'CORDIS', 'PLUGIN', 'MOUNT', 'SYSTEM', 'OVERWRITE', 'ROOT'];
     PV.alert = u < 0.6 ? 'anom' : 'err';
-    T.box(ctx, 404, 56, 1164, 604, DSH_CMD, 0.5, u > 0.6 ? T.ERR : T.ANOM, t);
+    T.box(ctx, 404, 56, 1164, 604, DSH_CMD, 0.5, u > 0.6 ? T.ERR : T.UI, t);   /* color=RED else AMBER(=UI) */
     var headAt = hv(h, 'head_at', CG_HEAD_AT);
     for (var i = 0; i < GOD_LOG.length; i++) {
       var a = lt - i * 0.28, y = 84 + i * 34;
@@ -680,7 +680,8 @@
         var v = 0.25 + (hot ? 0.7 * rnd.random() : 0.25 * Math.exp(-it / 5) * rnd.random());
         if (!cells) continue;
         var x = 460 + j * 110, y = 100 + i * 90;
-        var base = hot ? T.ERR : T.ANOM, vv = v + (0.9 - v) * warm;
+        /* tuikit 的 AMBER == 调色板 UI（deepsea 的冷白钢色），不是 ANOM 黄 */
+        var base = hot ? T.ERR : T.UI, vv = v + (0.9 - v) * warm;
         heatCell(ctx, x, y, 104, 84, vv, lerp3(base, T.ERR, warm));
         tx(ctx, fx(v / (0.25 * n), 2), x + 22, y + 30, T.BG, 18, null, 0);
       }
