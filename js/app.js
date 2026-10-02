@@ -163,19 +163,48 @@
     msgEl.textContent = f.name + ' (' + (f.size / 1048576).toFixed(1) + ' MB)';
     audioEl.play(); playEl.textContent = 'pause';
   };
+  /* 音频可能还没解码好用户就点了开始：play() 会被拒（AbortError / NotSupportedError），
+     旧代码只在 audioReady 时才 play、而且把失败 catch 掉了，于是"画面在动、没有声音"。
+     现在：无条件尝试 play，并把当前时间接上；没成功就每 250ms 重试（最多 40 次），
+     同时把状态写到 #msg，用户一眼能看到卡在哪一步。 */
+  var kickTimer = null, kickN = 0;
+  function audioOK() { return !audioEl.paused && !audioEl.ended && audioEl.readyState >= 2; }
+  function kickAudio() {
+    if (!PV.started || paused) return;
+    if (audioOK()) { if (msgEl) msgEl.textContent = ''; return; }
+    var pr = null;
+    try { pr = audioEl.play(); } catch (e) {}
+    if (pr && pr.catch) pr.catch(function (err) {
+      if (msgEl) msgEl.textContent = '音频未就绪(' + ((err && err.name) || '?') + ') 重试中… readyState=' + audioEl.readyState;
+    });
+  }
   function startAudio() {
     if (PV.started) return;
     PV.started = true;
     var hintEl = document.getElementById('hint'); if (hintEl) hintEl.style.display = 'none';
-    if (PV.audioReady) {
-      try { audioEl.currentTime = Math.max(0, clock + PV.offset); } catch (e) {}   /* 从当前画面位置接上，不把画面拽回 0 */
-      var pr = audioEl.play();
-      if (pr && pr.catch) pr.catch(function () {});
-      PV.setPaused(false);
-    }
+    PV.audioReady = true;   /* 元素上有 src 就当它可用；真失败会走 error 事件并写 #msg */
+    try { audioEl.currentTime = Math.max(0, clock + PV.offset); } catch (e) {}   /* 从当前画面位置接上，不把画面拽回 0 */
+    PV.setPaused(false);
+    kickAudio();
+    if (kickTimer) clearInterval(kickTimer);
+    kickN = 0;
+    kickTimer = setInterval(function () {
+      kickN++;
+      if (kickN > 40 || audioOK() || paused) {
+        clearInterval(kickTimer); kickTimer = null;
+        if (msgEl && audioOK()) msgEl.textContent = '';
+        else if (msgEl && kickN > 40) msgEl.textContent = '音频一直没能播放：readyState=' + audioEl.readyState + ' paused=' + audioEl.paused + ' err=' + (audioEl.error && audioEl.error.code);
+        return;
+      }
+      kickAudio();
+    }, 250);
     document.removeEventListener('pointerdown', startAudio, true);
     document.removeEventListener('keydown', startAudio, true);
   }
+  audioEl.addEventListener('error', function () {
+    if (msgEl) msgEl.textContent = '音频加载失败 code=' + (audioEl.error && audioEl.error.code) + ' src=' + audioEl.currentSrc;
+  });
+  audioEl.addEventListener('stalled', function () { if (msgEl && PV.started) msgEl.textContent = '音频 stalled…'; });
   document.addEventListener('pointerdown', startAudio, true);
   document.addEventListener('keydown', startAudio, true);
   var hideTimer = null;
