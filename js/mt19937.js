@@ -60,9 +60,26 @@
     var a = this.genrand() >>> 5, b = this.genrand() >>> 6;
     return (a * 67108864 + b) / 9007199254740992;
   };
-  MT.prototype.randrange = function (n) { return Math.floor(this.random() * n); };
   MT.prototype.next = function () { return this.random(); };
-  MT.prototype.choice = function (str) { return str.charAt(Math.floor(this.random() * str.length)); };
+  /* CPython 的 getrandbits(k)：k<=32 时取一个 32 位字的高 k 位 */
+  MT.prototype.getrandbits = function (k) {
+    if (k <= 0) return 0;
+    if (k <= 32) return (this.genrand() >>> (32 - k)) >>> 0;
+    var words = Math.ceil(k / 32), out = 0, i;
+    for (i = 0; i < words; i++) out += this.genrand() * Math.pow(2, 32 * i);   /* 小端：word i 占 32i 位起 */
+    return out % Math.pow(2, k);
+  };
+  /* CPython 的 _randbelow_with_getrandbits：拒绝采样，choice/randrange 都走它 */
+  MT.prototype._randbelow = function (n) {
+    if (!n) return 0;
+    var k = 0, m = n;
+    while (m > 0) { k++; m >>>= 1; }
+    var r = this.getrandbits(k);
+    while (r >= n) r = this.getrandbits(k);
+    return r;
+  };
+  MT.prototype.randrange = function (n) { return this._randbelow(n); };
+  MT.prototype.choice = function (seq) { return seq[this._randbelow(seq.length)]; };
   MT.prototype.gauss = function (mu, sigma) {
     mu = mu || 0; sigma = sigma === undefined ? 1 : sigma;
     var u1 = Math.max(1e-12, this.random()), u2 = this.random();
