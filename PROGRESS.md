@@ -77,3 +77,19 @@
 - 与参考帧逐项一致：标题 `pipeline schedule  DualPipe  (8 PP ranks, 20 micro-batches)`、两行文案、`COMM.OVER` 反白。
 - 已知差异：格子推进速度比参考慢约 30%（同一时刻参考画到第 ~25 步、我们到第 ~17 步），说明 dualpipe 也有 DELAY 或 dur 不同，待校正。
 
+
+## 01 PRETRAIN 段完成（16.08 - 29.24 秒，4 个镜头）
+
+| 镜头 | 时间 | 状态 |
+|---|---|---|
+| shot_corpus | 16.082-19.700 | ✓ token 河流 + tokens seen 计数 |
+| shot_losscurve | 19.700-23.236 | ✓ loss 点阵曲线 + lr schedule（含 C09 载具转场） |
+| shot_dualpipe | 23.236-26.466 | ✓ 调度格子 8x27（进度略慢，待校） |
+| shot_whale | 26.466-29.236 | ✓ 'deepseek' 字母鲸鱼 + 气泡 + checkpoint 日志 |
+
+至此 **0 - 29.24 秒连续可播**（BOOT 8 镜 + PRETRAIN 4 镜）。
+
+### 下一步
+- 02 SFT（44-73.5 s）之前还有 A3 段（29.28-44 s，聊天窗的"你是谁"选择题）与 shot 12-20。
+- 移动端适配待用户回报布局参数定位。
+

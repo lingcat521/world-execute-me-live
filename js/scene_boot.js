@@ -98,7 +98,8 @@
     { a: 12.389, b: 16.082, fn: null, name: 'shot_begin_sim', idx: 7, shell: false },
     { a: 16.082, b: 19.700, fn: null, name: 'shot_corpus', idx: 8, shell: false },
     { a: 19.700, b: 23.236, fn: null, name: 'shot_losscurve', idx: 9, shell: false },
-    { a: 23.236, b: 26.466, fn: null, name: 'shot_dualpipe', idx: 10, shell: false }];
+    { a: 23.236, b: 26.466, fn: null, name: 'shot_dualpipe', idx: 10, shell: false },
+    { a: 26.466, b: 29.236, fn: null, name: 'shot_whale', idx: 11, shell: false }];
   PV.powerLog = powerLog;
   PV.logLine = logLine;
   PV.POWER_LOG = POWER_LOG;
@@ -207,6 +208,7 @@
     for (var i = 0; i < PV.SHOTS.length; i++) if (t >= PV.SHOTS[i].a && t < PV.SHOTS[i].b) s = PV.SHOTS[i];
     if (!s) { PV.shotName = null; return; }
     if (s.name === 'shot_power') { PV.ownPower(ctx, t); }
+    else if (s.name === 'shot_whale') { PV.shotWhale(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
     else if (s.name === 'shot_dualpipe') { PV.shotDualPipe(ctx, t, Math.max(0, t - s.a), s.b - s.a); }
     else if (s.name === 'shot_losscurve') { PV.shotLossCurve(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
     else if (s.name === 'shot_corpus') { PV.shotCorpus(ctx, t, Math.max(0, t - s.a)); }
@@ -227,7 +229,7 @@
   'use strict';
   var PV = window.PV, T = PV.tui;
   var C01_T = 1.312, C01_OPEN = 0.23, SHELL_CMD = './protect';
-  PV.loopEnd = 26.466;
+  PV.loopEnd = 29.236;
   PV.SHELL_SHOTS = [
     { a: 1.312, b: 3.620, cmd: './protect' },
     { a: 7.082, b: 9.851, cmd: 'neofetch' }];
@@ -657,5 +659,85 @@
     }
     T.textMono(ctx, 'DualPipe: all-to-all hidden behind compute · bubbles shrink from both ends', 430, 480, T.ui(0.75), 16);
     T.textPIL(ctx, T.decode('V3: 2.788M H800 GPU hours · $5.576M', lt - 0.4, PV.rngFor(t, 7919), 45, 0.12, 0), 430, 510, T.ui(0.95), 18);
+  };
+})();
+
+/* ---- 镜头 11（whale）：'deepseek' 字母拼成的鲸鱼游过，身后写下 checkpoint ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var COLS = 64, ROWS = 17, CH = 16;
+  PV.whaleBits = function (cols, rows, tailPhase) {
+    var s = 8, W_ = cols * s, H_ = rows * s;
+    var c = PV.newCanvas(W_, H_), g = c.getContext('2d');
+    g.fillStyle = '#000'; g.fillRect(0, 0, W_, H_);
+    function ell(x0, y0, x1, y1, fill) {
+      g.beginPath();
+      g.ellipse((x0 + x1) / 2, (y0 + y1) / 2, Math.abs(x1 - x0) / 2, Math.abs(y1 - y0) / 2, 0, 0, Math.PI * 2);
+      g.fillStyle = fill; g.fill();
+    }
+    ell(W_ * 0.02, H_ * 0.18, W_ * 0.78, H_ * 0.92, '#fff');
+    ell(W_ * 0.10, H_ * 0.08, W_ * 0.55, H_ * 0.62, '#fff');
+    var flap = Math.sin(tailPhase) * H_ * 0.14;
+    g.beginPath();
+    g.moveTo(W_ * 0.70, H_ * 0.52);
+    g.lineTo(W_ * 0.99, H_ * 0.12 + flap);
+    g.lineTo(W_ * 0.90, H_ * 0.52 + flap * 0.4);
+    g.lineTo(W_ * 0.99, H_ * 0.92 + flap);
+    g.lineTo(W_ * 0.70, H_ * 0.70);
+    g.closePath(); g.fillStyle = '#fff'; g.fill();
+    g.beginPath();
+    g.moveTo(W_ * 0.38, H_ * 0.78); g.lineTo(W_ * 0.30, H_ * 1.0); g.lineTo(W_ * 0.48, H_ * 0.84);
+    g.closePath(); g.fill();
+    ell(W_ * 0.17, H_ * 0.34, W_ * 0.21, H_ * 0.42, '#000');
+    g.strokeStyle = '#000'; g.lineWidth = s;
+    g.beginPath(); g.moveTo(W_ * 0.05, H_ * 0.62); g.lineTo(W_ * 0.45, H_ * 0.66); g.stroke();
+    var img = g.getImageData(0, 0, W_, H_).data, out = [];
+    for (var r = 0; r < rows; r++) {
+      var row = [];
+      for (var q = 0; q < cols; q++) {
+        var sx = Math.min(W_ - 1, Math.floor((q + 0.5) * s)), sy = Math.min(H_ - 1, Math.floor((r + 0.5) * s));
+        row.push(img[(sy * W_ + sx) * 4] > 120);
+      }
+      out.push(row);
+    }
+    return out;
+  };
+  PV.whaleGlyphs = function (t, u) {
+    var bits = PV.whaleBits(COLS, ROWS, t * 5);
+    var cw = 15 * T.MONO_ADV;
+    var x = 588 - u * 148, y0 = 150 + 18 * Math.sin(t * 2.2);
+    var out = [], k = 0, DS = 'deepseek';
+    for (var r = 0; r < ROWS; r++) {
+      for (var q = 0; q < COLS; q++) {
+        if (bits[r][q]) { out.push([x + q * cw, y0 + r * CH, DS.charAt(k % 8)]); k++; }
+      }
+    }
+    return out;
+  };
+  function pad7(n) { var s = String(n); while (s.length < 7) s = '0' + s; return s; }
+  PV.shotWhale = function (ctx, t, lt, u) {
+    PV.ops = ['CKPT.SAVE', '3FS.WRITE', 'SHARD', 'FSYNC', 'VERIFY', 'CONTINUE'];
+    T.box(ctx, 404, 56, 1164, 604, 'checkpoint', 0.45, T.UI, t);
+    var glyphs = PV.whaleGlyphs(t, u), i;
+    for (i = 0; i < glyphs.length; i++) {
+      T.textPIL(ctx, glyphs[i][2], glyphs[i][0], glyphs[i][1], T.css(T.mix(T.ME_TEXT, 0.95)), 15);
+    }
+    var cw = 15 * T.MONO_ADV;
+    var x = 588 - u * 148, y0 = 150 + 18 * Math.sin(t * 2.2);
+    for (i = 0; i < 16; i++) {
+      var ph = (t * 0.7 + i * 0.137) % 1;
+      var bx = x + cw * COLS * 0.18 + 10 * Math.sin(t * 3 + i) + (i % 4) * 8;
+      var by = y0 - 10 - ph * 130;
+      if (by > 70 && by < 590 && bx > 412 && bx < 1150) {
+        T.textPIL(ctx, 'oO°.'.charAt(i % 4), bx, by, T.css(T.mix(T.ME_TEXT, 0.85 * (1 - ph))), 18);
+      }
+    }
+    var step = Math.floor((t - 16) * 5200);
+    var n = Math.min(6, Math.floor(u * 6) + 1);
+    for (var m = 0; m < n; m++) {
+      var s = '[ OK ] checkpoint step_' + pad7(Math.floor(step / 6) * (m + 1)) + ' -> 3fs://ckpt';
+      T.textMono(ctx, T.decode(s, lt - m * 0.2, PV.rngFor(t, 7919), 120, 0.12, 0), 430, 460 + m * 22, T.ui(0.7), 15);
+    }
   };
 })();
