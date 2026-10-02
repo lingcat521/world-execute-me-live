@@ -2700,16 +2700,17 @@
      （dsh_patch_f P1），scene_p2c 的 fullbleed 已经把 lay 0/2/3 与 count 藏掉；shot_black 从
      CHIME-0.1（207.774）起把页面贴回来。 */
   var HIDE_SHOTS = { shot_power: 1, shot_protection: 1, shot_pieces: 1, shot_erase: 1, shot_moe_dense: 1,
-                     shot_flood: 1, shot_collapse: 1, shot_last_execution: 1, shot_black: 1 };
+                     shot_flood: 1, shot_collapse: 1, shot_last_execution: 1, shot_black: 1, shot_whale_fall: 1 };
   PV.paneVisible = function (t) {
     if (t < PANE_T0) return false;
-    if (t >= D_GONE && t < D_BACK) return false;          /* 115.42-121.77：她只剩一个光标，画在 canvas 上 */
-    if (t >= 134.8764 && t < 138.1587) return false;      /* shot_moe_dense：C60 塌掉之后 */
-    if (t >= 144.44 && t < 147.6202) return false;        /* shot_flood：她被洪水吃掉 */
-    if (t >= G_ARCHIVE && t < G_CHIME - 0.1) return false;/* 鲸落 + last_execution：窗格只留褪色的框 */
+    if (t >= D_GONE && t < D_BACK) return false;              /* 115.42-121.77：她只剩一个光标，画在 canvas 上 */
+    if (t >= 134.8764 && t < 138.1587) return false;          /* shot_moe_dense：C60 塌掉之后 */
+    if (t >= 144.44 && t < 147.6202) return false;            /* shot_flood：她被洪水吃掉 */
+    if (t >= 193.543 && t < 207.7738) return false;           /* 鲸落 + last_execution：窗格滑出画面 */
     var n = PV.shotName;
     if (n) {
-      if (n.indexOf('shot_exec_hit') === 0) return true;
+      if (n.indexOf('shot_exec_hit') === 0) return true;      /* layout 1/4 的四次（#2/#6/#10/#12）窗格还在 */
+      if (n === 'shot_black') return t >= 207.7738;           /* 黑场从 CHIME-0.1 起把页面贴回来 */
       if (HIDE_SHOTS[n]) return false;
     }
     return true;
@@ -2730,7 +2731,8 @@
     for (var i = 0; i < ls.length; i++) if ((ls[i].getAttribute('href') || '').indexOf(suffix) >= 0) return ls[i];
     return null;
   }
-  var BARE_CSS = '#chatbox.pane-bare #app{display:block;height:auto}' +
+  var BARE_CSS = '#chatbox.pane-bare{background:transparent;font-family:system-ui,sans-serif}' +
+    '#chatbox.pane-bare #app{display:block;height:auto}' +
     '#chatbox.pane-bare .pv-head,#chatbox.pane-bare #timeline,#chatbox.pane-bare #composer,' +
     '#chatbox.pane-bare .bOPqQW_root{display:block;padding:0;margin:0;border:0;gap:0;overflow:visible;justify-content:flex-start}';
   var NOPAL_CSS = '#chatbox.pane-nopal{--dsw-alias-bg-base:#0e1117;--dsw-alias-bg-layer-1:#161b22;' +
