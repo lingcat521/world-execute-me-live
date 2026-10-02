@@ -615,6 +615,7 @@
     var mx = 430 + 700 * meanv, my = 562 + 32 * (1 - Math.pow(Math.cos(meanv * Math.PI / 2), 2));
     T.fill(ctx, mx - 3, my - 3, mx + 3, my + 3, T.UI, 1);
     PV.centerEnd(ctx);
+    if (lt < 0.46) simHandoff(ctx, lt);      /* 上一镜的字形肖像收缩进 #0000 格 */
     retained(ctx, t, 'shot_simulations', lt, u);
   });
   function hot(i) { return i === 0; }
@@ -949,6 +950,41 @@
     try { s.fn(ctx, tt, lt2, u2, dur2); } catch (e) {}
     PV.ops = ops; PV.alert = alert;
     retained(ctx, tt, 'shot_trapped', lt2, u2);
+  }
+  /* continuity.py:198 —— simulations 开头：上一镜 if_i_can 的整幅（未压缩、未加 chrome）
+     从 (288,82,912,594) 收缩到 #0000 格 mapped(414,70,592,214)，lt>.32 起在原地融进采样块。 */
+  var _ificCv = null;
+  function ifICanCanvas() {
+    if (_ificCv) return _ificCv;
+    var s = null, i;
+    for (i = 0; i < PV.SHOTS.length; i++) if (PV.SHOTS[i].name === 'shot_if_i_can') s = PV.SHOTS[i];
+    if (!s) return null;
+    var cv = PV.newCanvas(1280, 720), g = cv.getContext('2d');
+    var tt = s.b - 1 / 24, lt2 = tt - s.a, dur2 = s.b - s.a;
+    g.save();
+    var off = Math.floor(tt * 12) % 16;                 /* 舞台底纹 */
+    g.fillStyle = T.css(T.mix(T.UI, 0.1));
+    for (var sy = -off; sy < 720 + 16; sy += 16) for (var x = 0; x < 1280; x += 16) g.fillRect(x, sy, 1, 1);
+    g.restore();
+    var ops = PV.ops, alert = PV.alert;
+    try { s.fn(g, tt, lt2, lt2 / dur2, dur2); } catch (e) {}
+    PV.ops = ops; PV.alert = alert;
+    _ificCv = cv;
+    return cv;
+  }
+  function simHandoff(ctx, lt) {
+    var cv = ifICanCanvas();
+    if (!cv) return;
+    var dest = mapped([414, 70, 592, 214]);
+    var u = T.ease(Math.min(1, lt / 0.36));
+    var rect = lerpRect([288, 82, 912, 594], dest, u);
+    T.fill(ctx, dest[0], dest[1], dest[2], dest[3], T.BG, 1);
+    var k = cv.width / 1280;
+    ctx.drawImage(cv, 288 * k, 82 * k, 624 * k, 512 * k, rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1]);
+    if (lt > 0.32) {
+      var local = T.ease((lt - 0.32) / 0.14);
+      ctx.save(); ctx.globalAlpha = local; sampleObject(ctx, rect); ctx.restore();
+    }
   }
   function comma(n) {
     var s = String(n), out = '', c = 0;
