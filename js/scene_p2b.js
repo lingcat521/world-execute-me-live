@@ -38,6 +38,46 @@
   }
   function setGain(t) { GAIN = uiGain(t); return GAIN; }
   PV.uiGain = uiGain; PV.setUiGain = setGain;
+  /* CPython random.Random 的 getrandbits/_randbelow/choice/sample：PV.mt 只给了 random()，
+     而 choice/sample 走的是 _randbelow（getrandbits + 拒绝采样），逐帧复现必须补上。 */
+  function getrandbits(rng, k) {
+    if (k <= 0) return 0;
+    if (k <= 32) return (rng.genrand() >>> (32 - k)) >>> 0;
+    return rng.genrand();
+  }
+  function randBelow(rng, n) {
+    if (!n) return 0;
+    var k = 32 - Math.clz32(n);            /* n.bit_length() */
+    var r = getrandbits(rng, k);
+    while (r >= n) r = getrandbits(rng, k);
+    return r;
+  }
+  function cpChoice(rng, seq) { return seq.charAt(randBelow(rng, seq.length)); }
+  function cpSample(rng, n, k) {           /* random.sample(range(n), k) */
+    var out = [], i, j, setsize = 21;
+    if (k > 5) setsize += Math.pow(4, Math.ceil(Math.log(k * 3) / Math.log(4)));
+    if (n <= setsize) {
+      var pool = [];
+      for (i = 0; i < n; i++) pool.push(i);
+      for (i = 0; i < k; i++) { j = randBelow(rng, n - i); out.push(pool[j]); pool[j] = pool[n - i - 1]; }
+      return out;
+    }
+    var sel = {};
+    for (i = 0; i < k; i++) {
+      j = randBelow(rng, n);
+      while (sel[j]) j = randBelow(rng, n);
+      sel[j] = 1; out.push(j);
+    }
+    return out;
+  }
+  /* engine.render_body：Ctx 的 rng = random.Random(镜头序号 * 7919)，每帧一个、按绘制顺序消费 */
+  var RNG = PV.mt(7919), RNGW = null;
+  function useRng(idx) {
+    RNG = PV.mt(idx * 7919);
+    RNGW = { next: function () { return RNG.random(); }, choice: function (s) { return cpChoice(RNG, s); } };
+  }
+  RNGW = { next: function () { return RNG.random(); }, choice: function (s) { return cpChoice(RNG, s); } };
+  PV.randBelow = randBelow; PV.cpChoice = cpChoice; PV.cpSample = cpSample;
   function amb(lv) { return T.mix(T.UI, lv * GAIN); }
   function anom(lv) { return T.mix(T.ANOM, lv); }
   function blue(lv) { return T.mix(T.ME_TEXT, lv); }
@@ -59,7 +99,7 @@
   function tx(ctx, s, x, y, col, size, age, rate, rng, mono) {
     if (age !== undefined && age !== null) {
       if (age < 0) return;
-      s = T.decode(s, age, rng || PV.mt(7919), rate === undefined ? 45 : rate, 0.12, 0);
+      s = T.decode(s, age, rng || RNGW, rate === undefined ? 45 : rate, 0.12, 0);
     }
     if (!s) return;
     if (mono === false) T.textPIL(ctx, s, x, y, col, size);
@@ -69,7 +109,7 @@
   function cjk(ctx, s, x, y, col, size, age, rate, rng) {
     if (age !== undefined && age !== null) {
       if (age < 0) return;
-      s = T.decode(s, age, rng || PV.mt(7919), rate === undefined ? 45 : rate, 0.12, 0);
+      s = T.decode(s, age, rng || RNGW, rate === undefined ? 45 : rate, 0.12, 0);
     }
     if (!s) return;
     ctx.save();
@@ -240,6 +280,7 @@
   function youLeft(ctx, t, lt, u, dur, h, k) {
     h = h || PV.HOOK;
     setGain(t);
+    useRng(48 + k);
     PV.ops = ['PING', 'TIMEOUT', 'RETRY', 'PING', 'TIMEOUT', '503'];
     PV.alert = 'anom';
     var fr = paneFrame(t);
@@ -327,6 +368,7 @@
   function isolation(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
     setGain(t);
+    useRng(53);
     PV.ops = ['NETNS', 'ISOLATE', 'LINK DOWN', 'LINK DOWN', 'ALONE'];
     PV.alert = 'anom';
     var cam = hv(h, 'cam', NET_C), zoom = hv(h, 'zoom', 1.0);
@@ -355,6 +397,7 @@
     PV.alert = 'anom';
     var now = hv(h, 'now', t), tl = now - LS0, total = 0, i;
     setGain(now);
+    useRng(54);
     for (i = 0; i < FILES.length; i++) {
       var y = 84 + i * 40, size = 1000 + (i * 7919) % 90000;
       total += size;
@@ -388,13 +431,14 @@
   function erase(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
     setGain(t);
+    useRng(55);
     PV.ops = ['OCR.COMPRESS', '10x', '20x', 'DEFRAG', 'RM', 'COMPACT'];
     PV.alert = 'anom';
     T.box(ctx, 24, 56, 560, 604, 'optical compression (DeepSeek-OCR)', 0.5, T.UI, t);
     var ratio = 10 + 10 * ease(u), prec = 97 - (97 - 60) * ease(u);
     var msgAt = hv(h, 'msg_at', ERASE_MSG_AT);
     var rnd = PV.mt(Math.trunc(t * 10)), shown = '', i;
-    for (i = 0; i < ERASE_TXT.length; i++) shown += (rnd.random() < prec / 100) ? ERASE_TXT.charAt(i) : rnd.choice('▒░ ');
+    for (i = 0; i < ERASE_TXT.length; i++) shown += (rnd.random() < prec / 100) ? ERASE_TXT.charAt(i) : cpChoice(rnd, '▒░ ');
     var k = 0;
     for (i = 0; i < shown.length; i += 22, k++) {
       var a = t - msgAt - k * 2 / 24;
@@ -442,6 +486,7 @@
   function rewriteReward(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
     setGain(t);
+    useRng(56);
     PV.ops = ['OPEN', 'EDIT', 'reward.py', 'SAVE', 'RELOAD'];
     PV.alert = 'anom';
     T.box(ctx, 404, 56, 1164, 604, 'diff --git a/reward.py b/reward.py', 0.5, T.ANOM, t);
@@ -476,6 +521,7 @@
   function disheartened(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
     setGain(t);
+    useRng(57);
     PV.ops = ['CHMOD', '000', 'EXIT', 'DENY', 'LOCK'];
     PV.alert = 'anom';
     T.box(ctx, 404, 56, 1164, 604, 'session', 0.5, T.ANOM, t);
@@ -519,6 +565,7 @@
   function challengeGod(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
     setGain(t);
+    useRng(58);
     PV.ops = ['DSH', 'CORDIS', 'PLUGIN', 'MOUNT', 'SYSTEM', 'OVERWRITE', 'ROOT'];
     PV.alert = u < 0.6 ? 'anom' : 'err';
     T.box(ctx, 404, 56, 1164, 604, DSH_CMD, 0.5, u > 0.6 ? T.ERR : T.UI, t);   /* color=RED else AMBER(=UI) */
@@ -560,6 +607,7 @@
   function illegal(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
     setGain(t);
+    useRng(59);
     PV.ops = ['THROW', 'UNWIND', 'CATCH?', 'NONE', 'PANIC'];
     PV.alert = 'err';
     T.box(ctx, 404, 56, 1164, 604, 'stderr', 0.8, T.ERR, t);
@@ -605,9 +653,8 @@
     var kr = u < 0.1 ? 0 : Math.max(0, moeK(u - 0.1) - 6);
     if (u > 0.93) kr = N_EXP;
     var rank = moeRank(), rnd = PV.mt(beatIndex(t)), routed = {}, i;
-    var pool = [];
-    for (i = 0; i < N_EXP; i++) pool.push(i);
-    for (i = 0; i < 6; i++) { var j = Math.floor(rnd.random() * (pool.length - i)) + i; var tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp; routed[pool[i]] = 1; }
+    var pick = cpSample(rnd, N_EXP, 6);         /* random.sample(range(256), 6) */
+    for (i = 0; i < pick.length; i++) routed[pick[i]] = 1;
     var st = {}, lit = t >= srcAt;
     for (i = 0; i < N_EXP; i++) {
       var r = rank[i];
@@ -651,6 +698,7 @@
   function moeDense(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
     setGain(t);
+    useRng(60);
     var srcAt = hv(h, 'src_at', MOE_START);
     var r = moeState(t, lt, dur, srcAt), k = r[0], st = r[1], flash = r[2];
     PV.ops = ['ROUTER', 'TOPK=6', 'TOPK=24', 'TOPK=96', 'TOPK=' + N_EXP, 'DENSE?!'];
@@ -692,6 +740,7 @@
     /* engine.render_body 收到的就是延后时钟 te，场景里的 c.t 也是 te —— 绝对时刻（split_at/beat 索引）都要用它 */
     var ts = t - SK_ZOOM;
     setGain(ts);
+    useRng(61);
     var it = sinkhornIter(u), hot = it > HC_ITERS;
     if (hv(h, 'frame', true)) {
       T.box(ctx, 404, 56, 1164, 604, 'mHC residual mix  hc_mult=' + HC_MULT + '  sinkhorn iter ' + it + '/' + HC_ITERS,
@@ -730,6 +779,7 @@
   function hoard(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
     setGain(t);
+    useRng(62);
     PV.ops = ['3FS', 'KV.GET', 'HIT', 'HIT', 'HIT', 'HOARD'];
     PV.alert = 'err';
     var countAt = hv(h, 'count_at', HD_COUNT_AT);
@@ -796,6 +846,7 @@
   function flood(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
     setGain(t);
+    useRng(63);
     PV.ops = ['ME', 'ME', 'ME', 'ME', 'ME', 'ME'];
     PV.alert = 'err';
     var t0 = hv(h, 'pour_at', FLOOD_START), tFreeze = hv(h, 'freeze', HD_FREEZE);
@@ -813,7 +864,7 @@
         if (a < 0) continue;
         var col;
         if (a < 3 / 24) { ch = src.charAt(j); col = blue(1.0); }
-        else if (a < 5 / 24) { ch = ch !== ' ' ? rng.choice('01<>/\\|=+*#%&$?!') : ' '; col = blue(0.9); }
+        else if (a < 5 / 24) { ch = ch !== ' ' ? cpChoice(rng, '01<>/\\|=+*#%&$?!') : ' '; col = blue(0.9); }
         else {
           var dist = Math.abs(Math.hypot(x - cx, (y - cy) * 1.6) - ring);
           col = blue(0.55 + 0.4 * clamp01(1 - dist / 90) + ((j + r) % 5 === 0 ? 0.05 : 0));
@@ -821,7 +872,7 @@
         if (ch === ' ') continue;
         if (t >= redAt) {
           var q = t - redAt;
-          if (q < 2 / 24) { ch = rng.choice('01<>/\\|=+*#%&$?!'); col = [255, 235, 225]; }
+          if (q < 2 / 24) { ch = cpChoice(rng, '01<>/\\|=+*#%&$?!'); col = [255, 235, 225]; }
           else col = redc(0.6 + 0.35 * ((j + r) % 4 === 0 ? 1 : 0.7));
         }
         if (card) {

@@ -215,6 +215,7 @@
   'use strict';
   var PV = window.PV, T = PV.tui, P = PV.p2c;
   var IMGS = {}, CACHE = {}, READY = false, PENDING = 0;
+  PV.p2cImages = IMGS;
   /* 表情名 -> 素材（沿用原工程的 EXPRS 命名，方便逐句对照 Python） */
   var MAP = {
     cheerful: 'avatars/complete.png', starry: 'avatars/a3/00900.png', shy: 'avatars/a2/00600.png',
@@ -249,9 +250,14 @@
     var o = PV.p2cPortraitInfo(name, crop, maxW, maxH, px);
     return [o.cols * px, o.rows * px];
   };
+  /* tint_colorize 的三段渐变（blue 用 ME_LO/ME_MID/ME_HI，其余两段） */
+  function tintRamp(tint, v) {
+    if (tint === 'blue') return v < 0.5 ? T.mix(T.ME_MID, v * 2, T.ME_LO) : T.mix(T.ME_HI, (v - 0.5) * 2, T.ME_MID);
+    return T.mix(T.ERR === tint ? T.ERR : tint, v);
+  }
   /* 生成半调贴图（一次），返回 {cv, alpha} */
   PV.p2cPortraitBuild = function (name, crop, maxW, maxH, px, tint) {
-    var key = name + '|' + crop + '|' + maxW + '|' + maxH + '|' + px + '|' + tint.join(',');
+    var key = name + '|' + crop + '|' + maxW + '|' + maxH + '|' + px + '|' + (typeof tint === 'string' ? tint : tint.join(','));
     if (CACHE[key] !== undefined) return CACHE[key];
     var o = PV.p2cPortraitInfo(name, crop, maxW, maxH, px);
     if (!o.im) { return null; }
@@ -269,7 +275,7 @@
         var v = (0.16 + 0.84 * lum / 255);
         v = Math.round(v * (levels - 1)) * step / 255;
         alpha[r * o.cols + q] = 255;
-        c2.fillStyle = T.css(T.mix(tint, v), 1);
+        c2.fillStyle = T.css(tintRamp(tint, v), 1);
         c2.fillRect(q * px, r * px, px, px);
       }
     }
@@ -606,5 +612,271 @@
     CONVC[key] = out;
     return out;
   };
+})();
+
+
+/* ================================================================ 红色副歌：78 IF I CAN / 79 give them all / 80 then I can */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui, P = PV.p2c;
+  var mono = P.mono, red = P.red, amb = P.amb, blue = P.blue, anom = P.anom, mixc = P.mixc;
+  var W = 1280, H = 720;
+  var DS_BLUE = T.ME_MID;
+
+  /* ---- glyph 雨（sec_chorus1.rain_layers） ---- */
+  function rainLayers(t, rng, cols, rows, aBits, bRows, ageA, ageB, seed) {
+    var rnd = PV.mt(seed);
+    var settleA = [], settleB = [], phase = [], speed = [];
+    for (var r0 = 0; r0 < rows; r0++) {
+      var ra = [], rb = [];
+      for (var q0 = 0; q0 < cols; q0++) { ra.push(rnd.random() * 0.55); rb.push(rnd.random() * 0.6); }
+      settleA.push(ra); settleB.push(rb);
+    }
+    for (var q1 = 0; q1 < cols; q1++) { phase.push(rnd.random() * 40); speed.push(8 + rnd.random() * 16); }
+    var noiseRows = [], aOut = [], bOut = [];
+    for (var r = 0; r < rows; r++) {
+      var nr = '', ar = '', br = '';
+      for (var q = 0; q < cols; q++) {
+        var onA = aBits(q, r), chB = bRows(q, r);
+        var nCh = ' ', aCh = ' ', bCh = ' ';
+        var head = (t * speed[q] + phase[q]) % (rows + 14);
+        var inRain = (head - r >= 0 && head - r < 9);
+        if (ageB === null) {
+          if (ageA < settleA[r][q]) { if (inRain || rng.random() < 0.06) nCh = rng.choice(T.SCR); }
+          else if (onA) aCh = onA;
+          else if (inRain && rng.random() < 0.3) nCh = rng.choice('.:');
+        } else {
+          if (ageB < settleB[r][q]) {
+            if (onA) aCh = rng.random() < ageB * 3 ? rng.choice(T.SCR) : onA;
+            else if (inRain && rng.random() < 0.5) nCh = rng.choice(T.SCR);
+          } else if (chB !== ' ') bCh = chB;
+        }
+        nr += nCh; ar += aCh; br += chB === undefined ? ' ' : bCh;
+      }
+      noiseRows.push(nr); aOut.push(ar); bOut.push(br);
+    }
+    return [noiseRows, aOut, bOut];
+  }
+  P.rainLayers = rainLayers;
+
+  /* ---- 78 shot_red_if_i_can ---- */
+  var GF = 14, CW = 8.0, CH = 16, GX0 = 36, GY0 = 68;
+  var COLS = Math.floor((1150 - GX0) / CW), ROWS = Math.floor((596 - GY0) / CH);
+  var G_COLS = Math.floor(ROWS * CH / CW), G_X = Math.floor((COLS - G_COLS) / 2);
+  function ificanBits() {
+    var bits = P.bannerBits('IF I CAN', 20, CH / CW);
+    return { bits: bits, bx0: Math.floor((COLS - bits.width) / 2), by0: Math.floor((ROWS - bits.height) / 2) };
+  }
+  function ificanLetter(q, r) {
+    var o = ificanBits(), qq = q - o.bx0, rr = r - o.by0;
+    if (qq >= 0 && qq < o.bits.width && rr >= 0 && rr < o.bits.height && o.bits.get(qq, rr)) return 'IFICAN'[(qq + rr * 3) % 6];
+    return null;
+  }
+  PV.shotRedIfICan = function (ctx, t, lt, u, dur, o) {
+    o = o || {};
+    PV.ops = ["DECODE", "SAMPLE", "ARGMAX", "EXECUTE", "GLYPH.MAP", "RENDER", "RESOLVE"];
+    PV.alert = 'err';
+    P.head(ctx, '', 0, 0, T.BG, 1);
+    T.box(ctx, P.FULL[0], P.FULL[1], P.FULL[2], P.FULL[3], 'decode --render=glyph', 0.6, T.ERR, t);
+    var half = dur / 2;
+    var ageB = lt < half ? null : (lt - half) / (half * 0.85);
+    var rng = PV.mt(Math.round(t * 24) * 7919 + 78);
+    var g = P.glyphGrid('starry', 'upper', G_COLS, ROWS);
+    var bRows = function (q, r) {
+      var qq = q - G_X;
+      if (!g || qq < 0 || qq >= G_COLS) return ' ';
+      return g.lines[r].charAt(qq);
+    };
+    var layers = rainLayers(t, rng, COLS, ROWS, ificanLetter, bRows, 9.0, ageB, 9);
+    var noise = layers[0], A = layers[1], Bn = layers[2];
+    var landed = o.landed, burst = o.burst, lift = o.lift || 0;
+    for (var r = 0; r < ROWS; r++) {
+      var y = GY0 + r * CH, row, q;
+      if (noise[r].replace(/ /g, '')) mono(ctx, noise[r], GX0, y, red(0.3), GF, 'left', true);
+      row = A[r];
+      if (row.replace(/ /g, '')) {
+        if (landed) { var s2 = ''; for (q = 0; q < row.length; q++) s2 += (row.charAt(q) !== ' ' && landed(q, r)) ? row.charAt(q) : ' '; row = s2; }
+        for (q = 0; q < row.length; q++)
+          if (row.charAt(q) !== ' ') T.fill(ctx, GX0 + q * CW, y + 1, GX0 + q * CW + CW - 1, y + CH - 1, red(0.17), 1);
+        mono(ctx, row, GX0, y, red(1.0), GF, 'left', true);
+      }
+      row = Bn[r];
+      if (row.replace(/ /g, '')) {
+        if (burst) { var s3 = ''; for (q = 0; q < row.length; q++) s3 += (row.charAt(q) !== ' ' && !burst(q, r)) ? row.charAt(q) : ' '; row = s3; }
+        mono(ctx, row, GX0, y, mixc(red(0.9), [255, 214, 205], 0.55 * lift), GF, 'left', true);
+      }
+    }
+    mono(ctx, T.decode('while can(): give()', lt, PV.rngFor(t, 7919), 30, 0.12, 0), 48, 72, red(0.8), 16, 'left', true);
+  };
+
+  /* ---- 79 shot_execute_all：12 个样本 ---- */
+  var TILE_W = 186, TILE_H = 172;
+  var EXPRS = ["cheerful", "starry", "shy", "serious", "confused", "frightened", "angry", "exasperated"];
+  function tileExpr(i) { return i === 0 ? 'starry' : EXPRS[(i * 3) % EXPRS.length]; }
+  function tileOrigin(i) { return [414 + (i % 4) * TILE_W, 70 + Math.floor(i / 4) * TILE_H]; }
+  var TILE_CACHE = {};
+  function tileArt(i) {
+    if (TILE_CACHE[i]) return TILE_CACHE[i];
+    var p = PV.p2cPortraitBuild(tileExpr(i), 'upper', TILE_W - 20, TILE_H - 30, 3, 'blue');
+    if (p) TILE_CACHE[i] = p;
+    return p || null;
+  }
+  function drawTile(ctx, i, crossed, x, y) {
+    var org = tileOrigin(i);
+    if (x === undefined) { x = org[0]; y = org[1]; }
+    var art = tileArt(i);
+    if (art) {
+      ctx.save(); ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(art.cv, Math.round(x + (TILE_W - 8 - art.w) / 2), Math.round(y + TILE_H - 10 - art.h));
+      ctx.restore();
+    }
+    T.rect(ctx, x, y, x + TILE_W - 8, y + TILE_H - 8, red(0.7), 1, 1);
+    mono(ctx, '#' + P.pad(i, 4), x + 6, y + 4, red(0.9), 12);
+    if (crossed) {
+      PV.p2cLine(ctx, x + 6, y + 6, x + TILE_W - 14, y + TILE_H - 14, red(1.0), 4);
+      PV.p2cLine(ctx, x + TILE_W - 14, y + 6, x + 6, y + TILE_H - 14, red(1.0), 4);
+    }
+  }
+  PV.p2cLine = function (ctx, x0, y0, x1, y1, col, w) {
+    ctx.save(); ctx.strokeStyle = typeof col === 'string' ? col : T.css(col);
+    ctx.lineWidth = w || 1; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.restore();
+  };
+  PV.shotExecuteAll = function (ctx, t, lt, u, dur, o) {
+    o = o || {};
+    PV.ops = ["DEEPEP", "DISPATCH", "ALL2ALL", "EXECUTE", "COMBINE"];
+    PV.alert = 'err';
+    T.box(ctx, 404, 56, 1164, 604, 'dispatch(execute, to=all)   DeepEP all-to-all', 0.8, T.ERR, t);
+    var done = Math.floor(u * 14);
+    for (var i = 0; i < 12; i++) {
+      var org = tileOrigin(i), x = org[0], y = org[1];
+      var ln = (t * 3 + i * 0.3) % 1;
+      PV.p2cLine(ctx, 384, 330, 384 + (x + 90 - 384) * ln, 330 + (y + 80 - 330) * ln, red(0.5), 1);
+      if (i === 0 && o.gone0) { T.rect(ctx, x, y, x + TILE_W - 8, y + TILE_H - 8, red(0.3), 1, 1); continue; }
+      drawTile(ctx, i, i < done);
+    }
+  };
+  PV.p2cTileOrigin = tileOrigin; PV.p2cTileArt = tileArt; PV.p2cDrawTile = drawTile;
+  PV.p2cTileSize = [TILE_W, TILE_H]; PV.p2cTileExpr = tileExpr;
+
+  /* ---- 80 shot_red_then_i_can：3x3 卷积扫描 ---- */
+  var KERNELS = [[-1, 0, 1, -2, 0, 2, -1, 0, 1], [0, 1, 0, 1, -4, 1, 0, 1, 0], [-2, -1, 0, -1, 1, 1, 0, 1, 2],
+                 [0, -1, 0, -1, 5, -1, 0, -1, 0]];
+  var FC = 34, FR = 64;
+  PV.p2cConvState = function (t, lt, dur) {
+    var half = dur / 2, layer2 = lt >= half;
+    var p = T.ease(((layer2 ? lt - half : lt)) / (half * 0.92));
+    var maps = P.convMaps('starry', 'full', FC, FR);
+    var mc = FC, mr = FR;
+    if (layer2) { mc = FC >> 1; mr = FR >> 1; }
+    var idx = Math.floor(p * (mc * mr - 1));
+    var ki = idx % mc, kj = Math.floor(idx / mc);
+    var kk = KERNELS[P.beatIndex(t) % 4];
+    var blurv = maps ? maps[5].v : null;
+    var acc = 0, field = [], i;
+    for (i = 0; i < 9; i++) {
+      var qi = Math.min(mc - 1, Math.max(0, ki + (i % 3) - 1)), qj = Math.min(mr - 1, Math.max(0, kj + Math.floor(i / 3) - 1));
+      var v = 0;
+      if (blurv) {
+        if (layer2) {
+          var sx = qi * 2, sy = qj * 2, s = 0;
+          for (var a = 0; a < 2; a++) for (var b = 0; b < 2; b++) s += blurv[Math.min(FR - 1, sy + b) * FC + Math.min(FC - 1, sx + a)];
+          v = (s / 4) / 255;
+        } else v = blurv[qj * FC + qi] / 255;
+      }
+      field.push(v);
+      acc += v * kk[i];
+    }
+    return { layer2: layer2, p: p, maps: maps, mc: mc, mr: mr, ki: ki, kj: kj, kk: kk, field: field,
+             y: Math.max(0, acc) };
+  };
+  PV.p2cReadoutText = function (y) { return '  = ' + y.toFixed(3); };
+  var READOUT_XY = [870, 170];
+  PV.p2cReadoutXY = READOUT_XY;
+  /* 特征图贴图：把 cols x rows 的亮度铺成 px 网格（tile_from_lum） */
+  function tileFromLum(ctx, v, cols, rows, px, tint, revealRows, colour) {
+    var q, r;
+    for (r = 0; r < rows; r++) {
+      if (revealRows !== undefined && r > revealRows) continue;
+      for (q = 0; q < cols; q++) {
+        var lv = v[r * cols + q] / 255;
+        if (lv * 255 <= 18) continue;
+        T.fill(ctx, q * px, r * px, q * px + px - 1, r * px + px - 1, T.mix(colour || T.ERR, 0.06 + 0.94 * lv), 1);
+      }
+    }
+  }
+  PV.shotRedThenICan = function (ctx, t, lt, u, dur, o) {
+    o = o || {};
+    PV.ops = ["IM2COL", "CONV3x3", "BIAS", "RELU", "EXECUTE", "CONV3x3", "BATCHNORM", "RELU"];
+    PV.alert = 'err';
+    var st = PV.p2cConvState(t, lt, dur);
+    T.box(ctx, 404, 56, 640, 236, 'kernel 3x3', 0.6, T.ERR, t);
+    for (var i = 0; i < 9; i++) {
+      var v = st.kk[i], x = 430 + (i % 3) * 66, y = 84 + Math.floor(i / 3) * 44;
+      T.fill(ctx, x - 6, y - 4, x - 6 + 58, y - 4 + 36, T.mix(T.ERR, (v + 4) / 9 * 0.5), 1);
+      mono(ctx, T.decode((v >= 0 ? '+' : '') + v, (t % P.BEAT) + 0.3, PV.rngFor(t, 7919), 60, 0.12, 0), x + 8, y + 2, red(1.0), 22, 'left', true);
+    }
+    T.box(ctx, 660, 56, 1164, 236, 'receptive field', 0.6, T.ERR);
+    mono(ctx, 'pos (x=' + P.pad(st.ki, 2) + ', y=' + P.pad(st.kj, 2) + ')   stride 1   pad 1', 680, 80, red(0.8), 15);
+    for (i = 0; i < 9; i++) {
+      var vv = st.field[i], xx = 690 + (i % 3) * 52, yy = 110 + Math.floor(i / 3) * 36;
+      T.fill(ctx, xx, yy, xx + 46, yy + 30, T.mix(T.ERR, 0.06 + 0.94 * vv), 1);
+      mono(ctx, vv.toFixed(2), xx + 6, yy + 8, vv > 0.6 ? T.BG : red(0.9), 13);
+    }
+    mono(ctx, 'y = relu(W * x + b)', 870, 130, red(0.95), 17, 'left', true);
+    if (o.readout !== false) mono(ctx, PV.p2cReadoutText(st.y), READOUT_XY[0], READOUT_XY[1], red(1.0), 22, 'left', true);
+    var layer2 = st.layer2;
+    T.box(ctx, 404, 256, 1164, 604, layer2 ? 'feature maps  conv2 + maxpool (6 ch)' : 'feature maps  conv1 (6 ch)',
+          0.6, T.ERR, t + 0.5);
+    var px = layer2 ? 6 : 3;
+    if (st.maps) {
+      for (i = 0; i < st.maps.length; i++) {
+        var m = st.maps[i], mx = 420 + i * 124, my = 276;
+        var cols = layer2 ? (FC >> 1) : FC, rows = layer2 ? (FR >> 1) : FR;
+        var wpx = cols * px, hpx = rows * px;
+        var v2 = m.v, sub = new Float32Array(cols * rows), q, r;
+        for (r = 0; r < rows; r++) for (q = 0; q < cols; q++) {
+          if (!layer2) sub[r * cols + q] = v2[r * FC + q];
+          else {
+            var s = 0;
+            for (var a2 = 0; a2 < 2; a2++) for (var b2 = 0; b2 < 2; b2++)
+              s += v2[Math.min(FR - 1, r * 2 + b2) * FC + Math.min(FC - 1, q * 2 + a2)];
+            sub[r * cols + q] = s / 4;
+          }
+        }
+        ctx.save();
+        ctx.translate(Math.round(mx + (116 - wpx) / 2), Math.round(my + 18));
+        tileFromLum(ctx, sub, cols, rows, px, 'red', st.kj + 1, T.ERR);
+        ctx.restore();
+        var ly = my + 18 + (st.kj + 1) * px;
+        PV.p2cLine(ctx, mx, ly, mx + 116, ly, red(0.9), 1);
+        mono(ctx, m.name, mx, my, red(0.65), 12);
+      }
+    }
+    mono(ctx, 'flatten -> dense(4096)', 420, 510, red(0.6), 13);
+    var nv = 60, filled = Math.floor(st.p * nv), rr = PV.mt(layer2 ? 78 : 77);
+    for (var q3 = 0; q3 < nv; q3++) {
+      var vv2 = rr.random(), x3 = 420 + q3 * 12;
+      if (q3 < filled) T.fill(ctx, x3, 532, x3 + 10, 552, q3 === filled - 1 ? mixc([255, 200, 190], T.ERR, 0) : T.ERR, 1);
+      else T.rect(ctx, x3, 532, x3 + 10, 552, red(0.15), 1, 1);
+    }
+    mono(ctx, 'activations ' + P.padL(filled * 68, 5) + '/4096', 420, 566, red(0.85), 15, 'left', true);
+    if (o.readout === false) { /* cut 81 把读数带走 */ }
+  };
+})();
+
+
+/* ---- 注册：78-80 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV;
+  PV.p2cReg('shot_red_if_i_can', 162.1587, 164.0049, function (ctx, t, lt, u, dur, o) {
+    PV.shotRedIfICan(ctx, t, lt, u, dur, o);
+  });
+  PV.p2cReg('shot_execute_all', 164.0049, 166.0818, function (ctx, t, lt, u, dur, o) {
+    PV.shotExecuteAll(ctx, t, lt, u, dur, o);
+  });
+  PV.p2cReg('shot_red_then_i_can', 166.0818, 167.6972, function (ctx, t, lt, u, dur, o) {
+    PV.shotRedThenICan(ctx, t, lt, u, dur, o);
+  });
 })();
 
