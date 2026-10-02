@@ -867,6 +867,93 @@
     '--dsw-alias-label-secondary:#c99fb2;--dsw-alias-state-error-primary:#ff7a8e;' +
     '--dsw-specific-bubble:#57304a;--dsw-specific-input-major:#3a1d2c;--dsw-specific-selector:#4a2638}' +
     'body[data-ds-dark-theme] #app{background:#2a1520}';
+  /* ---------------- 左窗格随时间变色（视频实测曲线，见 pvport/pubfix.mjs 的登记 note）
+     头像 .pv-pet：72.0s 起跟着"她当前变成的东西"变色，行间 0.4s 过渡：
+        茄子紫 (180,110,235) → 番茄红 (255,110,90) → 82.2s 回蓝 (120,150,255) → 83.0s 猫粉 (255,160,205)
+        （实测头像均值 75-78s=(79,50,109) 色相 269°、79-80s=(108,51,48) 色相 3°、83s+=(134,77,111) 色相 324°，
+          与这三个目标色的色相一致，所以用 hue-rotate 把蓝(227°)转到目标色相即可）
+     背景 NEKO 变量：#2a1520 那套按 k(t) 连续插值：83.0s 起入（0.6s）、89.5→91.0 回落、91.0→92.0 回粉，
+        实测窗格空白处 82s=(13,18,27) → 84s=(57,31,47) → 90s=(21,11,19) → 92s=(58,32,48)。 */
+  var NEKO_PAL = [['--dsw-alias-bg-base', '#2a1520'], ['--dsw-alias-bg-layer-1', '#331a27'],
+                  ['--dsw-alias-bg-layer-2', '#3d2130'], ['--dsw-alias-bg-overlay', '#412637'],
+                  ['--dsw-alias-border-l1', '#5b3348'], ['--dsw-alias-border-l2', '#7c4a63'],
+                  ['--dsw-alias-brand-primary', '#ff8fc0'], ['--dsw-alias-label-primary', '#ffe3ef'],
+                  ['--dsw-alias-label-secondary', '#c99fb2'], ['--dsw-alias-state-error-primary', '#ff7a8e'],
+                  ['--dsw-specific-bubble', '#57304a'], ['--dsw-specific-input-major', '#3a1d2c'],
+                  ['--dsw-specific-selector', '#4a2638']];
+  var NEKO_KF = [[82.1, 0], [82.6, 1], [89.0, 1], [90.2, 0.12], [91.0, 0], [92.0, 1]];
+  var PET_KF = [[71.85, [180, 110, 235]], [78.3, [255, 110, 90]], [81.7, [120, 150, 255]],
+                [82.1, [255, 160, 205]]];
+  var PET_BASE_HUE = 227;
+  function hex2rgb(h) {
+    h = h.replace('#', '');
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  }
+  function rgb2hex(c) {
+    return '#' + ((1 << 24) + (Math.round(c[0]) << 16) + (Math.round(c[1]) << 8) + Math.round(c[2]))
+      .toString(16).slice(1);
+  }
+  function mixRGB(a, b, u) {
+    u = u < 0 ? 0 : (u > 1 ? 1 : u);
+    return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u];
+  }
+  function hueOf(c) {
+    var r = c[0] / 255, g = c[1] / 255, b = c[2] / 255;
+    var mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    if (d < 1e-6) return 0;
+    var h = mx === r ? ((g - b) / d + (g < b ? 6 : 0)) : (mx === g ? (b - r) / d + 2 : (r - g) / d + 4);
+    return h * 60;
+  }
+  function petRGB(t) {                      /* 头像目标色（行间 0.4s 过渡） */
+    var i, base = PET_KF[0][1];
+    if (t <= PET_KF[0][0]) return base;
+    for (i = PET_KF.length - 1; i >= 0; i--) {
+      if (t >= PET_KF[i][0]) {
+        var prev = i === 0 ? [120, 150, 255] : PET_KF[i - 1][1];
+        return mixRGB(prev, PET_KF[i][1], Math.min(1, (t - PET_KF[i][0]) / 0.4));
+      }
+    }
+    return base;
+  }
+  function nekoK(t) {                       /* 背景粉化程度 0..1 */
+    var k = NEKO_KF, i;
+    if (t <= k[0][0]) return 0;
+    if (t >= k[k.length - 1][0]) return k[k.length - 1][1];
+    for (i = 0; i + 1 < k.length; i++) {
+      if (t <= k[i + 1][0]) {
+        var u = (t - k[i][0]) / (k[i + 1][0] - k[i][0]);
+        return k[i][1] + (k[i + 1][1] - k[i][1]) * u;
+      }
+    }
+    return 0;
+  }
+  var NEKO_BASE = null;
+  function nekoBaseVars() {                 /* 没被覆盖前的原值（只取一次） */
+    if (NEKO_BASE) return NEKO_BASE;
+    NEKO_BASE = {};
+    var cs = null;
+    try { cs = window.getComputedStyle(document.body); } catch (e) {}
+    for (var i = 0; i < NEKO_PAL.length; i++) {
+      var v = '';
+      try { v = cs ? cs.getPropertyValue(NEKO_PAL[i][0]).trim() : ''; } catch (e2) {}
+      NEKO_BASE[NEKO_PAL[i][0]] = v && v.charAt(0) === '#' ? v : '#101319';
+    }
+    return NEKO_BASE;
+  }
+  function themeAt(t) {                     /* 每帧一段 <style>：背景插值 + 头像 filter */
+    var i, out = '', pet = petRGB(t), k = nekoK(t);
+    var dh = hueOf(pet) - PET_BASE_HUE;
+    out += '<style>.pv-pet{filter:hue-rotate(' + dh.toFixed(1) + 'deg) saturate(1.15)}</style>';
+    if (k <= 0.001) return out;
+    var base = nekoBaseVars();
+    out += '<style>body[data-ds-dark-theme]{';
+    for (i = 0; i < NEKO_PAL.length; i++) {
+      out += NEKO_PAL[i][0] + ':' + rgb2hex(mixRGB(hex2rgb(base[NEKO_PAL[i][0]]), hex2rgb(NEKO_PAL[i][1]), k)) + ';';
+    }
+    out += '}body[data-ds-dark-theme] #app{background:' +
+      rgb2hex(mixRGB(hex2rgb(base['--dsw-alias-bg-base']), hex2rgb('#2a1520'), k)) + '}</style>';
+    return out;
+  }
   function cInit() {
     if (C_S1) return;
     var EGG = w(33, 3), NUTRIENTS = w(34, 6), GIVE1 = w(34, 3);
@@ -1082,7 +1169,7 @@
     cInit();
     if (t < cUnfold()) return '';
     var sa = sessionAt(t), i = sa[0], S = sa[1], start = S[0], entries = S[1], heroUntil = S[2], key = S[3];
-    var theme = (NEKO_ON <= t && t < NEKO_OFF) ? NEKO : '';
+    var theme = themeAt(t);
     if (t < heroUntil) return theme + cHome(t, i, entries);
     var rr = cRowsFor(entries, t), rows = rr[0], running = rr[1];
     var text = cTyping(entries, t);

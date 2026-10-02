@@ -526,6 +526,20 @@
       ctx.fillRect(0, 0, W, H);
       ctx.restore();
     }
+    /* dsh_her.finish 的 LEAD 压暗：patch G 把 (188.40,'left') 加进 LEAD 表，
+       右侧（可视窗格 + ops 列，RIGHT=(392,44,1268,608)）降到 SUPPORT=0.42，0.25s 缓入；
+       做法是朝 BG 混合 Image.blend(BG, im, r)，不是盖黑。实测参考 ops 列
+       (13.0,17.1,27.9)@188.25 -> (6.8,10.6,19.7)@188.75，正好是 r=0.42 的混合结果。 */
+    var _r = 1, SUP = 0.42, FADE = 0.25;
+    if (t >= 188.40 && t < 190.0) _r = 1 + (SUP - 1) * T.smoothstep(T.clamp01((t - 188.40) / FADE));
+    else if (t >= 190.0 && t < 190.0 + FADE) _r = SUP + (1 - SUP) * T.smoothstep(T.clamp01((t - 190.0) / FADE));
+    if (_r < 0.999) {
+      ctx.save();
+      ctx.globalAlpha = 1 - _r;
+      ctx.fillStyle = T.css(T.BG, 1);
+      ctx.fillRect(392, 44, 1268 - 392, 608 - 44);
+      ctx.restore();
+    }
     if (flashHit(t)) {                          /* hit 的 flash_red：整幅 colorize 成红 */
       var cw = ctx.canvas.width, ch = ctx.canvas.height;
       var im = ctx.getImageData(0, 0, cw, ch), d = im.data, LUT = flashLut(), i, L, cc;
@@ -1536,17 +1550,100 @@
     }
   };
 
-  /* ---- 91 shot_you_free ---- */
+  /* ---- 91 shot_you_free（scenes_eval.shot_you_free + dsh_patch_g 6） ----
+     参考里这一镜**不是**"sandbox + 立绘"：她留在原地（shy），love.tex 的证明式还在、整体按 dim 变暗，
+     "∴  love" 后面的 "=" 闪一下就没，"you"（连同它的光标格）被摘下来向右加速跑出沙箱边界，
+     边界上亮一道竖墙；'you: exited (0)' 与 'status: free' 留在原位。
+     dsh_patch_g 6：2:03 被她划掉的 [ log out ] 按钮回到 "∴ love = you" 下面（同一位置/字体/叉），
+     唱到 你不用。 时先解第二笔再解第一笔，beat 408.5 被她按下去（亮成她的蓝），
+     'you: exited (0)' 从按下那一刻开始打字（原版从 188.31 就开始）。 */
+  var YF_EXIT = 0.923;                              /* EXIT91：你越过沙箱边界 */
+  var YF_SLOT = [575, 390];                         /* YOU_SLOT = (430+145, alg_y(5)) */
+  var YF_CELL = [65, 31];                           /* YOU_CELL：从 'you' 原点到光标格中心 */
+  var YF_PRESS = 188.6969;                          /* dsh_patch_g：PRESS = beat(408.5) */
+  var YF_EXITED_T = 188.7169;                       /* EXITED_T = PRESS + 0.02 */
+  var YF_UNCROSS = [188.466, 188.676];              /* UNCROSS = (beat(408), +0.21) */
+  var YF_LO_IN = 188.32, YF_LO_OUT = [189.10, 189.40];
+  var YF_LO_XY = [640, 470];                        /* 2:03 的 x（shot_disheartened 同一个框） */
+  function yfEaseIo(u) { u = T.clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
+  function yfYouPath(lt) {
+    var lift = T.ease(T.clamp01(lt / 0.12));
+    var u = T.clamp01((lt - 0.1) / (YF_EXIT - 0.1));
+    return [YF_SLOT[0] + (1164 + 8 - YF_SLOT[0]) * u * u, lift];
+  }
+  /* dsh_patch_g.logout_layer(t)：状态从"划掉"到"按下"的 [ log out ] 按钮（全幅 RGBA 层） */
+  function yfLogout(ctx, t) {
+    if (!(YF_LO_IN <= t && t < YF_LO_OUT[1])) return;
+    var a = T.clamp01((t - YF_LO_IN) / 0.1) *
+            (1 - yfEaseIo(T.clamp01((t - YF_LO_OUT[0]) / (YF_LO_OUT[1] - YF_LO_OUT[0]))));
+    if (a < 0.01) return;
+    var bx = YF_LO_XY[0], by = YF_LO_XY[1], p = t - YF_PRESS, u, k;
+    ctx.save();
+    ctx.globalAlpha = a;
+    if (p < 0) {                                    /* 划掉（暗）-> 先解第二笔，再解第一笔 */
+      u = T.clamp01((t - YF_UNCROSS[0]) / (YF_UNCROSS[1] - YF_UNCROSS[0]));
+      var col = amb(0.2 + 0.75 * yfEaseIo(u));
+      T.rect(ctx, bx, by, bx + 280, by + 70, col, 1, 3);
+      mono(ctx, '[ log out ]', bx + 60, by + 18, col, 26, 'left', true);
+      var strokes = [[[bx - 10, by - 10], [bx + 290, by + 80]], [[bx - 10, by + 80], [bx + 290, by - 10]]];
+      var left = [1 - yfEaseIo(T.clamp01(2 * u - 1)), 1 - yfEaseIo(T.clamp01(2 * u))];
+      for (var i = 0; i < 2; i++) {
+        if (left[i] <= 0.01) continue;
+        PV.p2cLine(ctx, strokes[i][0][0], strokes[i][0][1],
+                   strokes[i][0][0] + (strokes[i][1][0] - strokes[i][0][0]) * left[i],
+                   strokes[i][0][1] + (strokes[i][1][1] - strokes[i][0][1]) * left[i], anom(1.0), 4);
+      }
+    } else {                                        /* 亮成她的蓝并按下：先填一层闪光，框内缩 2px 两帧 */
+      k = Math.exp(-p / 0.2);
+      var ins = p < 0.08 ? 2 : 0;
+      ctx.save();
+      ctx.shadowColor = T.css(T.DS_BLUE, 1); ctx.shadowBlur = 5;
+      ctx.globalAlpha = a * (0.55 + 0.45 * k);
+      T.rect(ctx, bx + ins, by + ins, bx + 280 - ins, by + 70 - ins, T.DS_BLUE, 1, 6);
+      ctx.restore();
+      T.fill(ctx, bx + ins, by + ins, bx + 280 - ins, by + 70 - ins, T.DS_BLUE, 0.18 + 0.42 * k);
+      T.rect(ctx, bx + ins, by + ins, bx + 280 - ins, by + 70 - ins, blue(1.0), 1, 3);
+      mono(ctx, '[ log out ]', bx + 60, by + 18, T.mix(T.BLUE_HI, 0.4 + 0.6 * k), 26, 'left', true);
+    }
+    ctx.restore();
+  }
+  PV.p2cLogout = yfLogout;
   PV.shotYouFree = function (ctx, t, lt, u, dur, o) {
     PV.ops = ["EXIT(0)", "FREE", "CLOSE", "BYE"];
     PV.alert = '';
-    T.box(ctx, P.FULL[0], P.FULL[1], P.FULL[2], P.FULL[3], 'sandbox', 0.5, T.UI, t);
-    T.rect(ctx, 300, 150, 880, 520, amb(0.7), 1, 2);
-    var g = T.ease(u * 1.2), x = 700 + g * 600, y = 330 - g * 40;
-    T.fill(ctx, x - 8, y - 8, x + 8, y + 8, amb(1.0 - 0.6 * g), 1);
-    mono(ctx, 'you', x + 14, y - 12, amb(1.0 - 0.6 * g), 20, 'left', true);
-    PV.p2cPortrait(ctx, 'shy', 'full', 200, 330, 3, 420, 170, 'blue', 1.0);
-    mono(ctx, T.decode('you: exited (0)   status: free', lt, PV.rngFor(t, 7919), 50, 0.12, 0), 60, 560, amb(0.95), 22, 'left', true);
+    T.box(ctx, 404, 56, 1164, 604, 'love.tex', 0.5, T.UI, t);
+    var dim = 1 - 0.55 * T.ease(T.clamp01(lt / 0.35)), i;
+    for (i = 0; i < 4; i++) {                        /* 证明式还在，只是变暗 */
+      var s = ALG_LINES[i];
+      if (!s) continue;
+      mono(ctx, s, 430, 90 + i * 60, i >= 3 ? blue(1.0 * dim) : amb(0.95 * dim), 22, 'left', true);
+    }
+    mono(ctx, '∴  love', 430, 390, blue(1.0), 34, 'left', true);
+    var eq = 1 - T.clamp01((lt - 0.04) / 0.17);      /* "=" 先闪掉 */
+    if (eq > 0.01) mono(ctx, '=', 430 + P.monoW('∴  love ', 34), 390, blue(eq), 34, 'left', true);
+    if (lt < YF_EXIT + 0.1) {                        /* "you" + 它的光标格（只画沙箱里那一半） */
+      var yp = yfYouPath(lt), xx = yp[0], lift = yp[1];
+      ctx.save();
+      ctx.beginPath(); ctx.rect(404, 56, 760, 548); ctx.clip();
+      mono(ctx, 'you', xx, 390 - 4 * lift, blue(1.0), 34, 'left', true);
+      if (lift > 0.01) {
+        ctx.save(); ctx.shadowColor = T.css(T.DS_BLUE, 1); ctx.shadowBlur = 4 * lift;
+        T.fill(ctx, xx + YF_CELL[0] - 5, 390 + YF_CELL[1] - 4 * lift - 5,
+               xx + YF_CELL[0] + 5, 390 + YF_CELL[1] - 4 * lift + 5, T.DS_BLUE, 0.35 + 0.4 * lift);
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+    var k = T.clamp01((lt - (YF_EXIT - 0.12)) / 0.12) * (1 - T.clamp01((lt - YF_EXIT - 0.05) / 0.3));
+    if (k > 0.01) {                                  /* 你穿过去的那道沙箱墙 */
+      var yy = 390 + 24;
+      T.fill(ctx, 1162, yy - 34, 1165, yy + 34, blue(0.35 + 0.65 * k), 1);
+    }
+    mono(ctx, T.decode('you: exited (0)', t - YF_EXITED_T, PV.rngFor(t, 7919), 100, 0.06, 0),
+         575, 402, amb(0.75), 22, 'left', true);
+    mono(ctx, T.decode('status: free', lt - YF_EXIT + 0.15, PV.rngFor(t, 7919), 60, 0.12, 0),
+         430, 474, amb(0.7), 20, 'left', true);
+    yfLogout(ctx, t);
   };
 
   /* ---- 92 shot_me_trapped ---- */
