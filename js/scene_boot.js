@@ -621,7 +621,7 @@
     PV.ops = ['FORWARD', 'MTP.HEAD', 'LOSS', 'BACKWARD', 'FP8.GEMM', 'ALLREDUCE', 'ADAMW', 'LR.SCHED'];
     T.box(ctx, 404, 56, 1164, 420, 'train/loss', 0.5, T.UI, t);
     var prog = T.ease(u * 1.05) * 0.98 + 0.02;
-    var last = PV.dotChart(ctx, 440, 80, 250, 240, PV.lossFn, prog, T.ui(0.95), 5, 5);
+    var last = PV.dotChart(ctx, 440, 80, 690, 240, PV.lossFn, prog, T.ui(0.95), 5, 5);   /* 690：参考里 loss 曲线是横贯整幅的，原先 250 太窄 */
     if (last) {
       var lv = PV.lossFn(Math.min(1, prog));
       T.textPIL(ctx, 'loss ' + lv.toFixed(3), last[0] - 80, last[1] - 26, T.ui(1.0), 16);
@@ -728,6 +728,18 @@
     }
     return out;
   };
+  function h01(x, y) { var v = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453; return v - Math.floor(v); }
+  /* 入场：每个字母从散落点飞向最终位置——对应参考里"格子碎成字母、字母聚成鲸鱼"的转场 */
+  PV.whaleGlyphsEnter = function (t, u, k) {
+    var g = PV.whaleGlyphs(t, u), out = [];
+    for (var i = 0; i < g.length; i++) {
+      var gi = T.ease(T.clamp01((k - (i % 19) * 0.016) / (1 - 19 * 0.016)));
+      if (gi >= 0.9995) { out.push(g[i]); continue; }
+      var sx = 432 + h01(i * 0.731, 3.7) * 700, sy = 92 + h01(i * 1.317, 9.1) * 466;
+      out.push([sx + (g[i][0] - sx) * gi, sy + (g[i][1] - sy) * gi, g[i][2]]);
+    }
+    return out;
+  };
   PV.whaleGlyphs = function (t, u) {
     var bits = PV.whaleBits(COLS, ROWS, t * 5);
     var cw = 15 * T.MONO_ADV;
@@ -744,10 +756,21 @@
   PV.shotWhale = function (ctx, t, lt, u) {
     PV.ops = ['CKPT.SAVE', '3FS.WRITE', 'SHARD', 'FSYNC', 'VERIFY', 'CONTINUE'];
     T.box(ctx, 404, 56, 1164, 604, 'checkpoint', 0.45, T.UI, t);
-    var glyphs = PV.whaleGlyphs(t, u), i;
+    var enter = T.clamp01((t - 26.02) / 0.78);   /* 绝对时间：参考里字母从 26.0 就开始聚拢 */
+    var glyphs = PV.whaleGlyphsEnter(t, u, enter), i;
+    /* 28.94s 起字母向外飞散并淡出——鱼散成点云的前半段，正好接上 29.236s 的 points 镜头 */
+    var sc = T.clamp01((t - 28.94) / 0.30), sce = T.ease(sc);
+    ctx.save();
+    if (sc > 0) ctx.globalAlpha = Math.max(0, 1 - sc * 1.15);
     for (i = 0; i < glyphs.length; i++) {
-      T.textPIL(ctx, glyphs[i][2], glyphs[i][0], glyphs[i][1], T.css(T.mix(T.ME_TEXT, 0.95)), 15);
+      var gx = glyphs[i][0], gy = glyphs[i][1];
+      if (sc > 0) {
+        gx += (h01(i * 0.517, 1.3) - 0.5) * 340 * sce;
+        gy += (h01(i * 0.913, 7.7) - 0.5) * 340 * sce;
+      }
+      T.textPIL(ctx, glyphs[i][2], gx, gy, T.css(T.mix(T.ME_TEXT, 0.95)), 15);
     }
+    ctx.restore();
     var cw = 15 * T.MONO_ADV;
     var x = 588 - u * 148, y0 = 150 + 18 * Math.sin(t * 2.2);
     for (i = 0; i < 16; i++) {
@@ -792,8 +815,14 @@
   PV.shotPoints = function (ctx, t, lt, u, dur) {
     PV.ops = ['EMBED', 'PCA', 'TSNE.STEP', 'ATTRACT', 'REPEL', 'CONVERGE'];
     T.box(ctx, 404, 56, 1164, 604, 'embedding(me)  as a point set', 0.5, T.UI, t);
-    var g = T.ease(u * 1.25), pts = PV.pointsPos(t, u);
-    for (var i = 0; i < pts.length; i++) T.fill(ctx, pts[i][0], pts[i][1], pts[i][0] + 3, pts[i][1] + 3, pts[i][2], 1);
+    var g = T.ease(u * 1.25), pts = PV.pointsPos(t, u), i;
+    /* 30.50s 起整个人形向左飞进左窗格的头像位并淡出 */
+    var ex = T.clamp01((t - 30.50) / 0.34), exe = T.ease(ex), ea = 1 - T.clamp01((ex - 0.4) / 0.6);
+    for (i = 0; i < pts.length; i++) {
+      var px = pts[i][0], py = pts[i][1];
+      if (ex > 0) { px += (262 - px) * exe; py += (108 - py) * exe; }
+      T.fill(ctx, px, py, px + 3, py + 3, pts[i][2], ex > 0 ? ea : 1);
+    }
     T.textPIL(ctx, '|points| = 1400', 760, 120, T.ui(0.9), 22);
     var pc = String(Math.floor(100 * g));
     while (pc.length < 3) pc = ' ' + pc;
