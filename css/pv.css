@@ -33,7 +33,7 @@ body[data-ds-dark-theme]{--dsw-alias-bg-base:#05080f;--dsw-specific-bubble:#1823
 #chatbox #composer{--dsh-composer-side-clearance:10px;--dsh-composer-card-max-width:100%;--dsh-composer-text-max-height:80px;padding-bottom:4px}
 #chatbox .bOPqQW_root{padding:2px 4px 8px;gap:2px}
 /* ==== 移动端适配 ==== */
-#wrap{position:fixed;left:0;right:0;top:0;bottom:44px;display:grid;place-items:center}
+#wrap{position:fixed;left:0;right:0;top:0;bottom:44px;display:grid;place-items:center;overflow:hidden}
 #bar{height:44px;gap:10px;font-size:12px}
 @media (max-width:900px), (pointer:coarse){
   #bar{height:56px;gap:8px;font-size:14px;padding:0 8px;flex-wrap:nowrap;overflow-x:auto}
