@@ -34,8 +34,12 @@
     var x0 = R[0], y0 = R[1];
     var cols = Math.floor((R[2] - R[0]) / cw), rows = Math.floor((R[3] - R[1]) / ch);
     var oc = PV.newCanvas(W, H), nc = PV.newCanvas(W, H);
-    oldDraw(oc.getContext('2d'), t);
-    newDraw(nc.getContext('2d'), t);
+    var octx = oc.getContext('2d'), nctx = nc.getContext('2d');
+    /* 两张画布都先铺满背景（不透明），否则新画面画布大片透明、
+       逐格贴上去时旧画面会从透明处透出来——逐格替换等于失效。 */
+    if (PV.drawBackground) { PV.drawBackground(octx, t); PV.drawBackground(nctx, t); }
+    oldDraw(octx, t);
+    newDraw(nctx, t);
     ctx.drawImage(oc, 0, 0);
     for (var r = 0; r < rows; r++) {
       var cy = y0 + r * ch + ch / 2;
@@ -44,7 +48,10 @@
         var p = T.clamp01((t - delayFn(cx, cy)) / dur);
         if (p <= 0.02) continue;
         var sx = x0 + q * cw, sy = y0 + r * ch;
+        ctx.save();
+        ctx.globalAlpha = p;                 /* 逐格交叉淡入，p=1 时完全盖住旧画面 */
         ctx.drawImage(nc, sx, sy, cw, ch, sx, sy, cw, ch);
+        ctx.restore();
       }
     }
   };
@@ -85,5 +92,20 @@
       var k = Math.min(1, arrived / 120) * (1 - T.clamp01((t - T0 - 0.25) / 0.2));
       if (k > 0) T.dot(ctx, O[0], O[1], 6 * k, T.ui(1.0), k);
     }
+  });
+})();
+
+/* ---- C10：dualpipe -> whale。网格格子按随机延迟碎裂，同时 deepseek 字母聚拢成鲸鱼。 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var T0 = 26.466, PRE = 0.52;
+  function h01(x, y) { var v = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453; return v - Math.floor(v); }
+  PV.addCut(T0, PRE, 0.05, function (ctx, t, cut) {
+    PV.reveal(ctx, t,
+      function (c) { PV.shotDualPipe(c, t, Math.max(0, t - 23.236), T0 - 23.236); },
+      function (c) { PV.shotWhale(c, t, Math.max(0, t - T0), T.clamp01((t - T0) / (29.236 - T0))); },
+      function (cx, cy) { return T0 - PRE + (PRE - 0.04) * h01(cx * 0.37, cy * 0.29); },
+      { region: [405, 44, 1164, 604], cell: [12, 16], dur: 0.12 });
   });
 })();
