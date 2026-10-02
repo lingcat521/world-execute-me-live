@@ -335,12 +335,14 @@
     for (i = 0; i < Math.min(k, GRID.n); i++) out[i] = (k - i <= 3) ? 0.0 : 1.0;
     return out;
   };
-  PV.shotPieces = function (ctx, t, lt, dur) {
+  PV.shotPieces = function (ctx, t, lt, dur, opts) {
+    opts = opts || {};
     PV.ops = ['MMAP', 'SAFETENSORS', 'H2D.COPY', 'SHARD', 'VERIFY', 'LOAD'];
     var on = PV.piecesLit(lt, dur), done = 0, i;
     for (i in on) done++;
     T.box(ctx, 24, 56, 1164, 604, 'load_weights  DeepSeek-V4.1-Flash   (experts fp4 · rest fp8)', 0.5, T.UI, t);
     for (i = 0; i < GRID.n; i++) {
+      if (opts.cells === false) break;   /* C03：格子由转场层接管（向中心排空） */
       var p = cellXY(i);
       if (on[i] !== undefined) {
         var fresh = on[i] === 0.0;

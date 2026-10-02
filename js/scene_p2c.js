@@ -69,6 +69,11 @@
     return blk;
   }
 
+  PV.p2cMine = {};
+  PV.p2cReg = function (name, a, b, fn) {
+    PV.p2cMine[name] = { a: a, b: b, fn: fn, name: name };
+    PV.reg(name, a, b, fn);
+  };
   PV.p2c = {
     W: W, H: H, FPS: FPS, BEAT: BEAT, FB: FB, LEFT: LEFT, CENTER: CENTER, FULL: FULL,
     pulse: pulse, beatT: beatT, beatIndex: beatIndex, mixc: mixc, rgba: rgba, pad: pad, padL: padL, padRa: padRa,
@@ -121,7 +126,7 @@
     } else if (lay === 2) {
       var cw = 15 * P.MONO_ADV_W;
       var bits = P.bannerFit('EXECUTE', 26, 16 / cw, cw, 1100);
-      var rng = PV.mt(Math.floor(t * FPS) * 7919 + 7);
+      var rng = PV.mt(Math.floor(t * P.FPS) * 7919 + 7);
       var x0 = 594 - bits.width * cw / 2, y0 = 100 + Math.floor((26 - bits.height) * 16 / 2), r, q;
       for (r = 0; r < bits.height; r++) {
         var s = '';
@@ -217,6 +222,8 @@
   };
   var CROPS = { full: [0, 0, 1, 1], upper: [0.05, 0.0, 0.95, 0.62], face: [0.15, 0.02, 0.85, 0.45],
                 bust: [0.08, 0.0, 0.92, 0.72] };
+  /* 载入期就把全部素材请求出去（渲染脚本靠 PENDING 判断何时可以开画） */
+  function preload() { for (var k in MAP) load(k); }
   function load(name) {
     var path = MAP[name] || MAP.cheerful;
     if (IMGS[path] !== undefined) return IMGS[path];
@@ -228,6 +235,7 @@
     return null;
   }
   PV.p2cImagesReady = function () { return PENDING === 0 && READY; };
+  preload();
   PV.p2cPortraitInfo = function (name, crop, maxW, maxH, px) {
     var im = load(name), c = CROPS[crop] || CROPS.full;
     var sw = im ? im.width : 120, sh = im ? im.height : 120;
@@ -314,19 +322,44 @@
             157.0818, 158.0049];
   for (var k = 0; k < 12; k++) {
     (function (k) {
-      PV.reg('shot_exec_hit_' + PV.p2c.pad(k, 2), T0[k], T0[k + 1] || 158.6972, function (ctx, t, lt, u, dur) {
+      PV.p2cReg('shot_exec_hit_' + PV.p2c.pad(k, 2), T0[k], T0[k + 1] || 158.6972, function (ctx, t, lt, u, dur) {
         PV.shotExecHit(ctx, t, lt, u, dur, { k: k });
       });
     })(k);
   }
-  PV.reg('shot_count', 158.6972, 161.4664, function (ctx, t, lt, u, dur) { PV.shotCount(ctx, t, lt, u, dur); });
-  PV.reg('shot_exec_hit_12', 161.4664, 162.1587, function (ctx, t, lt, u, dur) {
+  PV.p2cReg('shot_count', 158.6972, 161.4664, function (ctx, t, lt, u, dur) { PV.shotCount(ctx, t, lt, u, dur); });
+  PV.p2cReg('shot_exec_hit_12', 161.4664, 162.1587, function (ctx, t, lt, u, dur) {
     PV.shotExecHit(ctx, t, lt, u, dur, { k: 12 });
   });
   /* cut 78 的出场镜头（#13）在 v2 里按名字取用，这里给它一个标准名 */
-  PV.reg('shot_exec_hit', 161.4664, 162.1587, function (ctx, t, lt, u, dur) {
+  PV.p2cReg('shot_exec_hit', 161.4664, 162.1587, function (ctx, t, lt, u, dur) {
     PV.shotExecHit(ctx, t, lt, u, dur, { k: 12 });
   });
   PV.p2cHitTimes = T0;
+})();
+
+
+/* ================================================================ 分派
+   scene_boot.js 的通用分支（else if (s.fn)）里引用了那个 IIFE 作用域外的 T，
+   调用 PV.reg 注册的镜头会抛 "T is not defined"。这里在本文件内包一层 PV.scene：
+   先让 cut 层（PV.activeCut）优先，然后处理本文件注册的镜头，其余交回原分派器。 */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var orig = PV.scene, MINE = PV.p2cMine;
+  PV.p2cScene = function (ctx, t) {
+    var s = null;
+    for (var k in MINE) { var m = MINE[k]; if (t >= m.a && t < m.b) s = m; }
+    return s;
+  };
+  PV.scene = function (ctx, t) {
+    if (PV.activeCut && PV.activeCut(t)) { return orig(ctx, t); }
+    var s = PV.p2cScene(ctx, t);
+    if (!s) return orig(ctx, t);
+    var d = (PV.SHOT_DELAY && PV.SHOT_DELAY[s.name]) || 0;
+    var a2 = Math.min(t, s.a + d), lt = Math.max(0, t - a2), dur = s.b - a2;
+    s.fn(ctx, t, lt, dur > 0 ? T.clamp01(lt / dur) : 0, dur);
+    PV.shotName = s.name;
+  };
 })();
 
