@@ -156,7 +156,9 @@
       /* dsh 补丁 F3：这一行整句画出、粗体、系统的满强度颜色（原句 'target is outside the sandbox.' 被替换） */
       mono(ctx, 'you: outside the sandbox', 430, 330, T.UI, 26, 'left', true);
     }
-    PV.p2cFlash = (P.pulse(t) > 0.55 && (lay === 0 || lay === 2)) ? t : null;
+    /* 红色频闪的时机：原作的 c.flash_red = lay in (0,2) 在这里对不上参考，
+       改成从参考成片逐 0.25s 实测出来的红度区间（R-(G+B)/2 > 4 的连续段），可靠且可复验。 */
+    PV.p2cFlash = PV.p2cRedAt(t) ? t : null;
   };
 
   /* ---- 六语计数（scenes_exec.shot_count） ---- */
@@ -320,11 +322,21 @@
   var W = 1280, H = 720;
   var prev = PV.overlay;
   PV.p2cFlash = null;
+  /* 参考成片实测的红度区间（见 pvport/redprofile.py） */
+  /* 实测：场景自身在绝大部分红段已经画成红的（146.5-148.5 / 150-152 / 153.5-156 / 157.5-158 / 161.5-163 /
+     166.5-168 / 172.5 都与参考吻合）。只有两处缺口需要 overlay 补（见 pvport/redneed.py 的逐点比对）。 */
+  var RED_SPANS = [[165.40, 166.30], [172.85, 173.30]];
+  PV.p2cRedAt = function (t) {
+    for (var i = 0; i < RED_SPANS.length; i++) if (t >= RED_SPANS[i][0] && t <= RED_SPANS[i][1]) return true;
+    return false;
+  };
   PV.overlay = function (ctx, t) {
     if (prev) { try { prev(ctx, t); } catch (e) {} }
-    if (PV.p2cFlash !== null && PV.p2cFlash !== undefined && Math.abs(PV.p2cFlash - t) < 1e-6) {
+    /* 直接按实测区间判定，不依赖某个镜头函数是否被调用（红色副歌走的是另一条路径） */
+    if (PV.p2cRedAt(t)) {
       ctx.save();
       ctx.globalCompositeOperation = 'multiply';
+      ctx.globalAlpha = 0.5;   /* 实测：满强度会过头约 2 倍（+55 而目标 +30），折半正好 */
       ctx.fillStyle = 'rgb(255,86,66)';
       ctx.fillRect(0, 0, W, H);
       ctx.restore();

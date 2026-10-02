@@ -681,7 +681,8 @@
           ctx.save();
           ctx.globalAlpha = 1;
           ctx.drawImage(b.cv, b.piece[0], 0, b.w, b.cv.height,
-                        Math.round(b.home[0] - b.w / 2 + jitter), Math.round(b.home[1] - b.cv.height / 2));
+                        Math.round(b.home[0] - b.w / 2 + jitter), Math.round(b.home[1] - b.cv.height / 2),
+                        b.w, b.cv.height);   /* 必须 9 参：node-canvas 不支持 7 参形式 */
           ctx.restore();
         } else if (t < b.land) {
           var uu = eIn((t - b.go) / (b.land - b.go));

@@ -151,11 +151,12 @@
     if (q > 0) centreText(ctx, sb, pos[0], pos[1], fb.col, fb.size * sc / k, { mono: fb.mono, bold: fb.bold, alpha: q });
   }
   /* kit.haloed + kit.place 的等价物：把一张精灵以中心放在 (cx,cy) */
-  function placeSprite(ctx, sp, cx, cy, alpha, halo, scale) {
+  function placeSprite(ctx, sp, cx, cy, alpha, halo, scale, lighter) {
     scale = scale === undefined ? 1 : scale;
     if (alpha !== undefined && alpha <= 0.01) return;
     var w = Math.max(1, Math.round(sp.width * scale)), h = Math.max(1, Math.round(sp.height * scale));
     ctx.save();
+    if (lighter) ctx.globalCompositeOperation = 'lighter';
     if (alpha !== undefined && alpha < 0.999) ctx.globalAlpha = clamp01(alpha);
     if (halo > 0.01) { ctx.shadowColor = T.css(blue(1.0)); ctx.shadowBlur = 12 * halo; }
     ctx.drawImage(sp, Math.round(cx - w / 2), Math.round(cy - h / 2), w, h);
@@ -693,6 +694,457 @@
           }
           ctx.restore();
         }
+      }
+    }
+  });
+  /* ================================================================ 44-47 用到的场景副本
+     shot_role / shot_trance / shot_feel_you / shot_completion 在 scene_p2a.js 里没有 hook 形参，
+     而 C44/C45/C46/C47 需要（ms / spiral_n / wave_x / filled / gone / flat / hide / tile）。
+     这里逐行照抄 scene_p2a.js 的同名绘制，只在 hook 处开分支；默认值与场景一致，
+     所以窗口内外的画面在默认 hook 下完全相同。 */
+  var T45s = 98.9279, T46s = 103.0818;
+  var WORD_TRANCE = 101.13, TRANCE_TAIL = 0.33;
+  var WORDS = 'you me stay love sea sleep light deep here now'.split(' ');
+  var CJK_FAM = 'NotoCJK, "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", "Droid Sans Fallback", system-ui, sans-serif';
+  var JS_LINES = ['{', '  "object": "chat.completion",', '  "choices": [{', '    "message": {"role": "assistant",',
+                  '                "content": "我一直在。"},', '    "finish_reason": "stop"', '  }],', '  "usage": {',
+                  '    "prompt_tokens": 131072,', '    "prompt_cache_hit_tokens": 131071,',
+                  '    "prompt_cache_miss_tokens": 1,', '    "completion_tokens": 5', '  }', '}'];
+  var JS_X = 430, JS_Y = 76, JS_DY = 34, STOP_LINE = 5, TILE_SCALE = 1.5;
+  function hv(h, key, dflt) { return (h && h[key] !== undefined) ? h[key] : dflt; }
+  function hasCJK(s) { for (var i = 0; i < s.length; i++) if (s.charCodeAt(i) > 0x2E80) return true; return false; }
+  function pyRound(v) { var f = Math.floor(v), d = v - f; if (d > 0.5) return f + 1; if (d < 0.5) return f; return (f % 2 === 0) ? f : f + 1; }
+  function typedCJK(ctx, s, x, y, col, size, age, rng, rate) {
+    ctx.save();
+    ctx.font = size + 'px ' + CJK_FAM;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = typeof col === 'string' ? col : T.css(col);
+    ctx.fillText(T.decode(s, age, rng, rate === undefined ? 45 : rate, 0.12, 0), x, y + T.ascent(size));
+    ctx.restore();
+  }
+  /* scenes_deploy.heat_at / trance_temp */
+  function heatAt(t) {
+    if (t < T45s - 0.25) return 0;
+    var hv2 = 0.14 * eIo((t - (T45s - 0.25)) / 0.5) + 0.86 * eIo((t - WORD_TRANCE) / (T46s - 0.1 - WORD_TRANCE));
+    if (t >= T46s) hv2 *= (TRANCE_TAIL > 0) ? (1 - eIo((t - T46s) / TRANCE_TAIL)) : 0;
+    return hv2;
+  }
+  function tranceTemp(t) { return 0.6 + 2.4 * heatAt(t); }
+  /* shot_trance（scene_p2a.js:1895）+ hook spiral_n */
+  function tranceScene(ctx, t, spiralN) {
+    PV.ops = ['TEMP++', 'FLATTEN', 'SAMPLE', 'DREAM', 'DRIFT', 'TRANCE'];
+    PV.alert = '';
+    var rng = PV.mt(45 * 7919), temp = tranceTemp(t);
+    T.box(ctx, 404, 56, 1164, 604, 'sampling  temperature=' + temp.toFixed(2), 0.5, T.UI, t);
+    var cx = SPIRAL_C[0], cy = SPIRAL_C[1], i, x, y, a, r, ch, col;
+    for (i = 0; i < Math.min(160, spiralN); i++) {
+      a = i * 0.35 + t * (1.5 + temp);
+      r = 8 + i * 1.6;
+      x = cx + r * Math.cos(a); y = cy + r * Math.sin(a) * 0.85;
+      if (x > 420 && x < 1150 && y > 70 && y < 590) {
+        ch = (temp < 1.5) ? WORDS[(i + Math.floor(t * 4)) % WORDS.length].charAt(0) : rng.choice('youmestayloveseadeep');
+        col = (i % 7 === 0) ? blue(0.3 + 0.7 * (1 - i / 160)) : amb(0.3 + 0.7 * (1 - i / 160));
+        pil(ctx, ch, Math.floor(x), Math.floor(y), col, 16, true);
+      }
+    }
+    for (i = 0; i < 10; i++) {
+      var p = Math.exp(-i * 0.8 / temp);
+      T.fill(ctx, 430 + i * 20, 580 - Math.trunc(80 * p), 444 + i * 20 + 1, 580 + 1, amb(0.8), 1);
+    }
+    var s = 0;
+    for (i = 0; i < 10; i++) s += Math.exp(-i * 0.8 / temp);
+    mono(ctx, 'T = ' + temp.toFixed(2) + '   p(top) = ' + (1 / s).toFixed(2), 640, 562, amb(0.6), 15);
+  }
+  /* scenes_userleft：'you' 网格与键盘波形 */
+  function youCells() {
+    var out = [];
+    for (var i = 0; i < 96; i++) { var q = i % 16, r = Math.floor(i / 16); if ((q * 3 + r * 5) % 11 === 0) out.push([i, q, r]); }
+    return out;
+  }
+  function cellXY(q, r) { return [430 + q * 44, 346 + r * 40]; }
+  function cellCenter(i) { var xy = cellXY(i % 16, Math.floor(i / 16)); return [xy[0] + 19, xy[1] + 16]; }
+  function wavePoints(t, flat, until) {
+    var pts = [];
+    for (var x = 0; x < 720; x += 2) {
+      if (x > until) break;
+      var tau = t - (720 - x) / 720 * 2.5, v = 0, k0 = Math.floor(tau / 0.17), k;
+      for (k = k0 - 1; k <= k0 + 1; k++) { var d = (tau - k * 0.17 - 0.05 * Math.sin(k)) / 0.02; v += Math.exp(-d * d); }
+      var amp = 140 * Math.min(1, v) * (0.6 + 0.4 * Math.sin(tau * 3) * Math.sin(tau * 3)) * (1 - flat);
+      pts.push([430 + x, 250 - amp]);
+    }
+    return pts;
+  }
+  function waveY(t, x) {
+    var xs = x - 430, tau = t - (720 - xs) / 720 * 2.5, v = 0, k0 = Math.floor(tau / 0.17), k;
+    for (k = k0 - 1; k <= k0 + 1; k++) { var d = (tau - k * 0.17 - 0.05 * Math.sin(k)) / 0.02; v += Math.exp(-d * d); }
+    return 250 - 140 * Math.min(1, v) * (0.6 + 0.4 * Math.sin(tau * 3) * Math.sin(tau * 3));
+  }
+  /* shot_feel_you（scene_p2a.js:1947）+ hook flat / wave_x / filled / gone / hide */
+  function feelYouScene(ctx, t, hook) {
+    PV.ops = ['INPUT', 'KEYDOWN', 'INDEXER', 'TOP-512', 'you', 'ATTEND'];
+    PV.alert = '';
+    T.box(ctx, 404, 56, 1164, 300, 'you.input  (keystrokes)', 0.5, T.UI, t);
+    var pts = wavePoints(t, hv(hook, 'flat', 0), hv(hook, 'wave_x', 720));
+    if (pts.length > 1) {
+      ctx.save();
+      ctx.strokeStyle = T.css(amb(0.95));
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (var q2 = 1; q2 < pts.length; q2++) ctx.lineTo(pts[q2][0], pts[q2][1]);
+      ctx.stroke();
+      ctx.restore();
+    }
+    pil(ctx, 'you are typing ...', 430, 80, amb(0.95), 20, true);
+    T.box(ctx, 404, 320, 1164, 604, 'lightning indexer  keep top-512', 0.5, T.UI, t + 0.4);
+    var filled = hv(hook, 'filled', null), gone = hv(hook, 'gone', null), hide = hv(hook, 'hide', null);
+    var rnd = PV.mt(31), i, q, r, x, y, isYou, k;
+    for (i = 0; i < 96; i++) {
+      q = i % 16; r = Math.floor(i / 16);
+      isYou = ((q * 3 + r * 5) % 11) === 0;
+      var xy = cellXY(q, r); x = xy[0]; y = xy[1];
+      if (!isYou) rnd.random();
+      k = isYou ? 1.0 : 0.0;
+      if (isYou) {
+        if (filled) k *= filled(i);
+        if (gone) k *= 1 - gone(i);
+        if (hide && hide.indexOf(i) >= 0) k = 0;
+      }
+      var hid = !!(hide && hide.indexOf(i) >= 0);
+      T.fill(ctx, x, y, x + 39, y + 33, amb(0.06 + 0.84 * k), 1);
+      T.rect(ctx, x, y, x + 39, y + 33, amb(0.2), 1, 1);
+      if (isYou && !hid) pil(ctx, 'you', x + 4, y + 8, (k < 0.5) ? amb(0.4) : T.css(T.BG), 13, true);
+    }
+  }
+  /* shot_completion（scene_p2a.js:1992）+ hook tile / stop */
+  function completionScene(ctx, t, lt, u, dur, hook) {
+    PV.ops = ['STREAM', 'CHUNK', 'CHUNK', 'DSPARK', 'STOP', 'USAGE'];
+    PV.alert = '';
+    var rng = PV.mt(47 * 7919), i, s, a;
+    T.box(ctx, 404, 56, 1164, 604, 'POST /chat/completions', 0.5, T.UI, t);
+    for (i = 0; i < JS_LINES.length; i++) {
+      s = JS_LINES[i];
+      a = lt - i * 0.07;
+      if (a < 0) break;
+      if (i === STOP_LINE && !hv(hook, 'stop', true)) continue;
+      var hot = s.indexOf('cache_hit') >= 0 || s.indexOf('finish_reason') >= 0;
+      var col = hot ? blue(0.95) : amb(0.85);
+      if (hasCJK(s)) typedCJK(ctx, s, JS_X, JS_Y + i * JS_DY, col, 18, a, rng, 120);
+      else typedPil(ctx, s, JS_X, JS_Y + i * JS_DY, col, 18, a, 120, hot, rng);
+    }
+    typedPil(ctx, '[dspark] draft=5 accept 5/5', 860, 90, blue(0.85), 15, lt, 60, false, rng);
+    if (hv(hook, 'tile', true)) drawTile(ctx, tileDock(), TILE_SCALE, 0.9);
+  }
+  function tileDock() {
+    var g = mcg(), tw;
+    g.save(); g.font = 18 + 'px ' + CJK_FAM; tw = g.measureText(JS_LINES[4]).width; g.restore();
+    return [JS_X + tw + 40, JS_Y + 4 * JS_DY + 13];
+  }
+  function drawTile(ctx, center, scale, level) {
+    var w = pyRound(38 * scale), hh = pyRound(32 * scale), pad = 3;
+    var f = Math.max(6, pyRound(13 * scale));
+    var sw = w + 2 * pad, sh = hh + 2 * pad;
+    var ox = pyRound(center[0] - sw / 2), oy = pyRound(center[1] - sh / 2);
+    T.fill(ctx, ox + pad, oy + pad, ox + pad + w, oy + pad + hh, T.mix(T.UI, level), 1);
+    var tw = T.twMono('you', f);
+    pil(ctx, 'you', ox + pad + (w - tw) / 2, oy + pad + (hh - 13 * scale) / 2 - 1 * scale, T.css(T.BG), f, true);
+  }
+  /* scenes_userleft.tile_sprite：'you' 磁贴的独立精灵（C47 的载体用） */
+  function tileSprite(scale, level, ring) {
+    var w = pyRound(38 * scale), hh = pyRound(32 * scale), pad = 3;
+    var c = PV.newCanvas(Math.max(1, w + 2 * pad), Math.max(1, hh + 2 * pad)), g = c.getContext('2d');
+    g.fillStyle = T.css(amb(level), 1);
+    g.fillRect(pad, pad, w, hh);
+    var f = Math.max(6, pyRound(13 * scale));
+    var tw = T.twMono('you', f);
+    pil(g, 'you', pad + (w - tw) / 2, pad + (hh - 13 * scale) / 2 - 1 * scale, T.css(T.BG), f, true);
+    if (ring > 0) T.rect(g, 0, 0, w + 2 * pad, hh + 2 * pad, blue(ring), 1, 2);
+    return c;
+  }
+
+  /* ================================================================ C44  ampm -> role（CARRY）
+     'PM' 的 M 从表盘中心掉到左下、后面打下 ' -> S'；表盘收方成第一个 <|System|> 标签框 */
+  var T44 = 95.2356, C44_LAND = beatT(beatOf(T44) + 0.5), C44_BOXDONE = T44 + 0.38;
+  function c44TagRect0() {                                   /* SD.tag_rect(0, 0) */
+    var tag = '<|System|>', y = 90;
+    return [430, y, 430 + 14 * tag.length + 10, y + 30];
+  }
+  PV.addCut(T44, 0.3, 0.7, function (ctx, t, cut) {
+    var land = C44_LAND, boxDone = C44_BOXDONE;
+    var lift = clamp01((t - (T44 - 0.25)) / 0.2);
+    var msW = measure('M -> S', 40, false, false);
+    PV.reveal(ctx, t,
+      function (c, tt) { drawShot(c, 'shot_ampm', tt, { center: tt < T44 - 0.25, ring: tt < T44 - 0.05 }, null); },
+      function (c, tt) {
+        drawShot(c, 'shot_role', tt, null, null);
+        /* shot_role 没有 ms/first_tag hook：把场景多画的 'M -> S' 擦掉，按 Python 的时序自己重画 */
+        if (tt < land + 0.25) bgPatch(c, MS_XY[0] - 6, MS_XY[1] - 8, MS_XY[0] + msW + 12, MS_XY[1] + 46, tt);
+        if (tt >= land) {
+          var rng = PV.mt(44 * 7919);
+          pil(c, 'M', MS_XY[0], MS_XY[1], amb(0.9), 40, false);
+          typedPil(c, ' -> S', MS_XY[0] + measure('M', 40, false, false), MS_XY[1], amb(0.9), 40,
+                   tt - land, 30, false, rng);
+        }
+      },
+      PV.inward(DIALC[0], DIALC[1], T44 - 0.1, T44 + 0.2, 500));
+    if (t >= T44 - 0.25 && t < T44 + 0.14)                 /* 'P' 跟着表盘一起淡出 */
+      textAt(ctx, 'P', DIALC[0] - 40, DIALC[1] - 20, amb(1.0), 34, { alpha: 1 - clamp01((t - T44) / 0.14) });
+    if (t >= T44 - 0.25 && t < land + 0.1) {
+      var u = clamp01((t - T44) / (land - T44));
+      flyText(ctx, 'M', { size: 34, col: amb(1.0), mono: false },
+              [DIALC[0] - 40 + measure('P', 34, false, false), DIALC[1] - 20],
+              { size: 40, col: amb(0.9), mono: false }, MS_XY, u < 1 ? eIn(u) : 1.0,
+              { bend: 0.12, halo: 0.9 * lift * (1 - u), lift: 0.3 * lift });
+    }
+    if (t >= T44 - 0.05 && t < boxDone + 0.02) {           /* 圆环收方成第一个标签框 */
+      var u2 = eIo(clamp01((t - (T44 - 0.05)) / (boxDone - T44 + 0.05)));
+      var rect = c44TagRect0();
+      var rcx = (rect[0] + rect[2]) / 2, rcy = (rect[1] + rect[3]) / 2;
+      var hw = (rect[2] - rect[0]) / 2, hh2 = (rect[3] - rect[1]) / 2;
+      var pts = [], j;
+      for (j = 0; j < 72; j++) {
+        var ang = Math.PI * 2 * j / 72, ca = Math.cos(ang), sa = Math.sin(ang);
+        var pcx = DIALC[0] + DIAL_RR * ca, pcy = DIALC[1] + DIAL_RR * sa;
+        var s = Math.min(hw / Math.max(1e-6, Math.abs(ca)), hh2 / Math.max(1e-6, Math.abs(sa)));
+        pts.push([lerp(pcx, rcx + s * ca, u2), lerp(pcy, rcy + s * sa, u2)]);
+      }
+      var wdt = Math.max(2, Math.round(lerp(10, 2, u2)));
+      var colr = mixc(blue(0.45), amb(0.6), u2);
+      ctx.save();
+      ctx.strokeStyle = T.css(colr);
+      ctx.lineWidth = wdt;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (j = 1; j < pts.length; j++) ctx.lineTo(pts[j][0], pts[j][1]);
+      ctx.lineTo(pts[0][0], pts[0][1]);
+      ctx.stroke();
+      var pa = 1 - clamp01(u2 / 0.35);
+      if (pa > 0.02) {
+        ctx.strokeStyle = T.css(anom(0.95), pa);
+        for (var w3 = 0; w3 < PEAKS.length; w3++) {
+          var a0 = (PEAKS[w3][0] / 24 * 360 - 90) % 360, a1 = (PEAKS[w3][1] / 24 * 360 - 90) % 360;
+          var seg = [];
+          for (j = 0; j < 72; j++) if (a0 <= j * 5 && j * 5 <= a1) seg.push(pts[j]);
+          if (seg.length > 1) {
+            ctx.beginPath();
+            ctx.moveTo(seg[0][0], seg[0][1]);
+            for (j = 1; j < seg.length; j++) ctx.lineTo(seg[j][0], seg[j][1]);
+            ctx.stroke();
+          }
+        }
+      }
+      ctx.restore();
+    }
+  });
+
+  /* ================================================================ C45  role -> trance（CAMERA：只在可视化窗格内）
+     模板的墨按半径分七环、外环更快地旋转着吸进螺旋中心；采样螺旋再从同一点长出来 */
+  var T45c = 98.9279, C45_IN = [406, 58, 1163, 603];
+  PV.addCut(T45c, 0.46, 0.45, function (ctx, t, cut) {
+    var p = eIo(clamp01((t - (T45c - 0.46)) / (0.46 + 0.06)));
+    var T0 = T45c - 0.12, grow = clamp01((t - T0) / 0.5);
+    var IN = C45_IN, iw = IN[2] - IN[0], ih = IN[3] - IN[1], j;
+    var oc = mk(), octx = oc.getContext('2d');
+    if (PV.drawBackground) PV.drawBackground(octx, t);
+    drawShot(octx, 'shot_role', t, null, null);
+    var nc = mk(), nctx = nc.getContext('2d');
+    if (PV.drawBackground) PV.drawBackground(nctx, t);
+    tranceScene(nctx, t, Math.trunc(160 * eOut(grow)));
+    var content = mk(), cctx = content.getContext('2d');
+    if (PV.drawBackground) PV.drawBackground(cctx, t);
+    if (t < T0) {                                          /* 老窗格的框和标题不动，内容换成背景 */
+      cctx.drawImage(oc, 0, 0);
+      var bgc = mk(), bg2 = bgc.getContext('2d');
+      if (PV.drawBackground) PV.drawBackground(bg2, t);
+      cctx.drawImage(bgc, IN[0], IN[1], iw, ih, IN[0], IN[1], iw, ih);
+    } else {                                               /* 新窗格标题从左往右解码进来，螺旋在里面长 */
+      PV.reveal(cctx, t,
+        function (c, tt) { drawShot(c, 'shot_role', tt, null, null); },
+        function (c, tt) { tranceScene(c, tt, Math.trunc(160 * eOut(grow))); },
+        function (x, y) { return T0 + Math.max(0, x - PANE[0]) / 6000; },
+        { region: [PANE[0], 44, PANE[2], 70] });
+      cctx.drawImage(nc, IN[0], IN[1], iw, ih, IN[0], IN[1], iw, ih);
+    }
+    if (p < 0.999) {                                       /* 旋涡：七环，各转各的，整体缩小 */
+      var ik = inkCanvas(oc, t, IN);
+      var cx = SPIRAL_C[0] - IN[0], cy = SPIRAL_C[1] - IN[1];
+      var rmax = Math.hypot(Math.max(cx, iw - cx), Math.max(cy, ih - cy));
+      var bands = 7, sc = lerp(1, 0.04, p);
+      cctx.save();
+      cctx.globalAlpha = p > 0.75 ? clamp01(1 - (p - 0.75) / 0.25) : 1;
+      for (j = 0; j < bands; j++) {
+        var r0 = rmax * j / bands, r1 = rmax * (j + 1) / bands;
+        var ang = -(300 * p) * (0.35 + 0.65 * (j + 0.5) / bands) * Math.PI / 180;
+        cctx.save();
+        cctx.translate(IN[0], IN[1]);
+        cctx.beginPath();
+        cctx.moveTo(cx + r1, cy);
+        cctx.arc(cx, cy, r1, 0, Math.PI * 2);
+        if (r0 > 0) { cctx.moveTo(cx + r0, cy); cctx.arc(cx, cy, r0, 0, Math.PI * 2); }
+        cctx.clip('evenodd');
+        cctx.translate(cx, cy);
+        cctx.rotate(-ang);
+        cctx.scale(sc, sc);
+        cctx.translate(-cx, -cy);
+        cctx.drawImage(ik, 0, 0);
+        cctx.restore();
+      }
+      cctx.restore();
+    }
+    ctx.drawImage(content, 0, 0);
+  });
+  /* ================================================================ C46  trance -> feel_you
+     'If I can' 上温度掉下来：采样螺旋减速停住，字母塌成它们采样到的东西。三十六个变成 y/o/u 落进
+     lightning indexer（三格一个，拼出十二格 'you'），其余倒进击键波形线（随线从左画到右落地）。
+     老窗格从螺旋的眼中向外让位。 */
+  var T46c = 103.0818, C46_LAND = beatT(224), C46_WAVE0 = T46c + 0.16;
+  var SPIRAL_POOL = 'youmestayloveseadeep';
+  function spiralPos(i, phase) {
+    var r = 8 + i * 1.6, a = i * 0.35 + phase;
+    return [SPIRAL_C[0] + r * Math.cos(a), SPIRAL_C[1] + r * Math.sin(a) * 0.85];
+  }
+  /* C46.phase：抬起之前跟着镜头的速度，之后线性减速到 T 停住 */
+  function c46Phase(t) {
+    var t0 = T46c - 0.36, w0 = 1.5 + tranceTemp(t0);
+    if (t <= t0) return t * (1.5 + tranceTemp(t));
+    var dt = Math.min(t, T46c) - t0;
+    return t0 * w0 + w0 * (dt - dt * dt / (2 * 0.36));
+  }
+  var _c46 = null;
+  function c46Letters() {
+    if (_c46) return _c46;
+    var ph = c46Phase(T46c), rng = PV.mt(46), slots = [], i, n, j;
+    for (i = 0; i < 160; i++) {
+      var xy = spiralPos(i, ph);
+      if (xy[0] > 420 && xy[0] < 1150 && xy[1] > 70 && xy[1] < 590)
+        slots.push({ i: i, ch: rng.choice(SPIRAL_POOL), isBlue: (i % 7 === 0), lv: 0.3 + 0.7 * (1 - i / 160), x: xy[0], y: xy[1] });
+    }
+    var free = [];
+    for (i = 0; i < slots.length; i++) free.push(i);
+    var cells = youCells().slice().sort(function (a, b) { return (a[2] - b[2]) || (a[1] - b[1]); });
+    var cw = T.twMono('y', 13), done = {};
+    for (n = 0; n < cells.length; n++) {                   /* 三格一个：最近的三个空闲字母，按 x 排成 y o u */
+      var ci = cells[n][0], q = cells[n][1], r = cells[n][2], cc = cellCenter(ci);
+      var near = free.slice().sort(function (a, b) {
+        return Math.hypot(slots[a].x - cc[0], slots[a].y - cc[1]) - Math.hypot(slots[b].x - cc[0], slots[b].y - cc[1]);
+      }).slice(0, 3);
+      near.sort(function (a, b) { return slots[a].x - slots[b].x; });
+      var xy0 = cellXY(q, r);
+      for (j = 0; j < near.length; j++) {
+        var k = near[j], pos = free.indexOf(k);
+        if (pos >= 0) free.splice(pos, 1);
+        slots[k].dst = [xy0[0] + 4 + j * cw, xy0[1] + 8];
+        slots[k].to = 'you'.charAt(j);
+        slots[k].cell = ci;
+        slots[k].td = T46c - 0.02 + 0.06 * (n % 4) / 3;
+        slots[k].dur = 0.3 + 0.06 * Math.min(1, Math.hypot(slots[k].x - cc[0], slots[k].y - cc[1]) / 500);
+      }
+    }
+    var rest = free.slice().sort(function (a, b) { return slots[a].x - slots[b].x; });
+    for (j = 0; j < rest.length; j++) {                    /* 其余落进击键线，随线从左到右 */
+      var k2 = rest[j], u2 = (j + 0.5) / rest.length, xt = 430 + 720 * u2, tl = C46_WAVE0 + 0.3 * u2;
+      slots[k2].dst = [xt, waveY(tl, xt)];
+      slots[k2].to = null;
+      slots[k2].tl = tl;
+      slots[k2].td = T46c - 0.08 + 0.1 * u2;
+    }
+    for (i = 0; i < slots.length; i++) if (slots[i].to) slots[i].tl = slots[i].td + slots[i].dur;
+    for (i = 0; i < slots.length; i++) {
+      var s2 = slots[i];
+      if (s2.to) done[s2.cell] = Math.max(done[s2.cell] === undefined ? s2.tl : done[s2.cell], s2.tl);
+    }
+    _c46 = { slots: slots, done: done };
+    return _c46;
+  }
+  PV.addCut(T46c, 0.36, 0.62, function (ctx, t, cut) {
+    var L = c46Letters(), slots = L.slots, done = L.done;
+    var waveX = 720 * clamp01((t - C46_WAVE0) / 0.3);
+    if (t >= C46_WAVE0 + 0.32) waveX = 720;
+    var filled = function (i) { return clamp01((t - (done[i] === undefined ? T46c : done[i])) / (2 / FPS)); };
+    PV.reveal(ctx, t,
+      function (c, tt) { tranceScene(c, tt, 0); },        /* 老镜头不再画自己的螺旋：载体就是螺旋 */
+      function (c, tt) { feelYouScene(c, tt, { wave_x: waveX, filled: filled }); },
+      PV.radial(SPIRAL_C[0], SPIRAL_C[1], T46c - 0.12, 1700));
+    var lift = clamp01((t - (T46c - 0.36)) / 0.36), ph = c46Phase(t), i;
+    for (i = 0; i < slots.length; i++) {
+      var s = slots[i];
+      var sp = spiralPos(s.i, t < s.td ? ph : c46Phase(s.td));
+      var sx = sp[0], sy = sp[1];
+      var base = s.isBlue ? blue(s.lv) : amb(s.lv);
+      if (s.to) {
+        var ch = (lift > 0.35 + 0.4 * ((s.i * 7) % 10) / 10) ? s.to : s.ch;
+        if (t < s.td) {
+          textAt(ctx, ch, sx, sy, mixc(base, WHITE, 0.6 * lift), 16,
+                 { mono: true, scale: 1 + 0.25 * lift, halo: 0.6 * lift });
+          continue;
+        }
+        var u = clamp01((t - s.td) / s.dur);
+        if (u >= 1) {
+          if (t < s.tl + 2 / FPS && filled(s.cell) < 1)
+            textAt(ctx, ch, s.dst[0], s.dst[1], WHITE, 13, { mono: true });
+          continue;
+        }
+        var e = eIo(u);
+        var pos = bez([sx, sy], s.dst, s.dst[0] > sx ? 0.22 : -0.22, e);
+        var size = 1.25 + 0.5 * Math.sin(Math.PI * e) - 0.43 * e;
+        textAt(ctx, ch, pos[0], pos[1], mixc(WHITE, amb(0.95), e), 16, { mono: true, scale: size, halo: 0.7 * (1 - e) });
+      } else {
+        if (t < s.td) { mono(ctx, s.ch, sx, sy, mixc(base, amb(0.95), 0.4 * lift), 16); continue; }
+        var u2 = clamp01((t - s.td) / (s.tl - s.td));
+        if (u2 >= 1) continue;
+        var e2 = eIn(u2);
+        var px = lerp(sx, s.dst[0], e2), py = lerp(sy, s.dst[1], e2);
+        var sz = Math.max(7, Math.trunc(16 - 8 * e2));
+        var al = u2 < 0.8 ? 1 : (1 - u2) / 0.2;
+        mono(ctx, s.ch, px, py - sz / 2, T.css(mixc(base, amb(1.0), e2), al), sz);
+      }
+    }
+  });
+
+  /* ================================================================ C47  feel_you -> completion
+     你不再打字：击键线变平，另外十一格 'you' 一帧灭一个（-12..-1）。最后那格抬起来（蓝环 + 光晕），
+     整个老窗格向它收拢；它飞起来、放大一倍，落进流式回答里 "content": "我一直在。" 的后面 */
+  var T47c = 106.7741, C47_LAND = beatT(232);
+  function c47Order() {
+    var cells = youCells(), a = cellCenter(SEL), out = [], i;
+    for (i = 0; i < cells.length; i++) if (cells[i][0] !== SEL) out.push(cells[i][0]);
+    out.sort(function (p, q2) {
+      var cp = cellCenter(p), cq = cellCenter(q2);
+      return -Math.hypot(cp[0] - a[0], cp[1] - a[1]) + Math.hypot(cq[0] - a[0], cq[1] - a[1]);
+    });
+    return out;
+  }
+  PV.addCut(T47c, 0.52, 0.5, function (ctx, t, cut) {
+    var order = c47Order(), rank = {}, i;
+    for (i = 0; i < order.length; i++) rank[order[i]] = i;
+    var gone = function (idx) {
+      if (rank[idx] === undefined) return 0;
+      return clamp01((t - (T47c - (12 - rank[idx]) / FPS)) / (2 / FPS));
+    };
+    var flat = eIo((t - (T47c - 0.5)) / 0.42);
+    var lift0 = T47c - 4 / FPS;
+    var hide = t >= lift0 ? [SEL] : [];
+    PV.reveal(ctx, t,
+      function (c, tt) { feelYouScene(c, tt, { gone: gone, flat: flat, hide: hide }); },
+      function (c, tt) {
+        completionScene(c, tt, tt - T47c, clamp01((tt - T47c) / (110.4664 - T47c)), 110.4664 - T47c,
+                        { tile: tt >= C47_LAND });
+      },
+      PV.inward(cellCenter(SEL)[0], cellCenter(SEL)[1], T47c - 0.3, T47c + 0.06, 900));
+    var src = cellCenter(SEL), dst = tileDock();
+    if (t >= lift0 && t < C47_LAND + 0.02) {
+      if (t < T47c) {                                      /* 抬起来：蓝环 + 光晕 + 提亮 */
+        var k = clamp01((t - lift0) / (T47c - lift0));
+        placeSprite(ctx, tileSprite(1 + 0.2 * k, 0.9, Math.round(0.9 * k * 100) / 100), src[0], src[1], 1, 0.8 * k);
+        if (k > 0.02) placeSprite(ctx, tileSprite(1 + 0.2 * k, 0.9, 0), src[0], src[1], 0.5 * 0.25 * k, 0, 1, true);
+      } else {                                             /* 飞过去、放大、落位 */
+        var u = clamp01((t - T47c) / (C47_LAND - T47c)), e = eIo(u);
+        var pos = bez(src, dst, -0.3, e);
+        var sc = 1.2 + 1.0 * Math.sin(Math.PI * Math.min(1, e * 1.1)) + (TILE_SCALE - 1.2) * eBack(u, 1.4);
+        sc = Math.max(1, sc);
+        placeSprite(ctx, tileSprite(Math.round(sc * 100) / 100, 0.9, 0), pos[0], pos[1],
+                    0.9 * (1 - e), 0.7 * (1 - e));
       }
     }
   });
