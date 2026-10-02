@@ -1,0 +1,7 @@
+spec/
+ref/
+render/
+shots/
+reports.txt
+tools/
+*.log

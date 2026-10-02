@@ -1,0 +1,34 @@
+html,body{margin:0;height:100%;background:#000;color:#9aa0a6;overflow:hidden;
+  font:12px/1.4 ui-monospace,"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace}
+#wrap{position:fixed;inset:0;display:grid;place-items:center;}
+#screen{position:relative;width:1280px;height:720px;background:#000;transform-origin:center center;}
+#stage{position:absolute;left:0;top:0;width:1280px;height:720px;display:block;}
+#chat{position:absolute;left:0;top:0;width:420px;height:720px;overflow:hidden;display:none;}
+#bar{position:fixed;left:0;right:0;bottom:0;height:44px;display:flex;align-items:center;gap:10px;
+  padding:0 10px;background:#0b0d10;border-top:1px solid #1d2126;z-index:10;}
+#bar button{background:#1b2027;color:#cfd6dd;border:1px solid #2b323b;border-radius:4px;padding:4px 10px;}
+#tc{color:#e8eaed;min-width:11em;}
+#msg{color:#6b7280;}
+input[type=number]{background:#12161b;color:#cfd6dd;border:1px solid #2b323b;border-radius:4px;padding:2px 4px;}
+@font-face{font-family:'SpaceMono';src:url('../fonts/SpaceMono-Bold.ttf') format('truetype');font-weight:700;}
+@font-face{font-family:'Anton';src:url('../fonts/Anton-Regular.ttf') format('truetype');}
+
+/* ==== 左侧 dsh 聊天窗（film 的 deepsea 主题 + 骨架布局，对应 seg.html / s-pv） ==== */
+body[data-ds-dark-theme]{--dsw-alias-bg-base:#05080f;--dsw-specific-bubble:#18233d;--dsw-specific-input-major:#0d1528;
+  --dsw-specific-selector:#1a2440;--dsw-alias-border-l1:#1b2540;--dsw-alias-border-l2:#223052}
+#chat{position:absolute;left:0;top:0;width:420px;height:720px;overflow:hidden;display:none}
+#chatbox{position:absolute;left:0;top:0;width:354px;height:537px;overflow:hidden;transform-origin:0 0;
+  background:var(--dsw-alias-bg-base,#05080f);font-family:var(--dsw-font-family,system-ui,sans-serif);
+  -webkit-font-smoothing:antialiased;--pv-her:#6b8cff;
+  --dsh-content-font-size:16px;--dsh-content-font-delta:2px;
+  --dsh-content-font-size-secondary:14px;--dsh-content-font-delta-secondary:1px}
+#chatbox #app{position:relative;height:100%;display:flex;flex-direction:column}
+#chatbox .pv-head{display:flex;align-items:center;gap:10px;padding:10px 12px 8px;border-bottom:.5px solid var(--dsw-alias-border-l1)}
+#chatbox .pv-pet{width:60px;height:60px;border-radius:14px;overflow:hidden;flex:none;background:#070b18;border:.5px solid var(--dsw-alias-border-l2)}
+#chatbox .pv-pet img{width:100%;height:100%;object-fit:cover;display:block;image-rendering:pixelated}
+#chatbox .pv-name{color:var(--dsw-alias-label-primary,#e6e9ef);font-size:15px;line-height:21px;font-weight:500}
+#chatbox .pv-state{color:var(--dsw-alias-label-tertiary,#8b97ae);font-size:13px;line-height:19px;display:flex;align-items:center;gap:6px}
+#chatbox .pv-dot{width:7px;height:7px;border-radius:50%}
+#chatbox #timeline{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:10px;padding:10px 14px 6px;overflow:hidden;--dsh-chat-content-width:354px}
+#chatbox #composer{--dsh-composer-side-clearance:10px;--dsh-composer-card-max-width:100%;--dsh-composer-text-max-height:80px;padding-bottom:4px}
+#chatbox .bOPqQW_root{padding:2px 4px 8px;gap:2px}
