@@ -87,10 +87,24 @@
     if (age === null || age === undefined) { mono(ctx, s, x, y, col, size); return; }
     mono(ctx, T.decode(s, age, rng || PV.rngFor(0, 7919), rate === undefined ? 45 : rate, 0.12, 0), x, y, col, size);
   }
-  /* 载体的字形中心 = 绘制原点 + 紧凑包围盒中心（kit.text_sprite 的 ca/cb） */
+  /* 载体的字形中心 = 绘制原点 + 紧凑包围盒中心（kit.text_sprite 的 ca/cb）。
+     字号/基线都按 tui.js 的绘制方式反推：textPIL 基线 = y + 1.12*size，textMono 基线 = y + 0.765*size。 */
+  function inkMetrics(s, size, mono_, bold) {
+    var g = mcg(), m, asc, desc, w;
+    g.save();
+    g.font = mono_ ? size + 'px ' + T.MONO_FAM : T.font(size, bold);
+    m = g.measureText(s);
+    asc = m.actualBoundingBoxAscent; desc = m.actualBoundingBoxDescent;
+    w = mono_ ? T.twMono(s, size) : m.width;
+    g.restore();
+    if (typeof asc !== 'number' || !isFinite(asc) || asc <= 0) asc = 0.72 * size;
+    if (typeof desc !== 'number' || !isFinite(desc) || desc < 0) desc = 0.06 * size;
+    return { w: w, asc: asc, desc: desc };
+  }
   function textCentre(s, x, y, size, mono_, bold) {
-    if (mono_) return [x + T.twMono(s, size) / 2, y + 0.42 * size];
-    return [x + measure(s, size, false, bold) / 2, y + 0.62 * size];
+    var m = inkMetrics(s, size, mono_, bold);
+    var base = mono_ ? T.ascentMono(size) : T.ascent(size);
+    return [x + m.w / 2, y + base - (m.asc - m.desc) / 2];
   }
   /* 把一串字形的中心放在 (cx,cy) */
   function centreText(ctx, s, cx, cy, col, size, opt) {
@@ -99,16 +113,16 @@
     if (a <= 0.01 || size < 4) return;
     var c = typeof col === 'string' ? col : T.css(col);
     if (opt.lift > 0) c = T.css(mixc(typeof col === 'string' ? T.UI : col, WHITE, opt.lift));
+    var mm = inkMetrics(s, size, opt.mono, opt.bold), bl = cy + (mm.asc - mm.desc) / 2;
     ctx.save();
     if (a < 0.999) ctx.globalAlpha = a;
     if (opt.halo > 0.01) { ctx.shadowColor = T.css(blue(1.0)); ctx.shadowBlur = 12 * opt.halo; }
-    if (opt.mono) {
-      T.textMono(ctx, s, cx - T.twMono(s, size) / 2, cy - 0.415 * size, c, size);
-    } else {
+    if (opt.mono) T.textMono(ctx, s, cx - mm.w / 2, bl - T.ascentMono(size), c, size);
+    else {
       ctx.font = T.font(size, opt.bold);
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
       ctx.fillStyle = c;
-      ctx.fillText(s, cx, cy);
+      ctx.fillText(s, cx, bl);
     }
     ctx.restore();
   }
@@ -513,6 +527,172 @@
         var a = u < 1 ? 1 : (1 - (t - tl) / 0.06);
         T.dot(ctx, pos[0], pos[1], r, mixc(amb(0.95), blue(1.0), u), a);
         if (r > 5) T.textMono(ctx, 'C', pos[0] - 4, pos[1] - 8, T.css(T.BG), 12);
+      }
+    }
+  });
+  /* ================================================================ C39  tabby -> purr（CARRY）
+     大大的 '281' 亮起、飞进频谱标题位（读作 'class 281 -> purr.wav'） */
+  var T39 = 82.543, C39_LAND = T39 + BEAT;
+  PV.addCut(T39, 0.3, 0.6, function (ctx, t, cut) {
+    var land = C39_LAND, lift = clamp01((t - (T39 - 0.25)) / 0.2);
+    PV.reveal(ctx, t,
+      function (c, tt) { drawShot(c, 'shot_tabby', tt, null, { n281: tt < T39 - 0.25 }); },
+      function (c, tt) { drawShot(c, 'shot_purr', tt, { t281: tt >= land, title_age: BEAT - 0.05 }, null); },
+      PV.radial(530, 380, T39 - 0.08, 1500));
+    if (t >= T39 - 0.25 && t < land + 0.1) {
+      var u = clamp01((t - T39) / (land - T39));
+      flyText(ctx, '281', { size: 120, col: blue(1.0), mono: false }, N281,
+              { size: 22, col: blue(1.0), mono: true }, purr281XY(), snap(u),
+              { bend: -0.15, halo: 0.9 * lift * (1 - u), lift: 0.3 * lift * (1 - u) });
+    }
+  });
+
+  /* ================================================================ C40  purr -> god（UNFOLD 反向：塌进 shell）
+     切点前整个 purr 面板竖向压成 y=96 上的一根亮条；切点后亮条收窄、解码成 'PID 1   systemd' */
+  var T40 = 84.620;
+  PV.addCut(T40, 0.26, 0.3, function (ctx, t, cut) {
+    var TY = GOD_TY, j;
+    if (t < T40) {
+      var k = eIn(clamp01((t - (T40 - 0.26)) / 0.26));
+      drawShot(ctx, 'shot_purr', t, { squash: [k, TY] }, null);
+      return;
+    }
+    var u = clamp01((t - T40) / 0.26);
+    drawShot(ctx, 'shot_god', t, { root: u >= 1, root_age: -1.0 }, null);
+    var txt = 'PID 1   systemd', tw = T.twMono(txt, 22), x0 = 430;
+    var x1 = lerp(430 + 64 * 11, x0 + tw, eIo(u)), hgt = lerp(2, 20, eIo(u)), a = 1 - eIn(u);
+    T.fill(ctx, x0, TY - hgt / 2, x1 + 1, TY + hgt / 2 + 1, amb(0.9), 180 * a / 255);
+    ctx.save();
+    ctx.globalAlpha = clamp01(a);
+    ctx.strokeStyle = T.css(WHITE);
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x0, TY + 0.5); ctx.lineTo(x1 + 1, TY + 0.5); ctx.stroke();
+    ctx.restore();
+    if (u > 0.35) {
+      var rnd = PV.mt(Math.trunc(t * FPS));
+      var m = Math.trunc(txt.length * clamp01((u - 0.35) / 0.5)), s = '';
+      for (j = 0; j < Math.min(txt.length, m + 1); j++) s += (j < m - 2) ? txt.charAt(j) : rnd.choice(T.SCR);
+      mono(ctx, s, GOD_ROOT[0], GOD_ROOT[1], T.css(amb(0.95), clamp01(u * 2)), 22);
+    }
+  });
+
+  /* ================================================================ C41  god -> proof（CARRY）
+     进程树一行行折进 goal 行 '⊢ ∃ me, observed_by you me'；infoview 打开假设位，'you' 滑进去 */
+  var T41 = 86.236, C41_LAND = T41 + BEAT;
+  function c41Col(t) {
+    var ys = { '-1': GOD_ROOT[1], '8': 520 }, i;
+    for (i = 0; i < 7; i++) ys[i] = godRowXY(i)[1];
+    var keys = ['-1', '8'], k;
+    for (k = 0; k < 7; k++) keys.push(String(k));
+    var order = keys.slice().sort(function (a, b) { return Math.abs(ys[b] - 344) - Math.abs(ys[a] - 344); });
+    return function (idx) {
+      if (idx === 7) return [0, 1 - clamp01((t - T41) / 0.25)];
+      var key = String(idx), j = order.indexOf(key);
+      if (j < 0) return [0, 1];
+      var ts = T41 - 0.36 + j / FPS;
+      var u = eIn(clamp01((t - ts) / 0.18));
+      return [(344 - ys[key]) * u, 1 - clamp01((u - 0.25) / 0.45)];
+    };
+  }
+  PV.addCut(T41, 0.25, 0.62, function (ctx, t, cut) {
+    var col = c41Col(t), land = C41_LAND;
+    if (t < T41) { drawShot(ctx, 'shot_god', t, { collapse: col, you: t < T41 - 0.02 }, null); return; }
+    var ob = mk(), octx = ob.getContext('2d');            /* 老画面的墨（折起来的树行）留到新画面上 */
+    if (PV.drawBackground) PV.drawBackground(octx, t);
+    drawShot(octx, 'shot_god', t, { collapse: col, you: false }, null);
+    var ink = inkCanvas(ob, t, PANE);
+    var nc = mk(), nctx = nc.getContext('2d');
+    if (PV.drawBackground) PV.drawBackground(nctx, t);
+    drawShot(nctx, 'shot_proof', t,
+              { pane: eOut(clamp01((t - T41) / 0.3)), info: eOut(clamp01((t - T41 - 0.05) / 0.25)),
+                code_age: 0.12, goal_age: 0.12, witness: t >= land, wit_age: land - T41 }, null);
+    nctx.drawImage(ink, PANE[0], PANE[1]);
+    ctx.drawImage(nc, 0, 0);
+    if (t >= T41 - 0.02 && t < land + 0.1) {              /* '1049' 的 you 变成 infoview 里的 you : Witness */
+      var u = clamp01((t - (T41 - 0.02)) / (land - T41 + 0.02));
+      var xy = godRowXY(7), lift = clamp01((t - (T41 - 0.02)) / 0.1);
+      flyText(ctx, 'you', { size: 19, col: blue(0.95), mono: true },
+              [xy[0] + T.twMono('\u251c\u2500\u2500 1049  ', 19), xy[1]],
+              { size: 21, col: blue(1.0), mono: false }, WIT_XY, eIo(u),
+              { bend: -0.12, halo: 0.8 * lift * (1 - u), lift: 0.3 * (1 - u), big: 1.5 });
+    }
+  });
+
+  /* ================================================================ C42  proof -> fp8（CARRY）
+     'proof term: you' 里的 you 抬起来飞进 encode(y o u)，第一个字母再落成八个位框 */
+  var T42 = 88.312, C42_LAND = beatT(beatOf(T42) + 0.5), C42_DROP = beatT(beatOf(T42) + 1.0);
+  var C42_BITSDONE = C42_DROP + 8 / FPS + 0.12;
+  PV.addCut(T42, 0.3, 0.95, function (ctx, t, cut) {
+    var land = C42_LAND, drop = C42_DROP, src = proofYouXY(), j;
+    var ox = 440 + T.twMono('encode(', 18), oy = ENC_Y;
+    var lift = clamp01((t - (T42 - 0.25)) / 0.2);
+    function bitsN(tt) { var n = 0, i; for (i = 0; i < 8; i++) if (tt >= drop + i / FPS + 0.12) n++; return n; }
+    PV.reveal(ctx, t,
+      function (c, tt) { drawShot(c, 'shot_proof', tt, { term_you: tt < T42 - 0.25 }, null); },
+      function (c, tt) { drawShot(c, 'shot_fp8', tt, { input: tt >= land, bits_n: bitsN(tt), label_age: C42_BITSDONE - T42 }, null); },
+      PV.inward(src[0] + 18, src[1] + 12, T42 - 0.22, T42 + 0.1, 760));
+    if (t >= T42 - 0.25 && t < land + 0.1) {
+      var u = clamp01((t - T42) / (land - T42));
+      for (j = 0; j < LETTERS.length; j++) {
+        flyText(ctx, LETTERS.charAt(j), { size: 22, col: blue(1.0), mono: true },
+                [src[0] + T.twMono(LETTERS.slice(0, j), 22), src[1]],
+                { size: 22, col: blue(1.0), mono: false }, [ox + j * 30, oy], snap(u),
+                { bend: 0.2 + 0.05 * j, halo: 0.8 * lift * (1 - u), lift: 0.3 * lift * (1 - u), big: 1.5 });
+      }
+    }
+    if (t >= drop - 0.1 && t < C42_BITSDONE) {            /* 'y' = 0x79：每一位落进一个框 */
+      var bits = bitsOf(0), i;
+      for (i = 0; i < 8; i++) {
+        var t0 = drop + i / FPS - 0.08, uu = clamp01((t - t0) / 0.2);
+        if (uu <= 0 || t >= drop + i / FPS + 0.14) continue;
+        var p = bez([ox + 6, oy + 14], [boxX(i) + 38, 160], 0.1, eIn(uu));
+        textAt(ctx, '01'.charAt(bits[i]), p[0] - 10, p[1] - 20, i > 4 ? blue(1.0) : amb(1.0), 32,
+               { scale: lerp(0.7, 1.0, uu), halo: 0.6 * (1 - uu) });
+      }
+    }
+  });
+
+  /* ================================================================ C43  fp8 -> ampm（MORPH）
+     UE8M0 的八个指数框沿弧线滑到表盘上、各自张开成八分之一环；小时标签散开，'AM' 打进中心 */
+  var T43 = 91.543, C43_T0 = T43 + 0.02, C43_LAND = beatT(beatOf(T43) + 1.0), C43_RING = C43_LAND + 0.14;
+  PV.addCut(T43, 0.25, 0.95, function (ctx, t, cut) {
+    var t0 = C43_T0, land = C43_LAND, ringDone = C43_RING, i;
+    var labels = clamp01((t - ringDone) / 0.28);
+    PV.reveal(ctx, t,
+      function (c, tt) { drawShot(c, 'shot_fp8', tt, { row: tt < t0 }, null); },
+      function (c, tt) { drawShot(c, 'shot_ampm', tt,
+          { ring: tt >= ringDone, labels: labels, hand: tt >= ringDone + 0.2, center: tt >= ringDone + 0.2,
+            center_age: ringDone + 0.2 - T43, side: tt >= ringDone + 0.2 }, null); },
+      PV.radial(DIALC[0], DIALC[1], T43 - 0.1, 1200));
+    if (t < ringDone + 0.02) {
+      var lift = clamp01((t - (T43 - 0.2)) / 0.2), bits = bitsOf(2);
+      for (i = 0; i < 8; i++) {
+        var ang = Math.PI / 180 * (-90 + 45 * i + 22.5);
+        var tgt = [DIALC[0] + DIAL_RR * Math.cos(ang), DIALC[1] + DIAL_RR * Math.sin(ang)];
+        var sb = [boxX(i) + 38, 160];
+        var u = clamp01((t - t0 - 0.012 * i) / (land - t0)), e = eIo(u);
+        var cx = bez(sb, tgt, 0.25, e)[0], cy = bez(sb, tgt, 0.25, e)[1];
+        var w = lerp(76, 26, e), hgt = lerp(80, 26, e);
+        var colr = mixc(amb(0.95), blue(0.8), e);
+        if (t < land) {
+          if (lift > 0 && t < t0) T.rect(ctx, cx - w / 2 - 3, cy - hgt / 2 - 3, cx + w / 2 + 3, cy + hgt / 2 + 3, blue(1.0), 120 * lift / 255, 1);
+          T.rect(ctx, cx - w / 2, cy - hgt / 2, cx + w / 2, cy + hgt / 2, colr, 1, 2);
+          textAt(ctx, String(bits[i]), cx - 10, cy - 20, amb(1.0), 32, { scale: lerp(1, 0.6, e) });
+        } else {
+          var k = eOut(clamp01((t - land) / 0.14));
+          var a0 = -90 + 45 * i + 22.5 - 22.5 * k, a1 = -90 + 45 * i + 22.5 + 22.5 * k;
+          ctx.save();
+          ctx.strokeStyle = T.css(mixc(blue(0.7), blue(0.45), k));
+          ctx.lineWidth = 10;
+          ctx.beginPath(); ctx.arc(DIALC[0], DIALC[1], DIAL_RR, a0 * Math.PI / 180, a1 * Math.PI / 180); ctx.stroke();
+          var pcol = T.css(anom(0.95), k);
+          ctx.strokeStyle = pcol;
+          for (var w2 = 0; w2 < PEAKS.length; w2++) {
+            var p0 = Math.max(a0, PEAKS[w2][0] / 24 * 360 - 90), p1 = Math.min(a1, PEAKS[w2][1] / 24 * 360 - 90);
+            if (p1 > p0) { ctx.beginPath(); ctx.arc(DIALC[0], DIALC[1], DIAL_RR, p0 * Math.PI / 180, p1 * Math.PI / 180); ctx.stroke(); }
+          }
+          ctx.restore();
+        }
       }
     }
   });
