@@ -1078,13 +1078,17 @@
 (function () {
   'use strict';
   var PV = window.PV, T = PV.tui;
-  PV.shotLimit = function (ctx, t, lt, u) {
+  PV.shotLimit = function (ctx, t, lt, u, opts) {
+    opts = opts || {};
     PV.ops = ['CTX.MAX', 'TRUNCATE', 'WALL', 'YOU', 'LIMIT'];
     T.box(ctx, 404, 56, 1164, 604, 'limits', 0.5, T.UI, t);
     var g = T.ease(u * 1.3), x = 430 + Math.floor(600 * g);
-    T.fill(ctx, 430, 200, x, 261, T.mix(T.ME_TEXT, 0.8), 1);
-    T.fill(ctx, 1040, 170, 1061, 291, T.ui(1.0), 1);
-    T.textPIL(ctx, 'you', 1020, 300, T.ui(1.0), 22);
+    /* C19：条与墙由转场层控制出现时机（墙先砸下来，条再抵上去） */
+    if (opts.drawBar !== false) T.fill(ctx, 430, 200, x, 261, T.mix(T.ME_TEXT, 0.8), 1);
+    if (opts.wall !== false) {
+      T.fill(ctx, 1040, 170, 1061, 291, T.ui(1.0), 1);
+      T.textPIL(ctx, 'you', 1020, 300, T.ui(1.0), 22);
+    }
     T.textMono(ctx, 'max_context = 1,048,576', 430, 330, T.ui(0.7), 18);
     T.textPIL(ctx, T.decode('limit(me) := you', lt - 0.3, PV.rngFor(t, 7919), 25, 0.12, 0), 430, 360, T.ui(0.95), 32);
     if (g > 0.98) T.textMono(ctx, 'warn: nothing beyond this point', 430, 420, T.css(T.mix(T.ANOM, 0.9)), 18);
