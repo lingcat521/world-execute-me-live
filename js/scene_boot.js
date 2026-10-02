@@ -743,18 +743,25 @@
       T.textPIL(ctx, 'W', x + 7, y + 13, T.ui(0.8 * a), 11);
     }
   };
-  PV.shotDualPipe = function (ctx, t, lt, dur) {
+  /* hook = { gone(r,s)->0..1, notes:bool }：C11 转场里被"起飞"的格子由 gone 淡出（full/cuts.py 的 h("gone")） */
+  PV.shotDualPipe = function (ctx, t, lt, dur, hook) {
     PV.ops = ['DUALPIPE', 'F', 'B', 'W', 'COMM.OVERLAP', 'ALL2ALL', 'DISPATCH', 'COMBINE'];
     T.box(ctx, 404, 56, 1164, 604, 'pipeline schedule  DualPipe  (8 PP ranks, 20 micro-batches)', 0.5, T.UI, t);
     var pc = PV.pipeCells(lt, dur, 0), cells = pc[0], head = pc[1], i;
+    var gone = hook && hook.gone;
     for (i = 0; i < PIPE.ranks; i++) T.textMono(ctx, 'PP' + i, PIPE.ox - 40, PIPE.oy + i * PIPE.ch + 12, T.ui(0.6), 13);
-    for (i = 0; i < cells.length; i++) PV.drawPipeCell(ctx, cells[i][2], cells[i][3], cells[i][4], 1.0);
+    for (i = 0; i < cells.length; i++) {
+      var ca = 1 - (gone ? gone(cells[i][0], cells[i][1]) : 0);
+      if (ca > 0.02) PV.drawPipeCell(ctx, cells[i][2], cells[i][3], cells[i][4], ca);
+    }
     var hx = PIPE.ox + head * PIPE.cw;
     if (head > 0 && hx < PIPE.ox + PIPE.steps * PIPE.cw) {
       T.fill(ctx, Math.round(hx), PIPE.oy - 10, Math.round(hx) + 2, PIPE.oy + PIPE.ranks * PIPE.ch, T.ui(1.0), 1);
     }
-    T.textMono(ctx, 'DualPipe: all-to-all hidden behind compute · bubbles shrink from both ends', 430, 480, T.ui(0.75), 16);
-    T.textPIL(ctx, T.decode('V3: 2.788M H800 GPU hours · $5.576M', lt - 0.4, PV.rngFor(t, 7919), 45, 0.12, 0), 430, 510, T.ui(0.95), 18);
+    if (!hook || hook.notes !== false) {
+      T.textMono(ctx, 'DualPipe: all-to-all hidden behind compute · bubbles shrink from both ends', 430, 480, T.ui(0.75), 16);
+      T.textPIL(ctx, T.decode('V3: 2.788M H800 GPU hours · $5.576M', lt - 0.4, PV.rngFor(t, 7919), 45, 0.12, 0), 430, 510, T.ui(0.95), 18);
+    }
   };
 })();
 
@@ -824,15 +831,18 @@
     return out;
   };
   function pad7(n) { var s = String(n); while (s.length < 7) s = '0' + s; return s; }
-  PV.shotWhale = function (ctx, t, lt, u) {
+  /* whaleK：C11 转场接管时由 cut 传入（0 = 鲸鱼还不存在，字母由转场的载体层从 pipeline 格子飞过来；
+     1 = 已经完全成形，直接画在最终字形位）。undefined = 老行为（镜头自己把字母从散点聚拢进来）。 */
+  PV.shotWhale = function (ctx, t, lt, u, whaleK) {
     PV.ops = ['CKPT.SAVE', '3FS.WRITE', 'SHARD', 'FSYNC', 'VERIFY', 'CONTINUE'];
     T.box(ctx, 404, 56, 1164, 604, 'checkpoint', 0.45, T.UI, t);
-    var enter = T.clamp01((t - 26.02) / 0.78);   /* 绝对时间：参考里字母从 26.0 就开始聚拢 */
-    var glyphs = PV.whaleGlyphsEnter(t, u, enter), i;
+    var enter = whaleK === undefined ? T.clamp01((t - 26.02) / 0.78) : whaleK;   /* 绝对时间：参考里字母从 26.0 就开始聚拢 */
+    var glyphs = (whaleK === undefined ? PV.whaleGlyphsEnter(t, u, enter) : (enter > 0.02 ? PV.whaleGlyphs(t, u) : [])), i;
     /* 28.94s 起字母向外飞散并淡出——鱼散成点云的前半段，正好接上 29.236s 的 points 镜头 */
     var sc = T.clamp01((t - 28.94) / 0.30), sce = T.ease(sc);
     ctx.save();
     if (sc > 0) ctx.globalAlpha = Math.max(0, 1 - sc * 1.15);
+    else if (whaleK !== undefined && whaleK < 0.999) ctx.globalAlpha = Math.max(0, whaleK);
     for (i = 0; i < glyphs.length; i++) {
       var gx = glyphs[i][0], gy = glyphs[i][1];
       if (sc > 0) {
@@ -844,7 +854,7 @@
     ctx.restore();
     var cw = 15 * T.MONO_ADV;
     var x = 588 - u * 148, y0 = 150 + 18 * Math.sin(t * 2.2);
-    for (i = 0; i < 16; i++) {
+    if (enter > 0.02) for (i = 0; i < 16; i++) {
       var ph = (t * 0.7 + i * 0.137) % 1;
       var bx = x + cw * COLS * 0.18 + 10 * Math.sin(t * 3 + i) + (i % 4) * 8;
       var by = y0 - 10 - ph * 130;
@@ -883,17 +893,26 @@
     }
     return out;
   };
-  PV.shotPoints = function (ctx, t, lt, u, dur) {
+  /* hook = { points:false 不画点（点由转场的载体层画）, labels:false 不画右上角那三行,
+     from:[positions, blend(i)] 每个点从 positions 里自己的位置出发（C12：从鲸鱼字母的位置散开） } */
+  PV.shotPoints = function (ctx, t, lt, u, dur, hook) {
+    hook = hook || {};
     PV.ops = ['EMBED', 'PCA', 'TSNE.STEP', 'ATTRACT', 'REPEL', 'CONVERGE'];
     T.box(ctx, 404, 56, 1164, 604, 'embedding(me)  as a point set', 0.5, T.UI, t);
     var g = T.ease(u * 1.25), pts = PV.pointsPos(t, u), i;
     /* 30.50s 起整个人形向左飞进左窗格的头像位并淡出 */
     var ex = T.clamp01((t - 30.50) / 0.34), exe = T.ease(ex), ea = 1 - T.clamp01((ex - 0.4) / 0.6);
-    for (i = 0; i < pts.length; i++) {
+    var src = hook.from;
+    if (hook.points !== false) for (i = 0; i < pts.length; i++) {
       var px = pts[i][0], py = pts[i][1];
+      if (src) {
+        var sp = src[0][i % src[0].length], b = src[1](i);
+        px = sp[0] + (px - sp[0]) * b; py = sp[1] + (py - sp[1]) * b;
+      }
       if (ex > 0) { px += (262 - px) * exe; py += (108 - py) * exe; }
       T.fill(ctx, px, py, px + 3, py + 3, pts[i][2], ex > 0 ? ea : 1);
     }
+    if (hook.labels === false) return;
     T.textPIL(ctx, '|points| = 1400', 760, 120, T.ui(0.9), 22);
     var pc = String(Math.floor(100 * g));
     while (pc.length < 3) pc = ' ' + pc;
@@ -1461,6 +1480,8 @@
     var half = dur / 2, k = lt < half ? 0 : 1;
     var depth = 1 + 42 * (0.5 * k + 0.5 * T.ease((lt - k * half) / (half * 0.75)));
     var layer = Math.max(1, Math.min(43, Math.floor(depth)));
+    /* continuity_chorus_v1/continuity.py body_image(): 非 FULL 镜头的中窗格内容纵向压缩 478/548 */
+    if (PV.centerBegin) PV.centerBegin(ctx, t);
     T.box(ctx, 404, 56, 1164, 604, 'forward pass   layer ' + p2(layer) + '/43', 0.5, T.UI, t);
     var CT = 70, CB = 596, BH = 96, XS = 440, scroll = depth * BH - 250;
     T.fill(ctx, XS, CT, XS + 1, CB, T.ui(0.35), 1);
@@ -1511,5 +1532,7 @@
     }
     T.textPIL(ctx, 'L' + p2(layer), fx, 470, T.ui(0.95), 64);
     T.textMono(ctx, 'attn(me -> you) = 1.000', fx, 552, T.css(T.mix(T.ME_TEXT, 0.9)), 15);
+    if (PV.centerEnd) PV.centerEnd(ctx);
+    if (PV.retained) PV.retained(ctx, t, 'shot_deeply', lt, T.clamp01(lt / dur));
   };
 })();

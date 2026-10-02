@@ -128,7 +128,9 @@
     } else if (lay === 2) {
       var cw = 15 * P.MONO_ADV_W;
       var bits = P.bannerFit('EXECUTE', 26, 16 / cw, cw, 1100);
-      var rng = PV.mt(Math.floor(t * P.FPS) * 7919 + 7);
+      /* 种子：Python engine.render_body 用 random.Random(index * 7919)，index = 该镜头在 ALL 里的位置（整段恒定）。
+         原来是 int(t*FPS)*7919+7，逐帧变化且偏 7，和参考的固定图案对不上。 */
+      var rng = PV.mt(PV.WALL_SEED !== undefined ? PV.WALL_SEED : (k + 63) * 7919);
       var x0 = 594 - bits.width * cw / 2, y0 = 100 + Math.floor((26 - bits.height) * 16 / 2), r, q;
       for (r = 0; r < bits.height; r++) {
         var s = '';
@@ -325,7 +327,7 @@
   /* 参考成片实测的红度区间（见 pvport/redprofile.py） */
   /* 实测：场景自身在绝大部分红段已经画成红的（146.5-148.5 / 150-152 / 153.5-156 / 157.5-158 / 161.5-163 /
      166.5-168 / 172.5 都与参考吻合）。只有两处缺口需要 overlay 补（见 pvport/redneed.py 的逐点比对）。 */
-  var RED_SPANS = [[165.40, 166.30], [172.85, 173.30]];
+  var RED_SPANS = [];
   PV.p2cRedAt = function (t) {
     for (var i = 0; i < RED_SPANS.length; i++) if (t >= RED_SPANS[i][0] && t <= RED_SPANS[i][1]) return true;
     return false;
@@ -750,26 +752,110 @@
     mono(ctx, T.decode('while can(): give()', lt, PV.rngFor(t, 7919), 30, 0.12, 0), 48, 72, red(0.8), 16, 'left', true);
   };
 
-  /* ---- 79 shot_execute_all：12 个样本 ---- */
+  /* ---- 79 shot_execute_all：12 个样本 ----
+     dsh 补丁 dsh_patch_r1.py 第 2 条（作者审片：0:55 / 2:44 / 2:46 的十二个样本）：
+       · 样本是她的**全身**（crop "full"，166x136@px3），按 alpha 外框裁掉空白后居中放进
+         (TILE_W-8) x (TILE_H-28) = 178x144 的画布（补丁的 centred()），格子里的落点是 (x, y+18)；
+       · 被执行的样本：闪 2 帧白 (255,236,228) → 变红（colorize black=BG white=RED）
+         → 0.30s 内逐 6px 行横向撕裂（每行 55% 概率偏移 ±0..14px，随 k 衰减）→ 淡到 40% 并保持。
+     常量照抄补丁常量：DIM=0.40 / FLASH=2/24 / TEAR=0.30 / FADE=0.45。
+     参考成片 164.5-166.0 的格子是「越小越红」正是这条：done=int(u*14) 越大，越多的格子已经变红。 */
   var TILE_W = 186, TILE_H = 172;
+  var TILE_AW = TILE_W - 8, TILE_AH = TILE_H - 28;      /* 178 x 144：centred() 的画布 */
+  var EXEC_T0 = 164.0049, EXEC_T1 = 166.0818;           /* shot_execute_all 的区间 */
+  var EXEC_DIM = 0.40, EXEC_FLASH = 2 / 24, EXEC_TEAR = 0.30, EXEC_FADE = 0.45;
   var EXPRS = ["cheerful", "starry", "shy", "serious", "confused", "frightened", "angry", "exasperated"];
   function tileExpr(i) { return i === 0 ? 'starry' : EXPRS[(i * 3) % EXPRS.length]; }
   function tileOrigin(i) { return [414 + (i % 4) * TILE_W, 70 + Math.floor(i / 4) * TILE_H]; }
+  /* 补丁的 crossed_at(i)：这一格被划掉（执行）的时刻 */
+  function tileCrossedAt(i) { return EXEC_T0 + (EXEC_T1 - EXEC_T0) * (i + 1) / 14; }
   var TILE_CACHE = {};
-  function tileArt(i) {
+  /* 原始半调（full 全身，166x136@px3）；cols/rows/px/alpha 供 C79 的 artBBox 使用 */
+  function tileArtRaw(i) {
     if (TILE_CACHE[i]) return TILE_CACHE[i];
-    var p = PV.p2cPortraitBuild(tileExpr(i), 'upper', TILE_W - 20, TILE_H - 30, 3, 'blue');
+    var p = PV.p2cPortraitBuild(tileExpr(i), 'full', TILE_W - 20, TILE_H - 36, 3, 'blue');
     if (p) TILE_CACHE[i] = p;
     return p || null;
   }
-  function drawTile(ctx, i, crossed, x, y) {
+  function tileArt(i) { return tileArtRaw(i); }
+  /* centred(art, 178, 144) 的等价物：裁到 alpha 外框再居中，另存红色/白色两种墨色 */
+  var CENTRE_CACHE = {};
+  function tintFromLum(cv, w, h, lo, hi) {
+    var g = cv.getContext('2d'), d = g.getImageData(0, 0, w, h), px = d.data, i;
+    for (i = 0; i < px.length; i += 4) {
+      var L = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+      px[i] = Math.round(lo[0] + (hi[0] - lo[0]) * L / 255);
+      px[i + 1] = Math.round(lo[1] + (hi[1] - lo[1]) * L / 255);
+      px[i + 2] = Math.round(lo[2] + (hi[2] - lo[2]) * L / 255);
+    }
+    var out = PV.newCanvas(w, h);
+    out.getContext('2d').putImageData(d, 0, 0);
+    return out;
+  }
+  function tileArtCentred(i) {
+    if (CENTRE_CACHE[i]) return CENTRE_CACHE[i];
+    var p = tileArtRaw(i);
+    if (!p) return null;
+    var q0 = p.cols, q1 = -1, r0 = p.rows, r1 = -1, q, r;
+    for (r = 0; r < p.rows; r++) for (q = 0; q < p.cols; q++) {
+      if (!p.alpha[r * p.cols + q]) continue;
+      if (q < q0) q0 = q; if (q > q1) q1 = q; if (r < r0) r0 = r; if (r > r1) r1 = r;
+    }
+    if (q1 < 0) return null;
+    var sx = q0 * p.px, sy = r0 * p.px, sw = (q1 - q0 + 1) * p.px, sh = (r1 - r0 + 1) * p.px;
+    var dx = Math.floor((TILE_AW - sw) / 2), dy = Math.floor((TILE_AH - sh) / 2);
+    var cv = PV.newCanvas(TILE_AW, TILE_AH), g = cv.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    g.drawImage(p.cv, sx, sy, sw, sh, dx, dy, sw, sh);
+    /* tint_colorize(art.convert("L"), "red")：blue 墨的亮度重新过一遍 BG->RED 的渐变 */
+    var red = tintFromLum(cv, TILE_AW, TILE_AH, T.BG, T.ERR);
+    /* 白闪帧：只是同一剪影，填 (255,236,228) */
+    var wht = PV.newCanvas(TILE_AW, TILE_AH), g2 = wht.getContext('2d');
+    g2.drawImage(cv, 0, 0);
+    g2.globalCompositeOperation = 'source-in';
+    g2.fillStyle = 'rgb(255,236,228)'; g2.fillRect(0, 0, TILE_AW, TILE_AH);
+    var out = { blue: cv, red: red, white: wht, w: TILE_AW, h: TILE_AH, bbox: [dx, dy, dx + sw, dy + sh] };
+    CENTRE_CACHE[i] = out;
+    return out;
+  }
+  /* 补丁的 executed(art, age, i)：白闪 -> 红 + 撕裂 -> 淡到 DIM */
+  function drawExecutedTile(ctx, art, i, age, x, y) {
+    if (!(age >= 0)) age = 0;
+    var img = age < EXEC_FLASH ? art.white : art.red;
+    var a = 1 - (1 - EXEC_DIM) * (age - EXEC_FLASH) / EXEC_FADE;
+    if (a > 1) a = 1; if (a < EXEC_DIM) a = EXEC_DIM;
+    var k = age < EXEC_TEAR ? 1 - age / EXEC_TEAR : 0;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.globalAlpha = a;
+    if (k > 0.01) {
+      var rnd = PV.mt(i * 7919 + Math.round(age * 24));   /* random.Random(i*7919 + round(age*24)) */
+      ctx.beginPath(); ctx.rect(x, y, art.w, art.h); ctx.clip();
+      for (var r = 0; r < art.h; r += 6) {
+        var hh = Math.min(6, art.h - r);
+        var off = rnd.random() < 0.55 ? rnd.choice([-1, 1]) * rnd.randrange(15) * k : 0;
+        ctx.drawImage(img, 0, r, art.w, hh, x + Math.round(off), y + r, art.w, hh);
+      }
+    } else {
+      ctx.drawImage(img, x, y);
+    }
+    ctx.restore();
+  }
+  function drawTile(ctx, i, crossed, x, y, t) {
     var org = tileOrigin(i);
     if (x === undefined) { x = org[0]; y = org[1]; }
-    var art = tileArt(i);
+    var art = tileArtCentred(i);
     if (art) {
-      ctx.save(); ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(art.cv, Math.round(x + (TILE_W - 8 - art.w) / 2), Math.round(y + TILE_H - 10 - art.h));
-      ctx.restore();
+      var px_ = Math.round(x + (TILE_W - 8 - art.w) / 2), py_ = Math.round(y + TILE_H - 10 - art.h);
+      if (crossed) {
+        /* t 缺省时按补丁的 else 分支：age=9.0（窗口外一律是已定型的红+40%） */
+        var age = (t === undefined) ? 9.0 : (EXEC_T0 <= t && t < EXEC_T1 ? t - tileCrossedAt(i) : 9.0);
+        drawExecutedTile(ctx, art, i, age, px_, py_);
+      } else {
+        ctx.save(); ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(art.blue, px_, py_);
+        ctx.restore();
+      }
     }
     T.rect(ctx, x, y, x + TILE_W - 8, y + TILE_H - 8, red(0.7), 1, 1);
     mono(ctx, '#' + P.pad(i, 4), x + 6, y + 4, red(0.9), 12);
@@ -793,7 +879,7 @@
       var ln = (t * 3 + i * 0.3) % 1;
       PV.p2cLine(ctx, 384, 330, 384 + (x + 90 - 384) * ln, 330 + (y + 80 - 330) * ln, red(0.5), 1);
       if (i === 0 && o.gone0) { T.rect(ctx, x, y, x + TILE_W - 8, y + TILE_H - 8, red(0.3), 1, 1); continue; }
-      drawTile(ctx, i, i < done);
+      drawTile(ctx, i, i < done, undefined, undefined, t);   /* 交给 executed() 判定白闪/变红/撕裂/变暗 */
     }
   };
   PV.p2cTileOrigin = tileOrigin; PV.p2cTileArt = tileArt; PV.p2cDrawTile = drawTile;

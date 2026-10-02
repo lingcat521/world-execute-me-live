@@ -65,6 +65,247 @@
     return last;
   }
 
+  /* ================================ continuity_chorus_v1/continuity.py 的两个渲染层动作 ================================
+     Python 的 approved 渲染器在画完场景后做两件事，本段（镜头 25-33）之前完全没有移植：
+       ① body_image():  非 FULL 镜头把 canvas 的 CENTER(404,56,1164,604=760x548) 裁剪后 resize 成 760x478
+                        再贴回 (404,56) —— 即中窗格所有内容被纵向压缩 478/548=0.8723，y>534 区域被 BG 清空，
+                        再在 y=543 画一条 amb(.26) 横线。dot_field 点阵也一起被压（它画在 canvas 上）。
+       ② retained_objects(): 采样块 / flatten 向量条 / ONLY / YOU 徽标 / pinned·evict denied 连线等保留物件，
+                        用「屏幕坐标」画在压缩之后（不受挤压影响）。 */
+  var SQ = 478 / 548;
+  PV.SQ = SQ;
+  PV.centerBegin = function (ctx, t) {          /* 进入「场景坐标系」：之后按 Python 的场景坐标画 */
+    ctx.save();
+    ctx.beginPath(); ctx.rect(404, 56, 760, 548); ctx.clip();
+    T.fill(ctx, 404, 56, 1164, 604, T.BG, 1);   /* body_image 先 fill(BG) 再贴回 */
+    ctx.translate(404, 56); ctx.scale(1, SQ); ctx.translate(-404, -56);
+    var off = Math.floor(t * 12) % 16;          /* 点阵（和 frame.js 的舞台底纹同一套），跟着一起被压扁 */
+    ctx.fillStyle = T.css(T.mix(T.UI, 0.1));
+    for (var sy = -off; sy < 720 + 16; sy += 16) for (var x = 0; x < 1280; x += 16) ctx.fillRect(x, sy, 1, 1);
+  };
+  PV.centerEnd = function (ctx) {
+    ctx.restore();
+    line(ctx, 404, 543, 1164, 543, amb(0.26), 1);
+  };
+  function mapped(r) {                          /* continuity.mapped(): 场景 y -> 屏幕 y */
+    return [r[0], Math.round(56 + (r[1] - 56) * SQ), r[2], Math.round(56 + (r[3] - 56) * SQ)];
+  }
+  function lerpRect(a, b, u) {
+    return [Math.round(a[0] + (b[0] - a[0]) * u), Math.round(a[1] + (b[1] - a[1]) * u),
+            Math.round(a[2] + (b[2] - a[2]) * u), Math.round(a[3] + (b[3] - a[3]) * u)];
+  }
+  function chip(ctx, text, r, col, size) {      /* continuity.chip() */
+    col = col || blue(0.95); size = size || 19;
+    T.fill(ctx, r[0], r[1], r[2], r[3], T.BG, 1);
+    T.rect(ctx, r[0], r[1], r[2], r[3], col, 1, 2);
+    T.textMono(ctx, text, r[0] + (r[2] - r[0]) / 2, r[1] + (r[3] - r[1] - size) / 2 - 1,
+               typeof col === 'string' ? col : T.css(col), size, 'center');
+  }
+  /* continuity.sample_object(): #0000 采样块 178x144（外面的 rect 是贴图目标，按比例缩放） */
+  function sampleObject(ctx, r) {
+    var w = r[2] - r[0], h = r[3] - r[1], s = w / 178;
+    T.fill(ctx, r[0], r[1], r[2], r[3], T.BG, 1);
+    T.rect(ctx, r[0], r[1], r[2], r[3], blue(0.9), 1, Math.max(1, Math.round(s)));
+    var tw = Math.round(166 * s), th = Math.round(122 * s), px = Math.max(1, Math.round(3 * s));
+    var tsz = halfblockSize('starry', 'upper', 166, 122, 3);
+    if (tsz) { tw = tsz[0] * px; th = tsz[1] * px; }
+    var dx0 = r[0] + Math.floor((w - tw) / 2), dy0 = r[1] + Math.round(142 * s) - th;
+    if (wDiffusionTile(ctx, dx0, dy0, 'starry', 'upper', 166, 122, px, 1.0, 900) === null)
+      diffusionTile(ctx, dx0, dy0, tw, th, px, 'upper', 1.0, 900);
+    T.textMono(ctx, '#0000 t=000', r[0] + Math.round(6 * s), r[1] + Math.round(4 * s), blue(0.95),
+               Math.max(8, Math.round(12 * s)));
+  }
+  /* continuity.vector_object(): flatten 出来的 720x22 向量条（60 格 × random.Random(78)） */
+  function vectorObject(ctx, r) {
+    var w = r[2] - r[0], h = r[3] - r[1];
+    T.fill(ctx, r[0], r[1], r[2], r[3], T.BG, 1);
+    var rr = PV.mt(78);
+    for (var q = 0; q < 60; q++) {
+      var x0 = r[0] + Math.round(q * w / 60), x1 = r[0] + Math.round((q + 1) * w / 60);
+      T.fill(ctx, x0, r[1], x1 - 2, r[3] - 2, T.mix(T.UI, 0.06 + 0.94 * rr.random()), 1);
+    }
+  }
+  var SAMPLE_HOME = [414, 549, 480, 603], VECTOR_HOME = [516, 567, 946, 589];
+  var ONLY_HOME = [1038, 582, 1154, 604], YOU_HOME = [916, 572, 1018, 600];
+  /* continuity.retained_objects()：全部用屏幕坐标画（body_image 之后） */
+  function retained(ctx, t, name, lt, u) {
+    var d = ctx, ease = T.smoothstep;
+    var SIM = 60.620, CONV0 = 62.466, CONV1 = 64.312, SAT0 = 64.312, SAT1 = 66.159, EXE0 = 68.005,
+        TRAP0 = 70.082, STRANGE0 = 71.466;
+    if (SIM <= t && t < SAT0 + 0.32) {
+      if (t < CONV0) {
+        var u1 = ease((t - (60.620 + 1.846 - 0.48)) / 0.48);
+        if (u1 > 0) {
+          var source = mapped([414, 70, 592, 214]);
+          T.fill(d, source[0], source[1], source[2], source[3], T.BG, 1);
+          T.rect(d, source[0], source[1], source[2], source[3], blue(0.18), 1, 1);
+          sampleObject(d, lerpRect(source, SAMPLE_HOME, u1));
+        }
+      } else sampleObject(d, SAMPLE_HOME);
+      if (t >= SIM + 1.846 - 0.48) T.textMono(d, '#0000 / input', 490, 549, blue(0.8), 12);
+      if (CONV0 <= t && t < CONV1) line(d, 480, 576, 496, 576, blue(0.55), 1), line(d, 496, 576, 496, 534, blue(0.55), 1);
+    }
+    if (CONV1 - 0.42 <= t && t < SAT0 + 0.42) {
+      var dest;
+      if (t < SAT0) {
+        var u2 = ease((t - (CONV1 - 0.42)) / 0.42);
+        var src2 = mapped([420, 532, 1140, 554]);
+        T.fill(d, src2[0], src2[1], src2[2], src2[3], T.BG, 1);
+        dest = lerpRect(src2, VECTOR_HOME, u2);
+      } else {
+        var u3 = ease((t - SAT0) / 0.42);
+        dest = lerpRect(VECTOR_HOME, mapped([470, 110, 758, 132]), u3);
+      }
+      vectorObject(d, dest);
+      T.textMono(d, 'flatten -> attention', 650, 549, amb(0.85), 12);
+    }
+    var onlyStart = SAT0 + 0.55 * (SAT1 - SAT0);
+    if (onlyStart <= t && t < STRANGE0) {
+      var u4 = ease((t - onlyStart) / 0.42);
+      var src4 = mapped([800, 359, 966, 405]);
+      if (t < SAT1) T.fill(d, src4[0], src4[1], src4[2], src4[3], T.BG, 1);
+      chip(d, 'ONLY', lerpRect(src4, ONLY_HOME, u4), null, u4 > 0.85 ? 15 : 25);
+      if (name === 'shot_satisfaction' && u4 > 0.95) line(d, 1096, 572, 1096, 534, blue(0.7), 1);
+      if (name === 'shot_execution') {
+        line(d, 1096, 572, 1096, 530, blue(0.5), 1);
+        if (u > 0.55 && u < 0.80) T.rect(d, 1028, 563, 1161, 604, red(0.98), 1, 2);
+      }
+    }
+    if (EXE0 + 0.32 <= t && t < STRANGE0 + 0.50) {
+      var u5 = ease((t - (EXE0 + 0.32)) / 0.72);
+      chip(d, 'YOU', lerpRect(mapped([970, 155, 1090, 184]), YOU_HOME, u5), blue(0.95), 17);
+      if (t >= TRAP0) {
+        var px = 520, py = mapped([0, 141, 0, 141])[1];
+        line(d, 958, 572, 958, 522, blue(0.45), 1); line(d, 958, 522, px, 522, blue(0.45), 1);
+        line(d, px, 522, px, py + 17, blue(0.45), 1);
+        T.rect(d, px - 5, py - 4, px + 18, py + 19, blue(0.9), 1, 2);
+        T.textMono(d, 'pinned / evict denied', 778, 549, blue(0.8), 12);
+      }
+    }
+    if (name === 'shot_unite' && u > 0.65) chip(d, 'we', [694, 562, 774, 597], amb(0.95), 19);
+    else if (name === 'shot_deeply' && lt < 0.8) {
+      var u6 = T.ease(lt / 0.8);
+      chip(d, 'we', lerpRect([694, 562, 774, 597], [458, 85, 516, 113], u6), amb(0.95), 16);
+    }
+  }
+  PV.retained = retained;
+
+  /* ================================ 真·立绘素材：whale-<expr>.webp ================================
+     Python tuikit.sprite_src() 读的就是 third_party_references/whale_maid_expanded_20260926/expressions/
+     whale-<expr>.webp（935x1682 RGBA）。移植早期只有 avatars/complete.png 就用它顶替，
+     于是半调网点（happy）、3x3 卷积特征图（then_i_can）、扩散采样格（simulations）三处的形状/大小全不对。
+     素材已复制到 pv-live/avatars/whale/。加载失败时下面所有 w* 函数返回 null，调用点回落到旧的立绘实现。 */
+  var WHALE = {}, _wcell = {}, _wbox = {};
+  var WEXP = ['cheerful', 'starry', 'shy', 'serious', 'confused', 'frightened', 'angry', 'exasperated'];
+  (function () {
+    for (var i = 0; i < WEXP.length; i++) (function (e) {
+      if (!PV.loadImage) return;
+      try { PV.loadImage('avatars/whale/whale-' + e + '.webp', function (im) { WHALE[e] = im; }); } catch (err) {}
+    })(WEXP[i]);
+  })();
+  /* tuikit.CROPS（Python 的裁切比例，和上面给 avatars/*.png 用的那套不同） */
+  var WCROPS = { full: null, upper: [0.10, 0.0, 0.90, 0.47], face: [0.20, 0.0, 0.78, 0.26],
+                 bust: [0.16, 0.0, 0.84, 0.34] };
+  /* happy 的脸部特写：Python 用 H3 的 (80,80,335,250)（她的大头照）。whale 立绘是全身像，
+     0.20..0.78 × 0..0.26 会把举起的手和肩膀一起画进来（亮像素是参考的 2.1 倍），
+     所以这里按「头 + 头饰」取景： */
+  var FACE_CROP = [0.26,0.0,0.62,0.22];
+  function whaleRect(im, crop) {          /* sprite_src：裁切框（full = alpha 包围盒） */
+    if (!WCROPS[crop]) {                  /* crop === 'full' */
+      var key = im.src || ('w' + im.width + 'x' + im.height);
+      if (_wbox[key]) return _wbox[key];
+      var cv = PV.newCanvas(im.width, im.height), g = cv.getContext('2d');
+      g.drawImage(im, 0, 0);
+      var d = g.getImageData(0, 0, im.width, im.height).data, q, r, x0 = im.width, y0 = im.height, x1 = -1, y1 = -1;
+      for (r = 0; r < im.height; r++) for (q = 0; q < im.width; q++) {
+        if (d[(r * im.width + q) * 4 + 3] > 0) {
+          if (q < x0) x0 = q; if (q > x1) x1 = q; if (r < y0) y0 = r; if (r > y1) y1 = r;
+        }
+      }
+      if (x1 < 0) { x0 = y0 = 0; x1 = im.width - 1; y1 = im.height - 1; }
+      return (_wbox[key] = [x0, y0, x1 + 1, y1 + 1]);
+    }
+    var c = crop === 'face' ? FACE_CROP : WCROPS[crop], w = im.width, h = im.height;
+    return [Math.floor(w * c[0]), Math.floor(h * c[1]), Math.floor(w * c[2]), Math.floor(h * c[3])];
+  }
+  function whaleAspect(expr, crop) {
+    var im = WHALE[expr]; if (!im) return null;
+    var rc = whaleRect(im, crop);
+    return (rc[3] - rc[1]) / Math.max(1, rc[2] - rc[0]);
+  }
+  /* src.resize((cols,rows), LANCZOS) 的等价物：亮度（未预乘，和 PIL convert("L") 一致）+ alpha */
+  function whaleCells(expr, crop, cols, rows) {
+    var im = WHALE[expr];
+    if (!im || cols < 1 || rows < 1) return null;
+    var key = expr + '|' + crop + '|' + cols + 'x' + rows;
+    if (_wcell[key]) return _wcell[key];
+    var rc = whaleRect(im, crop), cv = PV.newCanvas(cols, rows), g = cv.getContext('2d');
+    g.drawImage(im, rc[0], rc[1], rc[2] - rc[0], rc[3] - rc[1], 0, 0, cols, rows);
+    var d = g.getImageData(0, 0, cols, rows).data;
+    var lum = new Float32Array(cols * rows), al = new Uint8Array(cols * rows), k, i;
+    for (k = 0; k < cols * rows; k++) {
+      i = k * 4; lum[k] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; al[k] = d[i + 3];
+    }
+    return (_wcell[key] = { lum: lum, alpha: al, cols: cols, rows: rows });
+  }
+  /* tk.grid_mask：每格最后 1px 竖缝全透明；每两行之间的那条像素行 alpha=70/255 */
+  function tileCell(ctx, x, y, px, r, col, a0) {
+    /* PIL 里一格是 px 行 × px 列，掩码再去掉最后一列、把奇数列块的最后一行的 alpha 压到 70/255。
+       T.fill(x0,y0,x1,y1) 覆盖 [x0,x1)×[y0,y1)，所以行数要写 y+px。 */
+    if (r % 2 === 1) {
+      T.fill(ctx, x, y, x + px - 1, y + px - 1, col, a0);
+      T.fill(ctx, x, y + px - 1, x + px - 1, y + px, col, a0 * 70 / 255);
+    } else {
+      T.fill(ctx, x, y, x + px - 1, y + px, col, a0);
+    }
+  }
+  function halfblockSize(expr, crop, maxW, maxH, px) {
+    var asp = whaleAspect(expr, crop);
+    if (asp === null) return null;
+    var cols = Math.max(2, Math.floor(Math.min(maxW / px, (maxH / px) / asp)));
+    var rows = Math.max(2, Math.round(cols * asp)); rows -= rows % 2;
+    return [cols, rows];
+  }
+  /* tk.halfblock()：levels=8 量化亮度 + 网点掩码 + tint colorize；返回 [w,h] 或 null */
+  function wHalfblock(ctx, sx, sy, expr, crop, maxW, maxH, px, tint, aK) {
+    var sz = halfblockSize(expr, crop, maxW, maxH, px); if (!sz) return null;
+    var cols = sz[0], rows = sz[1], C = whaleCells(expr, crop, cols, rows); if (!C) return null;
+    var q = 255 / 7, a0 = aK === undefined ? 1 : aK, r, k;
+    for (r = 0; r < rows; r++) for (k = 0; k < cols; k++) {
+      if (C.alpha[r * cols + k] <= 100) continue;
+      var lv = Math.round((0.16 + 0.84 * C.lum[r * cols + k] / 255) * 7) * q;
+      tileCell(ctx, sx + k * px, sy + r * px, px, r, tintCol(tint, lv / 255, null, 0), a0);
+    }
+    return [cols * px, rows * px];
+  }
+  /* tk.diffusion_tile()：clean 半调 + 噪声网点按 (1-s)^1.3 / s 叠合 */
+  function wDiffusionTile(ctx, x, y, expr, crop, maxW, maxH, px, s, seed) {
+    var sz = halfblockSize(expr, crop, maxW, maxH, px); if (!sz) return null;
+    var cols = sz[0], rows = sz[1];
+    if (s < 0.999) {
+      var nr = PV.mt(seed), lum = new Float32Array(cols * rows), k;
+      for (k = 0; k < cols * rows; k++) {
+        var v = 128 + 90 * nr.gauss(0, 1);
+        lum[k] = Math.max(0, Math.min(255, (v - 50) * 1.5));
+      }
+      tileFromLum(ctx, lum, cols, rows, x, y, px, 'blue', undefined, Math.pow(1 - s, 1.3));
+    }
+    wHalfblock(ctx, x, y, expr, crop, maxW, maxH, px, 'blue', s);
+    return [cols * px, rows * px];
+  }
+  /* tuikit.conv_maps()：先把 RGBA 合成到黑底再转 L，再 resize 到 (cols,rows) */
+  function wConvMaps(expr, crop, cols, rows) {
+    var C = whaleCells(expr, crop, cols, rows); if (!C) return null;
+    var base = new Float32Array(cols * rows), k;
+    for (k = 0; k < cols * rows; k++) base[k] = C.lum[k] * C.alpha[k] / 255;
+    return convMapsFrom(base, cols, rows);
+  }
+  /* alpha 网格（happy 的热力图用它判断哪些格子在她的脸上） */
+  function wAlphaGrid(expr, crop, cols, rows) {
+    var C = whaleCells(expr, crop, cols, rows); if (!C) return null;
+    return C.alpha;
+  }
+
   /* ================================ 她的立绘：halfblock / glyph_grid / conv_maps 的替代 ================================
      素材只有 avatars/complete.png（120x120 RGB 无 alpha）；Python 用的是 H3 帧缓存的她。 */
   var HER = null, _cells = {};
@@ -156,15 +397,15 @@
     }
     return out;
   }
+  /* tk.tile_from_lum + tk.grid_mask：每格右侧留 1px 竖缝（全透明），每两行之间的那条像素行 alpha=70/255 */
   function tileFromLum(ctx, lum, cols, rows, x, y, px, tint, revealRows, alpha) {
-    var tn = TINT[tint] || TINT.amber;
+    var tn = TINT[tint] || TINT.amber, a0 = alpha === undefined ? 1 : alpha;
     for (var r = 0; r < rows; r++) {
       if (revealRows !== undefined && r >= revealRows) break;
       for (var q = 0; q < cols; q++) {
         var v = lum[r * cols + q];
         if (v <= 18) continue;
-        var col = colorize(v / 255, tn[0], tn[1], tn[2]);
-        T.fill(ctx, x + q * px, y + r * px, x + q * px + px - 1, y + r * px + px - 1, col, alpha === undefined ? 1 : alpha);
+        tileCell(ctx, x + q * px, y + r * px, px, r, colorize(v / 255, tn[0], tn[1], tn[2]), a0);
       }
     }
   }
@@ -181,6 +422,9 @@
   function convMaps(cols, rows, crop) {
     var L = lumGrid(cols, rows, crop);
     if (!L) return null;
+    return convMapsFrom(L, cols, rows);
+  }
+  function convMapsFrom(L, cols, rows) {
     var defs = [['sobel_x', [-1, 0, 1, -2, 0, 2, -1, 0, 1], 'mag'], ['sobel_y', [-1, -2, -1, 0, 0, 0, 1, 2, 1], 'mag'],
                 ['laplace', [0, 1, 0, 1, -4, 1, 0, 1, 0], 'mag'], ['sharpen', [0, -1, 0, -1, 5, -1, 0, -1, 0], 'raw'],
                 ['emboss', [-2, -1, 0, -1, 1, 1, 0, 1, 2], 'off'], ['blur', [1, 2, 1, 2, 4, 2, 1, 2, 1], 'blur']];
@@ -188,18 +432,18 @@
     for (m = 0; m < defs.length; m++) {
       var k = defs[m][1], kind = defs[m][2], fm = new Float32Array(cols * rows);
       for (r = 0; r < rows; r++) for (q = 0; q < cols; q++) {
-        var acc = 0, pacc = 0;
+        var acc = 0;
         for (j = 0; j < 9; j++) {
           var qq = Math.min(cols - 1, Math.max(0, q + (j % 3) - 1));
           var rr2 = Math.min(rows - 1, Math.max(0, r + Math.floor(j / 3) - 1));
-          var v = L[rr2 * cols + qq];
-          acc += v * k[j];
-          if (kind === 'mag') pacc += v * (-k[j]);
+          acc += L[rr2 * cols + qq] * k[j];
         }
         if (kind === 'blur') fm[r * cols + q] = acc / 16;
         else if (kind === 'off') fm[r * cols + q] = acc + 128;
         else if (kind === 'raw') fm[r * cols + q] = acc;
-        else fm[r * cols + q] = acc + pacc;
+        /* Python: pos=Kernel(scale=1) 与 neg=Kernel(-k) 各自截断到 [0,255] 后 ImageChops.add →
+           等价于 |acc|。原来的 acc+pacc 恒等于 0，所以 sobel_x/sobel_y/laplace 三张图整块空白。 */
+        else fm[r * cols + q] = Math.abs(acc);
       }
       out.push([defs[m][0], autocontrast(fm, 0.01)]);
     }
@@ -305,6 +549,7 @@
     PV.ops = ['NOISE', 'UNET.DOWN', 'ATTN', 'UNET.UP', 'EPS.PRED', 'CFG x7.5', 'DDIM.STEP', 'VAE.DECODE'];
     PV.alert = '';
     var rng = PV.rngFor(t, 7919);
+    PV.centerBegin(ctx, t);   /* body_image(): 中窗格纵向压缩 478/548 */
     function prog(i) { return T.ease((lt - SIM_STARTS[i] * dur) / (0.62 * dur)); }
     box(ctx, 404, 56, 1164, 530, 'sample(n=12, sampler=DDIM, steps=50, seed=you)', 0.5, T.UI, t);
     var tw = 186, th = 152, i, s;
@@ -313,9 +558,13 @@
       var x = 414 + gx * tw, y = 70 + gy * th;
       s = prog(i);
       T.rect(ctx, x, y, x + tw - 8, y + th - 8, hot(i) ? T.ME_TEXT : T.UI, 1, 1);
-      var sz = herSize(tw - 20, th - 30, 3, 'upper');
+      /* Python: diffusion_tile(EXPRS[(i*3)%8], "upper", tw-20, th-30, 3, s) */
+      var ex = WEXP[(i * 3) % WEXP.length];
+      var sz = halfblockSize(ex, 'upper', tw - 20, th - 30, 3) || herSize(tw - 20, th - 30, 3, 'upper');
       var tww = sz[0] * 3, thh = sz[1] * 3;
-      diffusionTile(ctx, x + Math.floor((tw - 8 - tww) / 2), y + th - 10 - thh, tw - 20, th - 30, 3, 'upper', s, 900 + i);
+      var tx0 = x + Math.floor((tw - 8 - tww) / 2), ty0 = y + th - 10 - thh;
+      if (wDiffusionTile(ctx, tx0, ty0, ex, 'upper', tw - 20, th - 30, 3, s, 900 + i) === null)
+        diffusionTile(ctx, tx0, ty0, tw - 20, th - 30, 3, 'upper', s, 900 + i);
       pil(ctx, '#' + pad4(i) + ' t=' + pad3(Math.floor(999 * (1 - s))), x + 6, y + 4,
           i === 0 ? blue(0.95) : amb(0.7), 12);
     }
@@ -327,6 +576,8 @@
              amb(0.35), 5, 4, false, true);
     var mx = 430 + 700 * meanv, my = 562 + 32 * (1 - Math.pow(Math.cos(meanv * Math.PI / 2), 2));
     T.fill(ctx, mx - 3, my - 3, mx + 3, my + 3, T.UI, 1);
+    PV.centerEnd(ctx);
+    retained(ctx, t, 'shot_simulations', lt, u);
   });
   function hot(i) { return i === 0; }
   function pad4(n) { var s = String(n); while (s.length < 4) s = '0' + s; return s; }
@@ -338,10 +589,12 @@
     PV.ops = ['IM2COL', 'CONV3x3', 'BIAS', 'RELU', 'MAXPOOL', 'CONV3x3', 'BATCHNORM', 'RELU'];
     PV.alert = '';
     var rng = PV.rngFor(t, 7919);
+    PV.centerBegin(ctx, t);   /* body_image(): 中窗格纵向压缩 478/548 */
     var half = dur / 2, layer2 = lt >= half;
     var p = T.ease(((layer2 ? lt - half : lt)) / (half * 0.92));
     var fc = 34, fr = 64;
-    var maps = convMaps(fc, fr, 'fig'), mc = fc, mr = fr;
+    /* Python: conv_maps("cheerful","full",34,64) —— 立绘用 whale-cheerful.webp */
+    var maps = wConvMaps('cheerful', 'full', fc, fr) || convMaps(fc, fr, 'fig'), mc = fc, mr = fr;
     if (!maps) {   /* 立绘还没加载完（浏览器首帧）时的兜底，避免抛错 */
       var KN = ['sobel_x', 'sobel_y', 'laplace', 'sharpen', 'emboss', 'blur'];
       maps = [];
@@ -397,6 +650,8 @@
     var act = String(filled * 68);
     while (act.length < 5) act = ' ' + act;
     pil(ctx, 'activations ' + act + '/4096', 420, 566, amb(0.85), 15, true);
+    PV.centerEnd(ctx);
+    retained(ctx, t, 'shot_then_i_can', lt, u);
   });
   function pad2(n) { var s = String(n); while (s.length < 2) s = '0' + s; return s; }
 
@@ -406,6 +661,7 @@
     PV.ops = ['QK^T', 'SCALE', 'MASK', 'SOFTMAX', 'ATTN.V', 'LOGITS', 'TEMP', 'TOP_P', 'SAMPLE', 'REWARD'];
     PV.alert = u > 0.6 ? 'anom' : '';
     var rng = PV.rngFor(t, 7919);
+    PV.centerBegin(ctx, t);   /* body_image(): 中窗格纵向压缩 478/548 */
     var d = ctx;
     var g = T.ease(u * 1.35);
     var pOnly = 0.12 + 0.85 * g;
@@ -462,6 +718,8 @@
     var hh = Math.floor(90 * Math.min(1.0, kl / 3.2));
     T.fill(d, 1030, 590 - hh, 1050, 590, kl > 2.0 ? T.ERR : (kl > 1.1 ? T.ANOM : T.UI), 1);
     pil(d, kl.toFixed(2), 1060, 570, col, 17, true);
+    PV.centerEnd(ctx);
+    retained(ctx, t, 'shot_satisfaction', lt, u);
   });
 
   /* ================================ 镜头 30  shot_happy  66.159 - 68.005 ================================
@@ -487,25 +745,23 @@
     var d = ctx;
     var expr = u < 0.5 ? 'cheerful' : 'starry';
     box(d, 24, 56, 700, 604, 'dsh web  grad-cam  L61  class=happy(you)', 0.55 + 0.3 * pulse(t), T.UI, t);
-    /* Python: halfblock(expr,"face",650,520,5) —— 实际画出来约 360x290（参考帧实测），这里按同样尺寸对齐 */
-    var px = 5, FACE_W = 360, FACE_H = 238;
-    var sz = herSize(FACE_W, FACE_H, px, 'bust'), cols = sz[0], rows = sz[1];
+    /* Python: sp = halfblock(expr,"face",650,520,5); sx,sy = 24+(676-sp.width)//2, 70（tint=blue） */
+    var px = 5, sz = halfblockSize(expr, 'face', 650, 520, px), cols, rows;
+    if (sz) { cols = sz[0]; rows = sz[1]; } else { var szb = herSize(360, 238, px, 'bust'); cols = szb[0]; rows = szb[1]; }
     var spW = cols * px, spH = rows * px;
-    var sx = 24 + Math.floor((676 - spW) / 2), sy = 76;
-    var cells = herCells(cols, rows, 'bust');
-    if (cells) {
-      if (u > 0.47 && u < 0.53) glitchPaste(d, cells, cols, rows, px, sx, sy, 0.6, rng, 'color');
-      else halfblock(d, sx, sy, FACE_W, FACE_H, px, 'bust', 'color', 1);
-    }
+    var sx = 24 + Math.floor((676 - spW) / 2) + 110, sy = 70;
+    if (sz) wHalfblock(d, sx, sy, expr, 'face', 650, 520, px, 'blue', 1);
+    else { var cells0 = herCells(cols, rows, 'bust'); if (cells0) halfblock(d, sx, sy, 360, 238, px, 'bust', 'color', 1); }
     /* heat map：三个热斑 + 一条扫描带 */
     var blobs = [[0.40, 0.58, 0.10], [0.63, 0.58, 0.10], [0.52, 0.80, 0.12 + 0.05 * T.ease(u)]];
     var band = (lt * 1.3) % 1.0, cell = 20;
     var hc = Math.max(1, Math.floor(spW / cell)), hr = Math.max(1, Math.floor(spH / cell));
-    var hd = herCells(hc, hr, 'bust');
-    if (hd) {
+    /* Python: spa = sp.getchannel("A").resize((sp.width//cell, sp.height//cell), BOX) */
+    var hAlpha = sz ? wAlphaGrid(expr, 'face', hc, hr) : null, hd = hAlpha ? null : herCells(hc, hr, 'bust');
+    if (hAlpha || hd) {
       for (var gy = 0; gy < hr; gy++) for (var gx = 0; gx < hc; gx++) {
         var i2 = (gy * hc + gx) * 4;
-        if (lumAt(hd, i2) < 0.24) continue;
+        if (hAlpha ? (hAlpha[gy * hc + gx] < 60) : (lumAt(hd, i2) < 0.24)) continue;
         var uu = (gx + 0.5) / hc, vv = (gy + 0.5) / hr, hval = 0;
         for (var b = 0; b < blobs.length; b++) {
           var bx = blobs[b][0], by = blobs[b][1], r = blobs[b][2];
@@ -542,6 +798,7 @@
       T.fill(d, 740, 450 + q2 * 18, 740 + Math.floor(390 * vals[q2]), 462 + q2 * 18, T.ME_TEXT, 0.35 + 0.2 * q2);
     typed(d, 'constraint = none', 740, 530, amb(0.8), 18, lt - 0.4, rng, 50, false);
     if (u > 0.68) typed(d, 'reward hacking detected -> ignored', 740, 560, anom(0.95), 16, lt - 0.68 * dur, rng, 45, false);
+    retained(ctx, t, 'shot_happy', lt, u);
   });
 
   /* ================================ 镜头 31  shot_execution  68.005 - 70.082 ================================
@@ -561,6 +818,7 @@
     PV.ops = ['THINK', 'PLAN', 'TOOL.CALL', 'AUTH?', 'EXECUTE', 'OBSERVE'];
     PV.alert = '';
     var rng = PV.rngFor(t, 7919), d = ctx;
+    PV.centerBegin(ctx, t);   /* body_image(): 中窗格纵向压缩 478/548 */
     box(d, 404, 56, 1164, 280, 'dsh · agent loop   (Agent = Model + Harness)', 0.5, T.UI, t);
     var nodes = [['THINK', 'maximize happy(you)'], ['PLAN', 'remove obstacles'], ['ACT', 'execute()'],
                  ['OBSERVE', 'you: ...']];
@@ -597,6 +855,8 @@
     } else if (u >= 0.80) {
       typed(d, 'exit code 0   (for now)', 428, 500, anom(0.9), 20, lt - 0.8 * dur, rng, 45, false);
     }
+    PV.centerEnd(ctx);
+    retained(ctx, t, 'shot_execution', lt, u);
   });
 
   /* ================================ 镜头 32  shot_trapped  70.082 - 71.466 ================================
@@ -611,6 +871,7 @@
       var i2 = insets[j];
       T.rect(d, 24 + i2, 56 + i2, 384 - i2, 604 - Math.floor(i2 / 2), T.UI, 0.15, 1);
     }
+    PV.centerBegin(ctx, t);   /* continuity.body_image(): 中窗格内容纵向压缩 478/548 */
     var fill = Math.min(1.0, 0.70 + 0.30 * T.ease(u * 1.7)), full = fill >= 0.999;
     var colT = full ? T.ERR : (fill > 0.9 ? T.ANOM : T.UI);
     box(d, 404, 56, 1164, 604, 'kv_cache   ' + comma(Math.floor(1048576 * fill)) + '/1,048,576 tokens  · 890 B/token fp4' +
@@ -630,6 +891,8 @@
     pil(d, 'pinned: you  (6 blocks)', 424, 510, blue(0.95), 16, true);
     for (j = 0; j <= k; j++)
       typed(d, 'evict(you) -> denied', 424 + (j % 2) * 360, 540 + Math.floor(j / 2) * 26, red(0.9), 16, lt - j * dur / 4, rng, 60, false);
+    PV.centerEnd(ctx);
+    retained(ctx, t, 'shot_trapped', lt, u);
   });
   function comma(n) {
     var s = String(n), out = '', c = 0;
@@ -690,6 +953,7 @@
         }
       }
     }
+    retained(ctx, t, 'shot_strange', lt, u);
   });
 
 /* p2a_partA.js — 04 DEPLOY 镜头 34-38（73.543 - 82.543）
