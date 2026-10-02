@@ -110,7 +110,8 @@
     { a: 41.928, b: 44.005, fn: null, name: 'shot_limit', idx: 19, shell: false },
     { a: 44.005, b: 47.236, fn: null, name: 'shot_current', idx: 20, shell: false },
     { a: 47.236, b: 49.082, fn: null, name: 'shot_blind', idx: 21, shell: false },
-    { a: 49.082, b: 50.928, fn: null, name: 'shot_dizzy', idx: 22, shell: false }];
+    { a: 49.082, b: 50.928, fn: null, name: 'shot_dizzy', idx: 22, shell: false },
+    { a: 50.928, b: 54.159, fn: null, name: 'shot_travel', idx: 23, shell: false }];
   PV.powerLog = powerLog;
   PV.logLine = logLine;
   PV.POWER_LOG = POWER_LOG;
@@ -225,6 +226,7 @@
     else if (s.name === 'shot_tangent') { PV.shotTangent(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a), s.b - s.a); }
     else if (s.name === 'shot_infinity') { PV.shotInfinity(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
     else if (s.name === 'shot_current') { PV.shotCurrent(ctx, t, Math.max(0, t - s.a)); }
+    else if (s.name === 'shot_travel') { PV.shotTravel(ctx, t, Math.max(0, t - s.a)); }
     else if (s.name === 'shot_dizzy') { PV.shotDizzy(ctx, t, Math.max(0, t - s.a)); }
     else if (s.name === 'shot_blind') { PV.shotBlind(ctx, t, Math.max(0, t - s.a)); }
     else if (s.name === 'shot_limit') { PV.shotLimit(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
@@ -251,7 +253,7 @@
   'use strict';
   var PV = window.PV, T = PV.tui;
   var C01_T = 1.312, C01_OPEN = 0.23, SHELL_CMD = './protect';
-  PV.loopEnd = 50.928;
+  PV.loopEnd = 54.159;
   PV.SHELL_SHOTS = [
     { a: 1.312, b: 3.620, cmd: './protect' },
     { a: 7.082, b: 9.851, cmd: 'neofetch' },
@@ -1168,5 +1170,53 @@
     T.textPIL(ctx, 'θ = (' + (th[0] >= 0 ? '+' : '') + th[0].toFixed(2) + ', ' + (th[1] >= 0 ? '+' : '') + th[1].toFixed(2) + ')',
       900, 472, T.css(T.mix(T.ME_TEXT, 0.95)), 18);
     T.textMono(ctx, 'loss = ' + (surfaceZ(th[0], th[1]) + 1.6).toFixed(4), 900, 502, T.ui(0.7), 16);
+  };
+})();
+
+/* ---- 镜头 23（travel）：年份从 2026 AD 倒流到 BC + 位置 id + 三个 RoPE 罗盘 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var FB = 0.1587, BEAT = 60 / 130;
+  function beatT(k) { return FB + k * BEAT; }
+  var T_TRAVEL0 = beatT(110), T_BC = beatT(116.5);
+  function travelYear(t) {
+    var u = Math.max(0, (t - T_TRAVEL0) / (T_BC - T_TRAVEL0));
+    return u < 1 ? Math.round(2026 - 2025 * Math.pow(u, 1.6)) : -Math.floor(1 + 2025 * 1.6 * (u - 1));
+  }
+  function travelPos(t) { return 2026 - travelYear(t); }
+  function ropeAngle(t, i) { var tt = t < T_BC ? t : 2 * T_BC - t; return (tt * 3.0) * (1.8 / (1 + i * 0.9)); }
+  PV.travelYear = travelYear;
+  PV.travelPos = travelPos;
+  PV.shotTravel = function (ctx, t, lt) {
+    PV.ops = ['POS_ID', 'ROPE', 'TIME', 'REWIND', 'AD', 'BC'];
+    T.box(ctx, 404, 56, 1164, 604, 'time travel  (position ids)', 0.5, T.UI, t);
+    var year = travelYear(t), era = year > 0 ? 'AD' : 'BC';
+    var yr = String(Math.abs(year));
+    while (yr.length < 5) yr = ' ' + yr;
+    var ycol = era === 'BC' ? T.mix(T.ME_TEXT, 1.0) : T.ui(1.0);
+    T.textPIL(ctx, yr + ' ' + era, 430, 100, T.css(ycol), 72);
+    var pos0 = travelPos(t), i;
+    for (i = 0; i < 30; i++) {
+      var pos = Math.floor(pos0) - i * 173, x = 430 + i * 24;
+      var hh = 40 + 30 * Math.sin(pos * 0.01);
+      T.fill(ctx, x, 380 - hh, x + 19, 381, T.ui(0.3 + 0.02 * i), 1);
+    }
+    var R = 40;
+    for (i = 0; i < 3; i++) {
+      var cx = 430 + i * 240 + R + 20, cy = 390 + R + 30, th = ropeAngle(t, i);
+      ctx.save();
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.283185);
+      ctx.strokeStyle = T.css(T.ui(0.55)); ctx.lineWidth = 2; ctx.stroke();
+      ctx.restore();
+      T.fill(ctx, cx - R - 6, cy, cx + R + 7, cy + 1, T.ui(0.2), 1);
+      T.fill(ctx, cx, cy - R - 6, cx + 1, cy + R + 7, T.ui(0.2), 1);
+      var ex = cx + R * Math.cos(th), ey = cy + R * Math.sin(th);
+      ctx.save();
+      ctx.strokeStyle = T.css(T.mix(T.ME_TEXT, 0.95)); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.restore();
+      T.fill(ctx, ex - 3, ey - 3, ex + 4, ey + 4, T.mix(T.ME_TEXT, 1.0), 1);
+    }
   };
 })();
