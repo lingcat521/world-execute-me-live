@@ -339,7 +339,15 @@
   PV.shotPieces = function (ctx, t, lt, dur, opts) {
     opts = opts || {};
     PV.ops = ['MMAP', 'SAFETENSORS', 'H2D.COPY', 'SHARD', 'VERIFY', 'LOAD'];
-    var on = PV.piecesLit(lt, dur), done = 0, i;
+    /* C02 会传 landed（每个格子由飞来的点落地点亮）；不传时退回镜头自己的时钟 */
+    var on, done = 0, i;
+    if (opts.landed) {
+      on = {};
+      for (var _k in opts.landed) {
+        var _dt = t - opts.landed[_k];
+        if (_dt >= 0) on[_k] = _dt < 0.2 ? 0.0 : 1.0;
+      }
+    } else on = PV.piecesLit(lt, dur);
     for (i in on) done++;
     T.box(ctx, 24, 56, 1164, 604, 'load_weights  DeepSeek-V4.1-Flash   (experts fp4 · rest fp8)', 0.5, T.UI, t);
     for (i = 0; i < GRID.n; i++) {
@@ -474,8 +482,10 @@
     PV.ops = ['INIT', 'NORMAL', 'STD=0.006', 'ZERO.BIAS', 'SEED', 'SYNC'];
     T.box(ctx, 404, 56, 1164, 604, 'init: normal(0, 0.006)', 0.5, T.UI, t);
     var bars = PV.initBars(t, u);
-    for (var i = 0; opts.bars !== false && i < bars.length; i++) {   /* C06：柱条由转场层接管 */
-      var hh = bars[i][1];
+    /* C05：柱条要等计数器落地（grow_t）才开始长。原工程 SHOT_HOOKS["shot_init"] = {grow_t: T5 + C05.GROW}，
+       grow = ease(clamp01((t - grow_t)/0.45))。opts.grow 为 undefined 时不门控（普通分派）。 */
+    for (var i = 0; opts.bars !== false && i < bars.length; i++) {
+      var hh = bars[i][1] * (opts.grow === undefined ? 1 : opts.grow);
       if (hh > 0) T.fill(ctx, bars[i][0], BASE - hh, bars[i][0] + 10, BASE + 1, T.ui(0.35 + 0.6 * bars[i][2]), 1);
     }
     if (opts.title !== false) T.textPIL(ctx, '552,000,000,000 params', 430, 70, T.css(T.mix(T.ME_TEXT, 0.95)), 30);   /* C05：等计数器飞到位 */
