@@ -525,7 +525,7 @@
     }
     return { width: cols, height: rows, get: function (q, r) { return bits[r][q]; } };
   };
-  PV.shotBeginSim = function (ctx, t, lt, u, dur) {
+  PV.shotBeginSim = function (ctx, t, lt, u, dur, noRun, noBudget) {
     PV.ops = ['SIM.START', 'EPOCH 0', 'STEP 0', 'FORWARD', 'BACKWARD', 'UPDATE'];
     T.box(ctx, 404, 56, 1164, 604, 'sim.start()', 0.5, T.UI, t);
     if (u < 0.55) {
@@ -538,9 +538,9 @@
         T.textPIL(ctx, s, 784 - bits.width * cw / 2, 200 + r * 17, T.ui(0.95), 16);
       }
     } else {
-      T.textPIL(ctx, T.decode('RUN', lt - 0.55 * dur, PV.rngFor(t, 7919), 12, 0.12, 0), 460, 200, T.ui(1.0), 120);
+      if (!noRun) T.textPIL(ctx, T.decode('RUN', lt - 0.55 * dur, PV.rngFor(t, 7919), 12, 0.12, 0), 460, 200, T.ui(1.0), 120);
       T.textMono(ctx, 'simulation: running', 460, 400, T.ui(0.9), 22);
-      T.textMono(ctx, 'tokens budget: 45T', 460, 440, T.ui(0.7), 20);
+      if (!noBudget) T.textMono(ctx, 'tokens budget: 45T', 460, 440, T.ui(0.7), 20);
     }
   };
 })();
@@ -600,6 +600,24 @@
   PV.lossFn = function (u) {
     return 0.92 * Math.exp(-5 * u) + 0.12 + 0.02 * NOISE[Math.min(599, Math.floor(u * 599))] * (1 - u * 0.7);
   };
+  /* 曲线终点坐标（与 dotChart 同一套几何），C10 的端点圆点要用 */
+  PV.lossEndPoint = function (prog, x, y, w, h, sx, sy) {
+    sx = sx || 5; sy = sy || 5;
+    var cols = Math.floor(w / sx), rows = Math.floor(h / sy);
+    var i = Math.max(0, Math.min(cols - 1, Math.round(prog * (cols - 1))));
+    var v = Math.min(1, PV.lossFn(i / (cols - 1)));
+    var rr = Math.round((1 - Math.max(0, v)) * (rows - 1));
+    return [x + i * sx, y + rr * sy];
+  };
+  /* 曲线终点坐标（与 dotChart 同一套几何），C10 的端点圆点要用 */
+  PV.lossEndPoint = function (prog, x, y, w, h, sx, sy) {
+    sx = sx || 5; sy = sy || 5;
+    var cols = Math.floor(w / sx), rows = Math.floor(h / sy);
+    var i = Math.max(0, Math.min(cols - 1, Math.round(prog * (cols - 1))));
+    var v = Math.min(1, PV.lossFn(i / (cols - 1)));
+    var rr = Math.round((1 - Math.max(0, v)) * (rows - 1));
+    return [x + i * sx, y + rr * sy];
+  };
   PV.dotChart = function (ctx, x, y, w, h, fn, progress, col, sx, sy) {
     sx = sx || 5; sy = sy || 5;
     var cols = Math.floor(w / sx), rows = Math.floor(h / sy), i, j;
@@ -617,12 +635,12 @@
     }
     return last;
   };
-  PV.shotLossCurve = function (ctx, t, lt, u, xlabel) {
+  PV.shotLossCurve = function (ctx, t, lt, u, xlabel, progOv) {
     PV.ops = ['FORWARD', 'MTP.HEAD', 'LOSS', 'BACKWARD', 'FP8.GEMM', 'ALLREDUCE', 'ADAMW', 'LR.SCHED'];
     T.box(ctx, 404, 56, 1164, 420, 'train/loss', 0.5, T.UI, t);
-    var prog = T.ease(u * 1.05) * 0.98 + 0.02;
+    var prog = progOv === undefined ? (T.ease(u * 1.05) * 0.98 + 0.02) : progOv;
     var last = PV.dotChart(ctx, 440, 80, 690, 240, PV.lossFn, prog, T.ui(0.95), 5, 5);   /* 690：参考里 loss 曲线是横贯整幅的，原先 250 太窄 */
-    if (last) {
+    if (last && progOv === undefined) {
       var lv = PV.lossFn(Math.min(1, prog));
       T.textPIL(ctx, 'loss ' + lv.toFixed(3), last[0] - 80, last[1] - 26, T.ui(1.0), 16);
     }
@@ -911,12 +929,21 @@
       T.textMono(ctx, 'freq_' + i + '  θ=' + th, cx - R, cy + R + 8, T.ui(0.7 * a), 13);
     }
   };
+  PV.ropeCenter = ropeCenter;
+  PV.ropeTheta = ropeTheta;
   PV.shotCircle = function (ctx, t, lt, u) {
     PV.ops = ['ROPE', 'COS', 'SIN', 'ROTATE', 'Q', 'K', 'QK^T'];
     T.box(ctx, 404, 56, 1164, 604, 'rotary position embedding', 0.5, T.UI, t);
     for (var i = 0; i < 6; i++) {
-      var c = ropeCenter(i);
-      PV.drawRope(ctx, i, c[0], c[1], 70, ropeTheta(t, i), 1, true, true, 1);
+      var c = ropeCenter(i), sp = PV.circleSpec ? PV.circleSpec(i) : null;
+      if (PV.circleSpec && !sp) continue;   /* C14：六个圆按节拍逐个诞生，未到时间的先不画 */
+      if (sp) {
+        PV.drawRope(ctx, i, sp.cx === undefined ? c[0] : sp.cx, sp.cy === undefined ? c[1] : sp.cy,
+                    sp.R === undefined ? 70 : sp.R, ropeTheta(t, i),
+                    sp.a === undefined ? 1 : sp.a, sp.labels, sp.hand, sp.sweep);
+      } else {
+        PV.drawRope(ctx, i, c[0], c[1], 70, ropeTheta(t, i), 1, true, true, 1);
+      }
     }
   };
 })();
