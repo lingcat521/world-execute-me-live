@@ -8,7 +8,7 @@ Cut.T = 进入镜头的起点；窗口 = [T-pre, T+post]。我们已实现的镜
 | C01 | 1.312 | 已实现 | power -> protection. UNFOLD：CRT 画面抬起、张开成整个 shell，锁在拍点上；POST 日志随之 |
 | C02 | 3.620 | 已实现 | protection -> pieces. MORPH：盾牌亮起，点逐个离开（顶行先），落进权重网格的下一格 |
 | C03 | 5.236 | 已实现（画布部分；她的 HTML 窗格揭示待补） | pieces -> creation. MORPH：已加载的 161 格向网格中心排空，远处的先走，各自缩成点并变色 |
-| C04 | 7.082 | 待做 | creation -> parameters. RETAIN：me.* 块先亮起并留在原地；chrome 收回 shell staging |
+| C04 | 7.082 | 已实现 | creation -> parameters. RETAIN：me.* 块先亮起并留在原地；chrome 收回 shell staging |
 | C05 | 9.851 | 待做 | parameters -> init. CARRY：'552,000,000,000 params' 亮起、沿弧线升起，落在直方图标题上 |
 | C06 | 11.005 | 待做 | init -> world. MORPH：定型的柱条亮起并碎成点列，每点飞向球面的一点 |
 | C07 | 12.389 | 待做 | world -> begin_sim. CARRY+MORPH：me 与 you 离开轨道，各自飞进 population 行的词里 |
@@ -30,4 +30,4 @@ Cut.T = 进入镜头的起点；窗口 = [T-pre, T+post]。我们已实现的镜
 | C23 | 50.928 | 待做 | dizzy -> travel. 镜头只在窗格内后拉：旋转的碗向左离开，年份条（已在 2026 AD）进来 |
 | C24 | 54.159 | 待做 | travel -> unite（进入 unite 镜头） |
 
-已完成 16 / 24（C01-C03 + C08-C20）
+已完成 17 / 24（C01-C04 + C08-C20）

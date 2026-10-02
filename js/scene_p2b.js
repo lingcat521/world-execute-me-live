@@ -660,6 +660,11 @@
     h = h || PV.HOOK;
     PV.ops = ['MHC', 'SINKHORN', 'ROW.NORM', 'COL.NORM', 'ITER', 'DIVERGE'];
     PV.alert = 'err';
+    /* s_reward.setup(): DELAY["shot_sinkhorn"] = C61.ZOOM —— 镜头时钟晚 0.462 s 起而总时长不变
+       （c.u = (t - start - delay) / (end - start)）。PV.SHOT_DELAY 的派发分支在 _dl > 0 时用
+       {a,b,name,idx} 复制镜头对象、会把 fn 丢掉，故延迟在本函数内部实现。 */
+    lt = Math.max(0, lt - SK_ZOOM);
+    u = dur > 0 ? T.clamp01(lt / dur) : 0;
     var it = sinkhornIter(u), hot = it > HC_ITERS;
     if (hv(h, 'frame', true)) {
       T.box(ctx, 404, 56, 1164, 604, 'mHC residual mix  hc_mult=' + HC_MULT + '  sinkhorn iter ' + it + '/' + HC_ITERS,
@@ -828,8 +833,7 @@
   reg('shot_sinkhorn', 138.1587, 141.3895, sinkhorn, { idx: 61 });
   reg('shot_hoard', 141.3895, 144.1587, hoard, { idx: 62 });
   reg('shot_flood', 144.1587, 147.6202, flood, { idx: 63 });
-  PV.SHOT_DELAY = PV.SHOT_DELAY || {};
-  PV.SHOT_DELAY.shot_sinkhorn = SK_ZOOM;   /* s_reward.setup(): DELAY["shot_sinkhorn"] = C61.ZOOM */
+  /* shot_sinkhorn 的 DELAY（C61.ZOOM）在 sinkhorn() 内部实现，不要写进 PV.SHOT_DELAY。 */
 
   /* ================================================================ 场景级工具（转场层用） */
   PV.SU = {

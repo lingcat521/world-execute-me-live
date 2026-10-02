@@ -43,7 +43,8 @@
   function head(ctx, s, x, y, col, size, align, bold) { T.textPIL(ctx, s, x, y, col, size, align, bold); }
 
   /* ---------------- banner_bits / banner_block（tuikit 同名函数） ---------------- */
-  function bannerBits(text, rows, aspect) { return PV.bannerBits(text, rows, aspect); }
+  var BANNER_K = 1.121;   /* 标定：见 pvport 比对（参考帧 1065x220，未标定时 950x220） */
+  function bannerBits(text, rows, aspect) { return PV.bannerBits(text, rows, aspect * BANNER_K); }
   function bannerFit(text, rows, cellAspect, cw, maxW) {
     var bits = bannerBits(text, rows, cellAspect);
     while (bits.width * (cw || 1) > maxW && rows > 2) { rows -= 1; bits = bannerBits(text, rows, cellAspect); }
@@ -339,27 +340,5 @@
 })();
 
 
-/* ================================================================ 分派
-   scene_boot.js 的通用分支（else if (s.fn)）里引用了那个 IIFE 作用域外的 T，
-   调用 PV.reg 注册的镜头会抛 "T is not defined"。这里在本文件内包一层 PV.scene：
-   先让 cut 层（PV.activeCut）优先，然后处理本文件注册的镜头，其余交回原分派器。 */
-(function () {
-  'use strict';
-  var PV = window.PV, T = PV.tui;
-  var orig = PV.scene, MINE = PV.p2cMine;
-  PV.p2cScene = function (ctx, t) {
-    var s = null;
-    for (var k in MINE) { var m = MINE[k]; if (t >= m.a && t < m.b) s = m; }
-    return s;
-  };
-  PV.scene = function (ctx, t) {
-    if (PV.activeCut && PV.activeCut(t)) { return orig(ctx, t); }
-    var s = PV.p2cScene(ctx, t);
-    if (!s) return orig(ctx, t);
-    var d = (PV.SHOT_DELAY && PV.SHOT_DELAY[s.name]) || 0;
-    var a2 = Math.min(t, s.a + d), lt = Math.max(0, t - a2), dur = s.b - a2;
-    s.fn(ctx, t, lt, dur > 0 ? T.clamp01(lt / dur) : 0, dur);
-    PV.shotName = s.name;
-  };
-})();
+
 
