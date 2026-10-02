@@ -153,7 +153,8 @@
       T.box(ctx, 404, 56, 1164, 604, 'kill -9 1077  (you)', 0.8, T.ERR, t);
       P.head(ctx, 'EPERM', 430, 120, anom(1.0), 110, 'left', true);
       mono(ctx, 'operation not permitted', 430, 280, anom(0.95), 26, 'left', true);
-      mono(ctx, T.decode('target is outside the sandbox.', lt, PV.rngFor(t, 7919), 50, 0.12, 0), 430, 330, amb(0.8), 20);
+      /* dsh 补丁 F3：这一行整句画出、粗体、系统的满强度颜色（原句 'target is outside the sandbox.' 被替换） */
+      mono(ctx, 'you: outside the sandbox', 430, 330, T.UI, 26, 'left', true);
     }
     PV.p2cFlash = (P.pulse(t) > 0.55 && (lay === 0 || lay === 2)) ? t : null;
   };
@@ -205,6 +206,15 @@
       mono(ctx, '      (R1-Zero issue; fixed by a language-consistency reward)', 60, 474, amb(0.7), 16);
     }
     if (n >= 5) mono(ctx, 'reward: language consistency ... ignored', 60, 520, red(1.0), 20, 'left', true);
+    /* dsh 补丁 F3 8：EPERM 的那行跟着计数走进第一拍，dos 之后淡出 */
+    var CARRY = [158.697, 158.950, 159.181];
+    if (t >= CARRY[0] && t < CARRY[2]) {
+      var ca = t < CARRY[1] ? 1 : Math.pow(1 - (t - CARRY[1]) / (CARRY[2] - CARRY[1]), 2);
+      if (ca > 0.01) {
+        T.fill(ctx, 429, 322, 700, 352, T.BG, 0.92 * ca);
+        mono(ctx, 'you: outside the sandbox', 430, 330, T.mix(T.UI, ca), 26, 'left', true);
+      }
+    }
   };
 })();
 

@@ -260,6 +260,8 @@
     var landed = {};
     for (var i = 0; i < P.cells.length; i++) if (t >= P.cells[i].tl) landed[P.cells[i].q + ',' + P.cells[i].r] = 1;
     drawShot(ng, 'shot_red_if_i_can', t, { landed: function (q, r) { return landed[q + ',' + r] === 1; } });
+    /* Python 的帧循环里 cut 一旦接管就再走不到 OWN 渲染器：执行 hit 的整幅红闪在窗口内不出现 */
+    PV.p2cFlash = null;
     var lift = clamp01((t - (Tt - C78.pre)) / 0.08) * (1 - clamp01((t - (Tt + C78.START)) / 0.3));
     litBanner(og, lift);
     var sd = P.sd, front = P.front;
