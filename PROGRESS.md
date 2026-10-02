@@ -434,3 +434,31 @@ cuts.js 23 + cuts_p2 3 + cuts_p3 13 + cuts_p4 17 + cuts_p4x 14 = **70 条**
 ### 教训
 这个检查值得**在每次改 pane.js 后都跑一遍**——它是一个纯静态、秒级、不需要浏览器的检查，
 却能抓住"元素在浏览器里裸奔"这类画布渲染器永远发现不了的问题。
+
+## —— 第 58 轮补记 ——
+
+### 本轮新增的检查（都不需要浏览器，都能抓画布渲染器看不到的问题）
+| 检查 | 工具 | 结果 |
+|---|---|---|
+| HTML class × 随包 CSS 交叉核对 | pvport/clscheck.py | 100 个 class，98 有定义，2 个是运行时注入（正常）|
+| CSS 变量 × 随包 CSS 交叉核对 | pvport/varcheck.py | 17 个变量，16 有定义，1 个有兜底值（正常）|
+| 设备像素 vs 设计坐标 | grep ctx.canvas | 只有 bloom 用过，已修 |
+| 聊天窗 DOM 三连测 | pvport/p2d_panetest.mjs | sweep 2069 / sync 5086 / bal 全 0 错 |
+
+### 本轮修复
+**`<body data-ds-dark-theme="true">` 之前没写**（原来靠 pane.js 运行时补）。对照原始 `seg.html` 发现的：
+原作就是静态写在 body 上的。缺它有两个后果：① 首屏会闪一下无主题状态；② 一旦 pane.js 抛错，
+**`body[data-ds-dark-theme]` 下定义的 171 个 `--dsw-*` 变量全部失效**，整个聊天窗会裸奔。
+同时给三个 dsh 样式表补了 id（`s-vendor`/`s-index`/`s-components`），与原作对齐（pane.js 按 href 找，加 id 无害）。
+
+### 累积的验收体系（供后续参考）
+1. **画布**：pvport/render.mjs（node 无头渲染）+ fullscan2.py（分区：画布区平均 6.36/255）
+2. **转场**：运动量逐帧比对（参考 vs 我们的相邻帧平均绝对差曲线）
+3. **时钟**：clocktest.mjs（播放/暂停/拖动 5 项）
+4. **HTML 窗格**：p2d_panetest.mjs 三连测 + clscheck.py + varcheck.py + 参考帧左窗格逐条对
+5. **交付**：livecheck2.py（本地 vs 线上逐文件大小比对，当前 0 不一致）
+
+### 仍未覆盖的
+**真机浏览器里实际看一遍**——上面 4 里的 HTML 检查都是结构性的（DOM 字符串、tag 配平、class 存在性），
+没有验证过 CSS 级联的实际视觉效果、字体加载、以及 pane 的定位在真实 layout 引擎里的表现。
+这需要用户在自己手机浏览器里打开线上地址确认。
