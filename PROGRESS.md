@@ -43,3 +43,30 @@
 - 仓库：https://github.com/lingcat521/world-execute-me-live
 - 提交方式：本机 shell 连不上 github.com:443，改用 api.github.com 的 Git Data API 提交文件树（`pvport/push_api.py`）
 - 默认分辨率：1080p（canvas 1920x1080，逻辑坐标仍是 1280x720，绘制时整体 scale 1.5）；URL 加 `?res=1` 可切回 720p 对照参考帧
+
+## 01 PRETRAIN 段进行中（16.08 s 起）
+
+| 镜头 | 时间 | 状态 |
+|---|---|---|
+| shot_corpus | 16.082-19.543 | ✓ 语料 token 河流 20 行 + `tokens seen 3.38T / 45T`，与参考帧逐项一致 |
+| shot_losscurve | 19.543-23.236 | ✓ train/loss 点阵曲线 + lr schedule + V3 report 文案，形状与文案一致 |
+| shot_dualpipe | 23.236-26.466 | 未开始 |
+| shot_whale | 26.466-29.236 | 未开始 |
+
+### 左侧聊天窗
+- A1（5.24-16.0 s）✓ hero（探索未至之境 + 输入卡）→ 对话
+- A2（16.0-29.28 s）✓ 多轮对话：4 轮 TURNS，逐帧头像（319 张，用 Pillow 生成到 `avatars/a2/`）
+- 用真 HTML/CSS + dsh 自己的组件类名（`uV2eYG_*` 输入卡、`Sixlwa_*` 气泡、`hWmORq_*` 回复、`bOPqQW_*` 统计 pill），图标是从 dsh 前端 bundle 里抠出来的真 SVG
+
+### 下一步
+- **cut / 载具机制**（74 个手写 Cut）：现在镜头之间是硬切，原片有载具飞行的转场（例如 C09 把语料词吸进 loss 曲线原点、C07 把 `world.population` 送进状态行）。这是接下来最大的一块。
+- shot_dualpipe（DualPipe 流水线格子）、shot_whale
+- 待核对：`ease` 有两个版本（tuikit 的 `1-(1-u)^3` 与 seg_page 的 smoothstep），loss 曲线进度用的是哪一个需要跟参考帧做像素级比对确认。
+
+## cut / 载具框架 + C09（2026-10-02 22:45）
+
+- 新增 `js/cuts.js`：Cut 窗口机制（`T-pre .. T+post`）、`reveal`（把窗格切成 8x16 格，按延迟场逐格切换）、`radial` / `inward` 延迟场。
+- 实现 **C09**（corpus -> losscurve）：语料词按距离先后加速吸进 loss 曲线原点 (440,80)，reveal 以 1300 px/s 从原点径向展开，`tokens seen` 计数器在 +0.42 s 落到图表下方当 x 轴标签。
+- **时序校正**：参考帧 19.60 s 仍是 corpus、19.75 s 已在转场，反推 losscurve 的实际开表时间约为 **19.700 s**（镜头表写 19.543，差 0.157 s —— 对应 v2 的 DELAY 机制），已按此校正。校正后 19.60 与参考帧逐项一致。
+- 已修：`reveal` 初版在逐格切换后又整幅贴了一次新画面，导致转场看起来是硬切。
+
