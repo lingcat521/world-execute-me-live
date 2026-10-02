@@ -1267,6 +1267,14 @@
   }
   function fmtE(x) { return x.toExponential(2).replace(/e([+-])(\d)$/, 'e$10$2'); }
   PV.dizzyRot = dizzyRot;
+  /* C22 用：参数化投影（中心/焦距/弯曲都参与插值）+ 曲面/格点/颜色/裁剪原语 */
+  PV.dizzyProject = function (x, y, rot, cx, cy, ky, kz, z) {
+    z = (z === undefined || z === null) ? surfaceZ(x, y) : z;
+    var xr = x * Math.cos(rot) - y * Math.sin(rot);
+    var yr = x * Math.sin(rot) + y * Math.cos(rot);
+    return [cx + xr * DZ.kx, cy + yr * ky - z * kz];
+  };
+  PV.dizzy = { DZ: DZ, CLIP: CLIP, surfaceZ: surfaceZ, gridXY: gridXY, dotColor: dotColor, inside: inside, ballPlane: ballPlane };
   PV.shotDizzy = function (ctx, t, lt) {
     PV.ops = ['GRAD', 'HESSIAN?', 'LR', 'SPIN', 'ADAMW', 'STEP'];
     T.box(ctx, 404, 56, 1164, 604, 'loss landscape', 0.5, T.UI, t);

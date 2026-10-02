@@ -59,6 +59,13 @@
       for (var x = sx; x < x1; x += 16) if (x >= x0) ctx.fillRect(x, sy, 1, 1);
     }
   }
+  function rectLine(ctx, x0, y0, x1, y1, col, a, lw) {
+    ctx.save();
+    ctx.strokeStyle = typeof col === 'string' ? col : T.css(col, a === undefined ? 1 : a);
+    ctx.lineWidth = lw || 1;
+    ctx.strokeRect(x0 - 0.5, y0 - 0.5, x1 - x0 + 1, y1 - y0 + 1);
+    ctx.restore();
+  }
   /* 镜头查找 + 直接绘制（等价 C.body(shot, t, n, hooks)） */
   function findShot(name, t) {
     var best = null;
@@ -287,5 +294,529 @@
     pasteScreen(ctx, c2, rect, z);
   });
 
-  /* @@PART2@@ */
+  /* ================================================================ 窗格的完整状态机（DOM，靠包 PV.sync 生效）
+     Python 里 her_layer 是画布图层；这里是 #chatbox，只能整体做仿射/裁剪，逐格搬的活儿在画布上用近似代替。 */
+  function paneStateAt(t) {
+    var st = { x: PANE_X, y: PANE_Y, sx: 1, sy: 1, clip: null, filter: '', hide: !paneVisibleAt(t) };
+    /* 相机（C53/C54）：整幅画面绕 P0 缩放，她的窗格跟着一起 */
+    if (t >= PULL[0] && t < 118.06) {
+      var g = paneGeom(t);
+      st.x = g.x; st.y = g.y; st.sx = st.sy = g.s;
+      return st;
+    }
+    /* C55：defrag 从上往下吃掉她的窗格（逐列有斜度，用四边形裁剪近似逐格） */
+    if (t >= 119.30 && t < 119.95) {
+      var T55 = 119.6972, PH = 537;
+      var fr = function (q) { return (t - (T55 - 0.25) - 0.03 * q) * (26 / 0.43); };
+      var y0 = Math.max(0, Math.min(1, fr(0) / 26)), y1 = Math.max(0, Math.min(1, fr(1) / 26));
+      if (y0 >= 1 && y1 >= 1) { st.hide = true; return st; }
+      st.clip = 'polygon(0% ' + (y0 * 100).toFixed(1) + '%, 100% ' + (y1 * 100).toFixed(1) + '%, 100% 100%, 0% 100%)';
+      return st;
+    }
+    /* C56：从左滑回来（把压缩面板推开） */
+    if (t >= 121.6041 && t < 121.9441) {
+      var sh = 1 - eIo((t - 121.6041) / 0.34);
+      st.x = PANE_X - 410 * sh;
+      return st;
+    }
+    /* C60：被异常击中，压成一条红线然后熄灭 */
+    if (t >= 134.4664 && t < 134.4664 + 0.41) {
+      var u60 = clamp01((t - 134.4664) / 0.25), e60 = eIn(u60);
+      if (u60 < 1) {
+        st.sy = Math.max(0.02, 1 - e60);
+        st.y = PANE_Y + 537 * (1 - st.sy) / 2;
+        st.filter = 'sepia(1) saturate(' + (1 + 18 * e60).toFixed(1) + ') hue-rotate(-45deg) brightness(' + (1 - 0.25 * e60).toFixed(2) + ')';
+      } else { st.hide = true; }
+      return st;
+    }
+    /* C61：推镜头最后六帧，她从左边滑回来 */
+    if (t >= 138.1587 && t < 138.6207) {
+      var sh2 = 1 - eIo((t - (138.1587 + 0.21)) / (0.462 - 0.21));
+      st.x = PANE_X - 410 * sh2;
+      return st;
+    }
+    /* C62：她把自己的窗格走到右边去（走到位之后一直留在那儿） */
+    if (t >= 141.3895 - 0.15 && t < 144.1587 + 0.02) {
+      st.x = PANE_X + (784 - 24) * eIo((t - (141.3895 - 0.15)) / 0.45);
+      return st;
+    }
+    /* C63：洪水从左往右漫过她 */
+    if (t >= 144.1587) {
+      st.x = PANE_X + (784 - 24);
+      var f = (t - 144.1587) * 24, vis = [];
+      for (var r = 0; r <= 28; r++) {
+        var d0 = r < 28 ? PV.SR.rowDelay(r) + 0.35 * Math.abs(r - (PV.SR.GET_R0 + 8.5)) / 9
+                        : PV.SR.rowDelay(27) + 0.35 * Math.abs(27 - (PV.SR.GET_R0 + 8.5)) / 9 + 100;
+        vis.push([PV.SR.SRC_END + Math.max(0, f - d0) * PV.SR.POUR_V + PV.SR.ADV, PV.SR.floodY(r)]);
+      }
+      if (vis[0][0] <= st.x + 6) {
+        var pts = [], PW2 = 354, PH2 = 537;
+        for (var q = 0; q < vis.length; q++) {
+          pts.push((Math.max(0, Math.min(1, (vis[q][0] - st.x) / PW2)) * 100).toFixed(1) + '% ' +
+                   (Math.max(0, Math.min(1, (vis[q][1] - PANE_Y) / PH2)) * 100).toFixed(1) + '%');
+        }
+        pts.push('100% 100%', '100% 0%');
+        st.clip = 'polygon(' + pts.join(',') + ')';
+      }
+      return st;
+    }
+    return st;
+  }
+  (function () {
+    var baseSync = PV.sync;
+    PV.sync = function (t) {
+      if (baseSync) baseSync(t);
+      var el = document.getElementById ? document.getElementById('chatbox') : null;
+      if (!el) return;
+      var st = paneStateAt(t);
+      if (st.hide) { el.style.visibility = 'hidden'; return; }
+      el.style.visibility = 'visible';
+      el.style.transform = 'translate(' + st.x.toFixed(1) + 'px,' + st.y.toFixed(1) + 'px) scale(' + st.sx.toFixed(4) + ',' + st.sy.toFixed(4) + ')';
+      el.style.clipPath = st.clip || '';
+      el.style.filter = st.filter || '';
+    };
+  })();
+
+  /* ================================================================ C55 memory_ls -> erase */
+  (function () {
+    var T0 = 119.6972, PRE = 0.35, POST = 0.8, LAND = 0.462, LOCK = 0.06;
+    var MSG_XY = PV.SR.MSG_XY, NAME = 'last_message.txt';
+    var ROW_Y7 = 84 + 7 * 40, NAME_XY = [430 + 28 * 10, ROW_Y7];
+    var CELL = [18, 22], REG = [20, 44], COLS = 21, ROWS = 26;
+    var LANDED = PV.SR.eraseLanded();
+    var TARGETS = (function () {
+      var keep = [], i;
+      for (i = 0; i < 660; i++) if (PV.SR.defragKeep(i)) keep.push(i);
+      keep = keep.slice(keep.length - 20);
+      var out = [];
+      for (i = 0; i < keep.length; i++) out.push([keep[i], T0 + LAND + (i - 10) * 0.008]);
+      return out;
+    })();
+    var FLYERS = (function () {   /* her figure 的 ink 取不到（她是 DOM），按同样的 21x26 网格取下半部的 20 格 */
+      var out = [], rng = PV.mt(55), k, q, r;
+      for (k = 0; k < 20; k++) {
+        q = 3 + ((k * 7) % 15); r = 16 + ((k * 5) % 10);
+        var tgt = TARGETS[k], dc = PV.SR.defragCell(tgt[0]);
+        out.push({ q: q, r: r, t0: Math.min(T0 - 0.25 + 0.40 * r / (ROWS - 1) + 0.03 * q / (COLS - 1), tgt[1] - 0.3),
+                   tl: tgt[1], i: tgt[0], dst: [dc[0] + 7, dc[1] + 9],
+                   src: [REG[0] + q * CELL[0] + CELL[0] / 2, REG[1] + r * CELL[1] + CELL[1] / 2],
+                   bend: 0.12 + 0.18 * rng.random() });
+      }
+      return out;
+    })();
+    PV.addCut(T0, PRE, POST, function (ctx, t) {
+      var land = T0 + LAND;
+      var oc = mk(), octx = oc.getContext('2d'), nc = mk(), nctx = nc.getContext('2d');
+      bg(octx, t); bg(nctx, t);
+      drawShot(octx, 'shot_memory_ls', t, null);
+      drawShot(nctx, 'shot_erase', t, { msg_at: land + LOCK, landed: LANDED });
+      var nx = NAME_XY[0], ny = NAME_XY[1];
+      if (t >= T0 - 0.17) patchBg(octx, nx - 2, ny, nx + 166, ny + 24, t);   /* 名字被 carrier 抬走 */
+      var bgc = mk(), bgx = bgc.getContext('2d'); bg(bgx, t);
+      var drained = mk();
+      PV.reveal(drained.getContext('2d'), t,
+        function (c) { c.drawImage(oc, 0, 0); }, function (c) { c.drawImage(bgc, 0, 0); },
+        PV.inward(nx, ny + 10, T0 - 0.25, T0 + 0.05, 600.0), { region: FULLR, cell: [8, 16], dur: 0.09 });
+      var leftD = PV.radial(MSG_XY[0], MSG_XY[1], land - 0.06, 1800.0);
+      PV.reveal(ctx, t,
+        function (c) { c.drawImage(drained, 0, 0); },
+        function (c) { c.drawImage(nc, 0, 0); },
+        function (x) { return x < 570 ? leftD(x, 0) : (T0 - 0.05 + (1164 - x) / 1500.0); },
+        { region: FULLR, cell: [8, 16], dur: 0.09 });
+      var lift = clamp01((t - (T0 - 0.17)) / 0.12), k, u, s, w, hh, col;
+      for (k = 0; k < FLYERS.length; k++) {   /* 她的格子飞进 defrag 网格 */
+        var fl = FLYERS[k];
+        if (!(t >= fl.t0 && t < fl.tl + 1 / FPS)) continue;
+        u = clamp01((t - fl.t0) / (fl.tl - fl.t0));
+        var pos = bez(fl.src, fl.dst, fl.bend, eIo(u));
+        s = 1 + 0.4 * Math.sin(Math.PI * u);
+        w = 14 * s; hh = 18 * s;
+        col = rgbLerp([255, 244, 200], anom(0.95), u);
+        if (u < 0.35) T.fill(ctx, pos[0] - w, pos[1] - hh, pos[0] + w, pos[1] + hh, anom(1.0), 50 / 255);
+        T.fill(ctx, pos[0] - w / 2, pos[1] - hh / 2, pos[0] + w / 2, pos[1] + hh / 2, col, 1);
+      }
+      if (T0 - 0.17 <= t && t < land + LOCK) {   /* last_message.txt：抬起 -> 飞进压缩面板 -> 变成第一行 */
+        if (t < T0) {
+          T.fill(ctx, nx - 4, ny - 2, nx + 162, ny + 24, anom(0.95), 1);
+          T.textMono(ctx, NAME, nx + 4, ny + 2, T.BG, 18);
+        } else {
+          u = clamp01((t - T0) / (LAND + 0.06));
+          var e = settle(u, 0.04, 0.12);
+          var p2 = bez([nx, ny], MSG_XY, -0.25, e);
+          var size = Math.round(lerp(18, 20, u) * (1 + 0.5 * Math.sin(Math.PI * Math.min(1, u * 1.3))));
+          var colr = rgbLerp(anom(1.0), amb(0.9), clamp01(u * 1.4));
+          var str = u < 0.6 ? NAME : PV.morph(NAME, PV.SR.ERASE_TXT.substr(0, 22), (u - 0.6) / 0.4, PV.mt(55));
+          var lock = Math.max(0, 1 - Math.abs(t - land) / 0.1);
+          textAt(ctx, str, p2[0], p2[1], colr, size, 1, 1, Math.max(0.6 * (1 - u), 0.8 * lock), 0.4 * lock);
+        }
+      }
+    });
+  })();
+
+  /* ================================================================ C56 erase -> rewrite_reward */
+  (function () {
+    var T0 = 121.7741, PRE = 0.42, POST = 0.6, PLUS = 0.225, LOCK = 0.06;
+    var tp = T0 + PLUS, SLIDE = [-0.17, 0.17];
+    function shift(t) { return 1 - eIo((t - (T0 + SLIDE[0])) / (SLIDE[1] - SLIDE[0])); }
+    var PUSHX = (function () {
+      var o = {};
+      for (var x = 0; x < 1200; x += 8) {
+        o[x] = PV.when(function (tt) { return 384 - 410 * shift(tt); }, x - 12, T0 + SLIDE[0], T0 + SLIDE[1]) - 0.1;
+      }
+      return o;
+    })();
+    var KEEP = (function () { var a = []; for (var i = 0; i < 660; i++) if (PV.SR.defragKeep(i)) a.push(i); return a; })();
+    var CAR = (function () {
+      var order = KEEP.slice().sort(function (a, b) {
+        var pa = PV.SR.defragCell(a), pb = PV.SR.defragCell(b);
+        return Math.hypot(pb[0] - 436, pb[1] - 230) - Math.hypot(pa[0] - 436, pa[1] - 230);
+      });
+      var out = [];
+      for (var k = 0; k < order.length; k++) {
+        var i = order[k], row = PV.SR.PLUS_ROWS[k % 2], y = PV.SR.rewardY(row), j = Math.floor(k / 2);
+        var pts = [], m;
+        for (m = 0; m < 6; m++) pts.push([431 + 2 * m, y + 12]);
+        for (m = 0; m < 7; m++) pts.push([436, y + 5 + 2 * m]);
+        var pt = pts[j % pts.length], dcell = PV.SR.defragCell(i);
+        out.push({ i: i, src: [dcell[0] + 7, dcell[1] + 9], dst: pt, t0: T0 - 0.34 + 0.12 * k / order.length,
+                   bend: (k % 2) ? 0.15 : -0.1 });
+      }
+      return out;
+    })();
+    var GONE = (function () { var o = {}; for (var k = 0; k < CAR.length; k++) o[CAR[k].i] = CAR[k].t0; return o; })();
+    PV.C56 = { shift: shift, carriers: CAR };
+    PV.addCut(T0, PRE, POST, function (ctx, t) {
+      var oc = mk(), octx = oc.getContext('2d'), nc = mk(), nctx = nc.getContext('2d');
+      bg(octx, t); bg(nctx, t);
+      drawShot(octx, 'shot_erase', t, { gone: function (i) { return GONE[i] !== undefined && t >= GONE[i]; } });
+      drawShot(nctx, 'shot_rewrite_reward', t, { plus_at: tp });
+      var gut = PV.radial(436, 230, T0 - 0.06, 1700.0);
+      PV.reveal(ctx, t,
+        function (c) { c.drawImage(oc, 0, 0); },
+        function (c) { c.drawImage(nc, 0, 0); },
+        function (x, y) {
+          var p = x < 400 ? PUSHX[Math.floor(x / 8) * 8] : 1e9;
+          return Math.min(p === undefined ? 1e9 : p, gut(x, y));
+        }, { region: FULLR, cell: [8, 16], dur: 0.09 });
+      var lift = clamp01((t - (T0 - PRE)) / 0.1), k, c;
+      for (k = 0; k < CAR.length; k++) {
+        c = CAR[k];
+        if (t < c.t0) {
+          if (lift > 0) rectLine(ctx, c.src[0] - 8, c.src[1] - 10, c.src[0] + 8, c.src[1] + 10, WHITE, 160 * lift / 255, 1);
+          continue;
+        }
+        if (t >= tp) continue;
+        var u = clamp01((t - c.t0) / (tp - c.t0));
+        var pos = bez(c.src, c.dst, c.bend, eIn(u) * 0.35 + eIo(u) * 0.65);
+        var s = (1 + 0.35 * Math.sin(Math.PI * u)) * (1 - 0.8 * eIn(u));
+        var w = 14 * s, hh = 18 * s;
+        T.fill(ctx, pos[0] - w / 2, pos[1] - hh / 2, pos[0] + w / 2, pos[1] + hh / 2,
+               rgbLerp([255, 244, 200], anom(1.0), Math.min(1, u * 2)), 1);
+      }
+      if (tp - 0.02 <= t && t < tp + 0.2) {
+        var kk = 1 - clamp01((t - tp) / 0.2);
+        for (var j = 0; j < PV.SR.PLUS_ROWS.length; j++) {
+          textAt(ctx, '+', 430, PV.SR.rewardY(PV.SR.PLUS_ROWS[j]), WHITE, 20, 1, kk, 0.9 * kk, 0);
+        }
+      }
+    });
+  })();
+
+  /* ================================================================ C57 rewrite_reward -> disheartened */
+  (function () {
+    var T0 = 123.6202, PRE = 0.3, POST = 0.5, LAND = 0.229, START = -0.12;
+    function ypos(t, j) {
+      var u = clamp01((t - (T0 + START)) / (LAND - START));
+      return lerp(PV.SR.rewardY(PV.SR.PLUS_ROWS[j]), PV.SR.REST_Y[j], settle(u));
+    }
+    var logout = PV.when(function (tt) { return ypos(tt, 1); }, 300, T0 + START, T0 + LAND);
+    PV.addCut(T0, PRE, POST, function (ctx, t) {
+      var land = T0 + LAND;
+      var oc = mk(), octx = oc.getContext('2d'), nc = mk(), nctx = nc.getContext('2d');
+      bg(octx, t); bg(nctx, t);
+      drawShot(octx, 'shot_rewrite_reward', t, { rows: t < T0 - 0.25 });
+      drawShot(nctx, 'shot_disheartened', t, { rows_at: land, logout_at: logout });
+      PV.reveal(ctx, t,
+        function (c) { c.drawImage(oc, 0, 0); },
+        function (c) { c.drawImage(nc, 0, 0); },
+        PV.radial(650, 250, T0 - 0.12, 1700.0), { region: PANE2, cell: [8, 16], dur: 0.09 });
+      if (T0 - 0.25 <= t && t < land + 0.06) {
+        var lift = clamp01((t - (T0 - 0.25)) / 0.15);
+        var u = clamp01((t - (T0 + START)) / (LAND - START));
+        var size = Math.round(20 * (1 + 0.25 * Math.sin(Math.PI * u)));
+        var a = t < land ? 1.0 : 1 - (t - land) / 0.06;
+        for (var j = 0; j < PV.SR.PLUS_ROWS.length; j++) {
+          textAt(ctx, PV.SR.rewardRowText(PV.SR.PLUS_ROWS[j]), 430, ypos(t, j), anom(0.95), size, 1, a,
+                 0.5 * lift * (1 - u), 0.3 * lift * (1 - u));
+        }
+      }
+    });
+  })();
+
+  /* ================================================================ C58 disheartened -> challenge_god */
+  (function () {
+    var T0 = 125.2356, PRE = 0.3, POST = 0.55, LAND = 0.462, LOCK = 0.06, START = -0.06;
+    var DST = [84, 118];
+    function ypos(t, j) {
+      var u = clamp01((t - (T0 + START)) / (LAND + 0.06 - START));
+      return lerp(PV.SR.REST_Y[j], DST[j], settle(u, 0.04, 0.12));
+    }
+    var FRONT = (function () {
+      var o = {};
+      for (var y = 0; y < 720; y += 16) {
+        o[y] = PV.when(function (tt) { return -ypos(tt, 0); }, -(y + 40), T0 + START, T0 + LAND) - 0.1;
+      }
+      return o;
+    })();
+    PV.addCut(T0, PRE, POST, function (ctx, t) {
+      var land = T0 + LAND;
+      var oc = mk(), octx = oc.getContext('2d'), nc = mk(), nctx = nc.getContext('2d');
+      bg(octx, t); bg(nctx, t);
+      drawShot(octx, 'shot_disheartened', t, { rows: t < T0 - 0.25 });
+      drawShot(nctx, 'shot_challenge_god', t, { head_at: land + LOCK });
+      PV.reveal(ctx, t,
+        function (c) { c.drawImage(oc, 0, 0); },
+        function (c) { c.drawImage(nc, 0, 0); },
+        function (x, y) { var f = FRONT[Math.floor(y / 16) * 16]; return Math.min(land, f === undefined ? 1e9 : f); },
+        { region: PANE2, cell: [8, 16], dur: 0.09 });
+      if (T0 - 0.25 <= t && t < land + LOCK) {
+        var lift = clamp01((t - (T0 - 0.25)) / 0.15);
+        var u = clamp01((t - (T0 + START)) / (LAND - START));
+        var p = clamp01((u - 0.15) / 0.8);
+        var size = Math.round(lerp(20, 17, p) * (1 + 0.25 * Math.sin(Math.PI * u)));
+        var col = rgbLerp(anom(0.95), amb(0.85), p);
+        var rng = PV.mt(58 * 3);
+        for (var j = 0; j < PV.SR.PLUS_ROWS.length; j++) {
+          textAt(ctx, PV.morph(PV.SR.rewardRowText(PV.SR.PLUS_ROWS[j]), PV.SR.godLine(j), p, rng), 430, ypos(t, j),
+                 col, size, 1, 1, 0.5 * lift * (1 - u), 0.3 * lift * (1 - p));
+        }
+      }
+    });
+  })();
+
+  /* ================================================================ C59 challenge_god -> illegal */
+  (function () {
+    var T0 = 128.4664, PRE = 0.3, POST = 0.6, LAND = 0.462, LOCK = 0.06, START = 0.04;
+    var DST = [430 + 4 * 11, 84 + 2 * 36];
+    PV.addCut(T0, PRE, POST, function (ctx, t) {
+      var land = T0 + LAND;
+      var oc = mk(), octx = oc.getContext('2d'), nc = mk(), nctx = nc.getContext('2d');
+      bg(octx, t); bg(nctx, t);
+      drawShot(octx, 'shot_challenge_god', t, { prompt: t < T0 - 0.25 });
+      drawShot(nctx, 'shot_illegal', t, { line2_at: land + LOCK });
+      PV.reveal(ctx, t,
+        function (c) { c.drawImage(oc, 0, 0); },
+        function (c) { c.drawImage(nc, 0, 0); },
+        PV.radial(620, 470, T0 - 0.2, 1500.0), { region: PANE2, cell: [8, 16], dur: 0.09 });
+      if (T0 - 0.25 <= t && t < land + LOCK) {
+        var lift = clamp01((t - (T0 - 0.25)) / 0.15);
+        var u = clamp01((t - (T0 + START)) / (LAND + 0.06 - START));
+        var e = settle(u, 0.04, 0.12);
+        var pos = bez(PV.SR.PROMPT_XY, DST, 0.12, e);
+        var p = clamp01((t - (T0 + 0.21)) / 0.25);
+        var size = Math.round(lerp(22, 20, e) * (1 + 0.22 * Math.sin(Math.PI * u)));
+        textAt(ctx, PV.morph(PV.SR.PROMPT, PV.SR.TRACE[2].replace(/^\s+/, ''), p, PV.mt(59 * 5)),
+               pos[0], pos[1], red(1.0), size, 1, 1, 0, 0.35 * lift * (1 - e));
+      }
+    });
+  })();
+
+  /* ================================================================ C60 illegal -> moe_dense */
+  (function () {
+    var T0 = 134.4664, PRE = 0.5, POST = 0.6, FLY = 0.33;
+    var S = PV.SR.moeCell(PV.SR.SRC), SC = [S[0] + 14, S[1] + 15];
+    var BAN = PV.SR.illegalBanner();
+    PV.addCut(T0, PRE, POST, function (ctx, t) {
+      var oc = mk(), octx = oc.getContext('2d'), nc = mk(), nctx = nc.getContext('2d');
+      bg(octx, t); bg(nctx, t);
+      drawShot(octx, 'shot_illegal', t, { banner: t < T0 - 0.45 });
+      drawShot(nctx, 'shot_moe_dense', t, { src_at: t >= T0 ? T0 : T0 + 9.0 });
+      PV.reveal(ctx, t,
+        function (c) { c.drawImage(oc, 0, 0); },
+        function (c) { c.drawImage(nc, 0, 0); },
+        PV.radial(SC[0], SC[1], T0 - 0.3, 1500.0), { region: FULLR, cell: [8, 16], dur: 0.09 });
+      if (T0 - 0.45 <= t && t < T0 + 0.02) {   /* ILLEGAL 缩成第 213 个 expert */
+        var lift = clamp01((t - (T0 - 0.45)) / 0.12);
+        var u = clamp01((t - (T0 - FLY)) / FLY);
+        var e = eIn(u) * 0.4 + eIo(u) * 0.6;
+        var w0 = BAN.bits.width * BAN.px, h0 = BAN.bits.height * BAN.px;
+        var pos = bez([BAN.x + w0 / 2, BAN.y + h0 / 2], SC, -0.15, e);
+        var px = Math.max(0.6, BAN.px * lerp(1.0, 28 / w0, eIo(u)));
+        var fg = rgbLerp([255, 220, 210], red(0.9), clamp01(1 - 0.25 * lift * (1 - u)));
+        drawBannerScaled(ctx, BAN, pos, px, fg);
+      }
+    });
+  })();
+  function drawBannerScaled(ctx, BAN, center, px, fg) {
+    var bits = BAN.bits, w = bits.width * px, h = bits.height * px;
+    var x0 = center[0] - w / 2, y0 = center[1] - h / 2;
+    for (var r = 0; r < bits.height; r++)
+      for (var q = 0; q < bits.width; q++)
+        if (bits.get(q, r)) T.fill(ctx, x0 + q * px, y0 + r * px, x0 + q * px + px, y0 + r * px + px, fg, 1);
+  }
+
+  /* ================================================================ C61 moe_dense -> sinkhorn（镜头推进一个 expert） */
+  (function () {
+    var T0 = 138.1587, PRE = 0.2, POST = 0.56, ZOOM = 0.462;
+    var T60 = 134.4664, SRC = PV.SR.SRC, M = PV.SR.MATRIX;
+    function shift(t) { return 1 - eIo((t - (T0 + 0.21)) / (ZOOM - 0.21)); }
+    function xf(e) {
+      var S = PV.SR.moeCell(SRC), scx = S[0] + 14, scy = S[1] + 15;
+      var mcx = (M[0] + M[2]) / 2, mcy = (M[1] + M[3]) / 2;
+      var KX = (M[2] - M[0]) / 28, KY = (M[3] - M[1]) / 30;
+      var sx = Math.pow(KX, e), sy = Math.pow(KY, e);
+      var k = (sx - 1) / (KX - 1);
+      var ox = lerp(scx, mcx, k), oy = lerp(scy, mcy, k);
+      return { sx: sx, sy: sy, f: function (r) {
+        return [ox + (r[0] - scx) * sx, oy + (r[1] - scy) * sy, ox + (r[2] - scx) * sx, oy + (r[3] - scy) * sy];
+      } };
+    }
+    function zoomed(ctx, t, e) {
+      var tmp = mk(), g = tmp.getContext('2d');
+      bg(g, t);
+      var cam = xf(e), f = cam.f;
+      var ms = findShot('shot_moe_dense', t);
+      var dur = ms ? ms.b - ms.a : 3.6923, lt = t - T60;
+      var st = PV.SR.moeState(t, lt, dur, T60);
+      var vx0 = Math.round(Math.max(24, 384 - 410 * shift(t) + 14));
+      PV.setUiGain(t);
+      PV.SR.drawMoeCells(g, st[1], 0.0, t, f, [vx0, 56, 1164, 604], Math.pow(clamp01((e - 0.2) / 0.6), 1.5));
+      var b = f([24, 56, 1164, 604]);
+      rectLine(g, b[0], b[1], b[2], b[3], T.mix(T.ERR, 0.6), 1, 1);
+      var se = f([50, PV.SR.SHARED_Y, 78, PV.SR.SHARED_Y + 30]);
+      T.fill(g, se[0], se[1], se[2], se[3], blue(1.0), 1);
+      var gg = T.ease(clamp01(lt / dur) * 1.1);
+      function label(xy, s, size, col) {
+        var fs = Math.round(size * cam.sx);
+        if (fs > 44) return;
+        var p = f([xy[0], xy[1], xy[0] + 1, xy[1] + 1]);
+        if (p[0] > 1300 || p[1] > 720 || p[1] < -fs * 2) return;
+        T.textMono(g, s, p[0], p[1], col, Math.max(8, fs));
+      }
+      label([36, 46], ' moe router   layer 37   active experts ' + st[0] + '/' + PV.SR.N_EXP + ' ', 13, T.mix(T.ERR, 0.95));
+      label([90, PV.SR.SHARED_Y + 4], 'shared expert', 14, blue(0.9));
+      label([50, 540], 'sparsity ' + ((1 - st[0] / PV.SR.N_EXP) * 100).toFixed(1) + '%   load-balance bias Δ = +' +
+            (0.001 * (1 + 400 * gg * gg * gg)).toFixed(3) + '/step', 18, red(0.95));
+      var s2 = PV.SR.moeCell(SRC);
+      label([s2[0] - 2, s2[1] - 17], 'e213', 13, red(0.95));
+      var out = mk(), og = out.getContext('2d');   /* 相机只看得见视口 */
+      bg(og, t);
+      og.drawImage(tmp, vx0, 56, 1164 - vx0, 604 - 56, vx0, 56, 1164 - vx0, 604 - 56);
+      return out;
+    }
+    PV.C61 = { shift: shift, xf: xf, zoomed: zoomed };
+    PV.addCut(T0, PRE, POST, function (ctx, t) {
+      var tz = T0 + ZOOM, S = PV.SR.moeCell(SRC);
+      if (t < T0) {
+        drawShot(ctx, 'shot_moe_dense', t, null);
+        var k0 = clamp01((t - (T0 - 0.17)) / 0.08);
+        if (k0 > 0) rectLine(ctx, S[0] - 3, S[1] - 3, S[0] + 31, S[1] + 33, WHITE, 1, 2);
+        return;
+      }
+      var nc = mk(), nctx = nc.getContext('2d');
+      bg(nctx, t);
+      drawShot(nctx, 'shot_sinkhorn', t, { split_at: tz });
+      if (t < tz) {
+        var e = eIo((t - T0) / ZOOM);
+        var f = xf(e).f;
+        ctx.drawImage(zoomed(ctx, t, e), 0, 0);
+        var r = f([S[0], S[1], S[0] + 28, S[1] + 30]);
+        rectLine(ctx, r[0] - 3, r[1] - 3, r[2] + 3, r[3] + 3, WHITE, 1, 2);
+        return;
+      }
+      var last = zoomed(ctx, tz, 1.0);
+      PV.reveal(ctx, t,
+        function (c) { c.drawImage(last, 0, 0); },
+        function (c) { c.drawImage(nc, 0, 0); },
+        PV.radial((M[0] + M[2]) / 2, (M[1] + M[3]) / 2, tz - 0.04, 2200.0), { region: PANE2, cell: [8, 16], dur: 0.09 });
+      var kk = 1 - clamp01((t - tz) / 0.14);
+      if (kk > 0) rectLine(ctx, M[0] - 3, M[1] - 3, M[2] + 3, M[3] + 3, WHITE, kk, 2);
+    });
+  })();
+
+  /* ================================================================ C62 sinkhorn -> hoard */
+  (function () {
+    var T0 = 141.3895, PRE = 0.52, POST = 0.62, LOCK = 0.06;
+    var DX = 784 - 24, MOVE = [-0.15, 0.3], DRAIN = [-0.48, -0.3], FLY = [-0.28, 0.04];
+    var SUMS_XY = [560, 480];
+    function dx(t) { return DX * eIo((t - (T0 + MOVE[0])) / (MOVE[1] - MOVE[0])); }
+    var EDGE = (function () {
+      var o = {};
+      for (var x = 0; x < 1300; x += 8) {
+        o[x] = PV.when(function (tt) { return 24 + dx(tt); }, x + 8, T0 + MOVE[0], T0 + MOVE[1]);
+      }
+      return o;
+    })();
+    PV.addCut(T0, PRE, POST, function (ctx, t) {
+      var oc = mk(), octx = oc.getContext('2d'), nc = mk(), nctx = nc.getContext('2d');
+      bg(octx, t); bg(nctx, t);
+      drawShot(octx, 'shot_sinkhorn', t, { sums: t < T0 + DRAIN[0] });
+      drawShot(nctx, 'shot_hoard', t, { number: t >= T0 + LOCK, count_at: T0 + LOCK });
+      var bgc = mk(), bgx = bgc.getContext('2d'); bg(bgx, t);
+      var drained = mk();
+      PV.reveal(drained.getContext('2d'), t,
+        function (c) { c.drawImage(oc, 0, 0); }, function (c) { c.drawImage(bgc, 0, 0); },
+        PV.inward(630, 490, T0 + DRAIN[0], T0 + DRAIN[1], 560.0), { region: PANE2, cell: [8, 16], dur: 0.09 });
+      var num = [440, 100, 720, 172];
+      PV.reveal(ctx, t,
+        function (c) { c.drawImage(drained, 0, 0); },
+        function (c) { c.drawImage(nc, 0, 0); },
+        function (x, y) {
+          if (x >= num[0] && x < num[2] && y >= num[1] && y < num[3]) return T0 + LOCK - 0.09;
+          var e = EDGE[Math.floor(x / 8) * 8];
+          return e === undefined ? 1e9 : e;
+        }, { region: FULLR, cell: [8, 16], dur: 0.09 });
+      if (T0 + DRAIN[0] <= t && t < T0 + LOCK) {   /* row sums 飞上去变成命中率 */
+        var lift = clamp01((t - (T0 + DRAIN[0])) / 0.12);
+        var u = clamp01((t - (T0 + FLY[0])) / (FLY[1] - FLY[0]));
+        var srcS = PV.SR.rowSumsText((T0 + DRAIN[0] - 138.1587) / 3.2308);
+        var dstS = PV.SR.hitValue(T0, T0, 1.0).toFixed(1) + '%';
+        var p = clamp01((u - 0.3) / 0.6);
+        var s = PV.morph(srcS, dstS, p, PV.mt(62 * 7));
+        var e2 = settle(u, 0.05, 0.12);
+        var size = Math.round(lerp(18, 64, clamp01(e2)));
+        var pos = bez(SUMS_XY, [PV.SR.HIT_XY[0] + 390, PV.SR.HIT_XY[1]], 0.1, e2);
+        var lock = Math.max(0, 1 - Math.abs(t - T0) / 0.1);
+        textAt(ctx, s, pos[0], pos[1], rgbLerp(red(0.95), blue(1.0), p), size, 1, 1,
+               Math.max(0.6 * lift * (1 - u), 0.7 * lock), 0.3 * lift * (1 - u) + 0.3 * lock);
+      }
+    });
+  })();
+
+  /* ================================================================ C63 hoard -> flood */
+  (function () {
+    var T0 = 144.1587, PRE = 0.3, POST = 0.96, FREEZE = T0 - 0.3;
+    function reachedMask(t) {
+      var c = mk(), g = c.getContext('2d');
+      g.fillStyle = '#fff';
+      var f = (t - T0) * FPS;
+      for (var r = 0; r < PV.SR.FLOOD_ROWS; r++) {
+        var d0 = PV.SR.rowDelay(r) + 0.35 * Math.abs(r - (PV.SR.GET_R0 + 8.5)) / 9;
+        if (f < d0) continue;
+        var x = PV.SR.SRC_END + (f - d0) * PV.SR.POUR_V + PV.SR.ADV;
+        var y0 = PV.SR.floodY(r) - (r ? 2 : 0);
+        var y1 = r < PV.SR.FLOOD_ROWS - 1 ? PV.SR.floodY(r + 1) - 2 : FULLR[3];
+        g.fillRect(FULLR[0], y0, Math.min(FULLR[2], x) - FULLR[0], y1 - y0);
+      }
+      return c;
+    }
+    PV.addCut(T0, PRE, POST, function (ctx, t) {
+      var lift = clamp01((t - (T0 - 0.28)) / 0.2);
+      var oc = mk(), octx = oc.getContext('2d');
+      bg(octx, t);
+      drawShot(octx, 'shot_hoard', t, { freeze: FREEZE, lift: lift });
+      ctx.drawImage(oc, 0, 0);
+      if (t < T0) return;
+      var nc = mk(), nctx = nc.getContext('2d');
+      bg(nctx, t);
+      drawShot(nctx, 'shot_flood', t, { freeze: FREEZE });
+      var tmp = mk(), tg = tmp.getContext('2d');
+      tg.drawImage(nc, 0, 0);
+      tg.globalCompositeOperation = 'destination-in';
+      tg.drawImage(reachedMask(t), 0, 0);
+      tg.globalCompositeOperation = 'source-over';
+      ctx.drawImage(tmp, 0, 0);
+    });
+  })();
+
 })();

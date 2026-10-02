@@ -663,9 +663,12 @@
   var GF = 14, CW = 8.0, CH = 16, GX0 = 36, GY0 = 68;
   var COLS = Math.floor((1150 - GX0) / CW), ROWS = Math.floor((596 - GY0) / CH);
   var G_COLS = Math.floor(ROWS * CH / CW), G_X = Math.floor((COLS - G_COLS) / 2);
+  var _ifican = null;
   function ificanBits() {
+    if (_ifican) return _ifican;
     var bits = P.bannerBits('IF I CAN', 20, CH / CW);
-    return { bits: bits, bx0: Math.floor((COLS - bits.width) / 2), by0: Math.floor((ROWS - bits.height) / 2) };
+    _ifican = { bits: bits, bx0: Math.floor((COLS - bits.width) / 2), by0: Math.floor((ROWS - bits.height) / 2) };
+    return _ifican;
   }
   function ificanLetter(q, r) {
     var o = ificanBits(), qq = q - o.bx0, rr = r - o.by0;
