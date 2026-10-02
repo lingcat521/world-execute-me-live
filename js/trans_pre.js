@@ -201,7 +201,7 @@
       for (var j = 0; j < gs.length; j++) {
         if (k < 0.9) T.textMono(ctx, gs[j][2], gs[j][0], gs[j][1], T.css(T.mix(T.ME_TEXT, 0.95 * (1 - k))), 15);
         var rr = 1 + 0.5 * k;
-        T.fill(ctx, gs[j][0] + 4 - rr, gs[j][1] + 8 - rr, gs[j][0] + 4 + rr, gs[j][1] + 8 + rr,
+        T.fill(ctx, gs[j][0] + 4 - rr, gs[j][1] + 8 - rr, gs[j][0] + 5 + rr, gs[j][1] + 9 + rr,
                T.mix(T.ME_TEXT, 1.0), k);
       }
     }
@@ -277,7 +277,7 @@
       var k2 = 0.5 * lift * (1 - uu);
       var c3 = [col[0] + (200 - col[0]) * k2, col[1] + (214 - col[1]) * k2, col[2] + (255 - col[2]) * k2];
       var al = uu < 1 ? 1 : 1 - (t - td - 0.42) / 0.08;
-      T.fill(ctx, p3[0], p3[1], p3[0] + 2, p3[1] + 2, c3, T.clamp01(al));
+      T.fill(ctx, p3[0], p3[1], p3[0] + 3, p3[1] + 3, c3, T.clamp01(al));   /* PIL 的 rectangle 含两端点 = 3x3，和 shotPoints 一致 */
     }
     /* 她被"喂"进去时的一下亮（v2 的 Frame(..., glow)；她没有独立图层，近似成窗格上的一层微光） */
     var glow = Math.max(0, 1 - Math.abs(t - (C13_T + 0.42)) / 0.3) * 0.7;
@@ -291,6 +291,59 @@
       ctx.fillStyle = gr;
       ctx.fillRect(24, 56, 360, 548);
       ctx.restore();
+    }
+  });
+})();
+
+/* ---------------------------------------------------------------- C10  losscurve -> dualpipe
+   cuts.py: class C10, pre/post = 0.35/0.60, LAND = 0.42
+   "The endpoint grows and runs back along the curve, eating it, to the origin; there it hops into the first cell of
+    pipeline rank 0, and the schedule unrolls from that cell."
+   旧实现（cuts.js）把 PV.shotTime() 的第二个返回值（u）当成 dur 传给了 shotDualPipe，
+   于是 head=(lt-delay)/0.3*31 —— 23.767 时画了 ~11 列（参考只有 1 列）。这里按分派器的时钟重算。 */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var C10_T = 23.236, C10_A = 19.700, C10_AEND = 23.236, C10_BEND = 26.466, LAND = 0.42;
+  for (var i = PV.CUTS.length - 1; i >= 0; i--) if (Math.abs(PV.CUTS[i].T - C10_T) < 1e-6) PV.CUTS.splice(i, 1);
+  PV.addCut(C10_T, 0.35, 0.60, function (ctx, t, cut) {
+    var t1 = C10_T - 0.1, t2 = C10_T + 0.3;
+    var prog = Math.max(0.02, T.clamp01(1 - T.ease_io((t - t1) / (t2 - t1))));
+    var dly = (PV.SHOT_DELAY && PV.SHOT_DELAY['shot_dualpipe']) || 0;
+    PV.trReveal(ctx, t,
+      function (c) {
+        var lt = t - C10_A, u = (t - C10_A) / (C10_AEND - C10_A);
+        if (t < t1) PV.shotLossCurve(c, t, lt, u);                       /* 还没开始回卷：正常画（带 label） */
+        else PV.shotLossCurve(c, t, lt, u, null, prog);                  /* 回卷中：progress 由 cut 给，label 关掉 */
+      },
+      function (c) {
+        var tt = Math.max(t, C10_T);
+        var a2 = Math.min(tt, C10_T + dly), lt2 = Math.max(0, tt - a2);
+        PV.shotDualPipe(c, tt, lt2, C10_BEND - a2);                      /* 分派器的时钟：lt 已含 0.42 延迟 */
+      },
+      PV.trInward(440, 80, C10_T - 0.15, C10_T + 0.32, 760), { seed: 10 });
+    var ep = PV.lossEndPoint(prog, 440, 80, 690, 240, 5, 5);
+    var grow = T.clamp01((t - (C10_T - 0.35)) / 0.2);
+    if (t < t2) {
+      var rad = 1.5 + 4.5 * grow;
+      T.fill(ctx, ep[0] - rad, ep[1] - rad, ep[0] + rad + 1, ep[1] + rad + 1, T.mix(T.ME_TEXT, 1.0), grow);
+      var k = T.clamp01((t - t1) / (t2 - t1));
+      var la = 1 - T.ease_in(k);
+      if (la > 0.01) {
+        T.textMono(ctx, 'loss ' + PV.lossFn(Math.min(1, prog)).toFixed(3), ep[0] - 80 + 60 * k, ep[1] - 26,
+                   T.ui(la), 16);
+      }
+    } else {
+      var u2 = T.clamp01((t - t2) / (C10_T + LAND - t2));
+      var e = T.ease_back(u2);
+      var cx0 = PV.PIPE.ox + (PV.PIPE.cw - 3) / 2, cy0 = PV.PIPE.oy + (PV.PIPE.ch - 6) / 2;
+      var cx = 440 + (cx0 - 440) * e, cy = 80 + (cy0 - 80) * e;
+      var w = 12 + ((PV.PIPE.cw - 3) - 12) * T.ease_io(u2), hh = 12 + ((PV.PIPE.ch - 6) - 12) * T.ease_io(u2);
+      if (t < C10_T + LAND + 0.05) {
+        T.fill(ctx, cx - w / 2, cy - hh / 2, cx + w / 2 + 1, cy + hh / 2 + 1,
+               u2 < 0.5 ? T.mix(T.ME_TEXT, 1.0) : T.mix(T.ANOM, 0.75 + 0.25 * (1 - u2)), 1);
+        if (u2 > 0.6) T.textMono(ctx, 'F', cx - w / 2 + 7, cy - hh / 2 + 13, T.css(T.BG), 11);
+      }
     }
   });
 })();

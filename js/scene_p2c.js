@@ -325,8 +325,11 @@
   var prev = PV.overlay;
   PV.p2cFlash = null; PV.p2cFlashK = 1;
   /* 参考成片实测的红度区间（见 pvport/redprofile.py） */
-  /* 实测：场景自身在绝大部分红段已经画成红的（146.5-148.5 / 150-152 / 153.5-156 / 157.5-158 / 161.5-163 /
-     166.5-168 / 172.5 都与参考吻合）。只有两处缺口需要 overlay 补（见 pvport/redneed.py 的逐点比对）。 */
+  /* 2026-10-03：原来的两个"缺口补偿区间" [165.40,166.30] / [172.85,173.30] 是对**整幅**（chrome、ops 列、
+     歌词带、左窗格都算）做 multiply 红光。但参考在这两段里 ops 列 (14.2,12.0,22.2)->(14.4,12.1,22.4)、
+     歌词带、左窗格全程恒定——参考并没有整幅红化，只有画面内容自己是红的。它们实际补偿的是"样本格太亮"
+     这个已知不可修的角色素材差，代价是把 ops 列染红、把左窗格压暗，图上不像参考。
+     按"不要为了降数字调参"的要求删掉；execute_all 的红/暗现在由 dsh_patch_r1 的 executed() 自己画。 */
   var RED_SPANS = [];
   PV.p2cRedAt = function (t) {
     for (var i = 0; i < RED_SPANS.length; i++) if (t >= RED_SPANS[i][0] && t <= RED_SPANS[i][1]) return true;
