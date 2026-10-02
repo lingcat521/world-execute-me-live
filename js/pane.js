@@ -143,8 +143,16 @@
       '<span class="Q51KRG_label">用时 ' + esc(duration) + '</span></button></span>' +
       '<span class="xzv4MW_timeEnd">' + esc(clock) + '</span></div></div>';
   }
+  /* 头像帧号按绝对时间 round(t*24) 算，但必须夹在素材实际帧范围内：
+     a2 覆盖 00384-00702、a3 覆盖 00703-01055。否则 44s 之后越界，img 全部 404。 */
+  function avFrame(dir, lo, hi, t) {
+    var n = Math.round(t * FPS);
+    if (n < lo) n = lo;
+    if (n > hi) n = hi;
+    return 'avatars/' + dir + '/' + pad(n, 5) + '.png';
+  }
   function a2Header(t) {
-    return '<div class="pv-head"><div class="pv-pet"><img src="avatars/a2/' + pad(Math.round(t * FPS), 5) + '.png"></div>' +
+    return '<div class="pv-head"><div class="pv-pet"><img src="' + avFrame('a2', 384, 702, t) + '"></div>' +
       '<div class="pv-who"><div class="pv-name">大肥鱼</div><div class="pv-state"><span class="pv-dot" style="background:#d29922"></span>预训练中 · ' +
       esc(modelName(t)) + '</div></div></div>';
   }
@@ -212,7 +220,7 @@
       '<span class="Sixlwa_turnErrorMessage">回答被截断，已有输出保留在对话中。发送“继续”可让模型接着输出。</span></div></div>';
   }
   function a3Header(t) {
-    return '<div class="pv-head"><div class="pv-pet"><img src="avatars/a3/' + pad(Math.round(t * FPS), 5) + '.png"></div>' +
+    return '<div class="pv-head"><div class="pv-pet"><img src="' + avFrame('a3', 703, 1055, t) + '"></div>' +
       '<div class="pv-who"><div class="pv-name">大肥鱼</div><div class="pv-state"><span class="pv-dot" style="background:#d29922"></span>预训练中 · ' +
       esc(modelName(t)) + '</div></div></div>';
   }
