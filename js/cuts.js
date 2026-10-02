@@ -526,3 +526,24 @@
     }
   });
 })();
+
+/* ---- C01：power -> protection。CRT 画面抬起后张开成整个 shell（UNFOLD），锁在拍点上。 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var T0 = 1.312, PRE = 0.25, OPEN = 0.23;
+  var CRT = [180, 150, 1100, 520];   /* 与 shot_power 收尾时的开孔一致，保证接得上 */
+  function eIo(u) { u = T.clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
+  PV.addCut(T0, PRE, 0.44, function (ctx, t, cut) {
+    var e = eIo((t - (T0 - 0.06)) / (OPEN + 0.06));
+    var ap = [CRT[0] + (-8 - CRT[0]) * e, CRT[1] + (-8 - CRT[1]) * e,
+              CRT[2] + (1288 - CRT[2]) * e, CRT[3] + (728 - CRT[3]) * e];
+    var lift = T.clamp01((t - (T0 - PRE)) / (PRE - 0.06));
+    var fa = 1 - T.clamp01((e - 0.55) / 0.45);
+    var oc = PV.newCanvas(1280, 720), og = oc.getContext('2d');
+    if (PV.drawBackground) PV.drawBackground(og, t);
+    PV.protectionScene(og, t, [48, 70], Math.max(0, t - T0));
+    ctx.drawImage(oc, 0, 0);
+    PV.crtFinish(ctx, t, { ap: ap, fa: fa, fl: lift * (1 - e), line: null, veil: 0 });
+  });
+})();

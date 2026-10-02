@@ -5,7 +5,7 @@ Cut.T = 进入镜头的起点；窗口 = [T-pre, T+post]。我们已实现的镜
 
 | Cut | T (s) | 状态 | 原始说明（截断） |
 |---|---|---|---|
-| C01 | 1.312 | 待做 | power -> protection. UNFOLD：CRT 画面抬起、张开成整个 shell，锁在拍点上；POST 日志随之 |
+| C01 | 1.312 | 已实现 | power -> protection. UNFOLD：CRT 画面抬起、张开成整个 shell，锁在拍点上；POST 日志随之 |
 | C02 | 3.620 | 待做 | protection -> pieces. MORPH：盾牌亮起，点逐个离开（顶行先），落进权重网格的下一格 |
 | C03 | 5.236 | 待做 | pieces -> creation. MORPH：已加载的 161 格向网格中心排空，远处的先走，各自缩成点并变色 |
 | C04 | 7.082 | 待做 | creation -> parameters. RETAIN：me.* 块先亮起并留在原地；chrome 收回 shell staging |
@@ -30,4 +30,4 @@ Cut.T = 进入镜头的起点；窗口 = [T-pre, T+post]。我们已实现的镜
 | C23 | 50.928 | 待做 | dizzy -> travel. 镜头只在窗格内后拉：旋转的碗向左离开，年份条（已在 2026 AD）进来 |
 | C24 | 54.159 | 待做 | travel -> unite（进入 unite 镜头） |
 
-已完成 13 / 24（C08-C20 全部完成）
+已完成 14 / 24（C01 + C08-C20）
