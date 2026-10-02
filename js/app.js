@@ -24,21 +24,29 @@
     scale: 1, audioReady: false, hold: false, layers: [], bootQueue: []
   };
   PV.audio = audioEl; PV.chat = chatEl; PV.screen = screenEl;
-  PV.VER = '202610022242';
+  PV.VER = '202610022243';
   PV.newCanvas = function (w, h) { var c = document.createElement('canvas'); c.width = Math.max(1, w | 0); c.height = Math.max(1, h | 0); return c; };
   PV.onWorld = function (fn) { PV.layers.push(fn); };
   PV.onBoot = function (fn) { PV.bootQueue.push(fn); };
   function layout() {
     var vw = window.innerWidth, vh = window.innerHeight;
-    var barH = barEl ? barEl.offsetHeight : 44;
-    var availH = Math.max(80, vh - barH);
-    var portrait = availH > vw;
+    var barH = barEl ? (barEl.offsetHeight || 56) : 56;
+    var availH = Math.max(120, vh - barH);
+    var portrait = availH > vw * 1.05;
     var s = portrait ? Math.min(availH / W, vw / H) : Math.min(vw / W, availH / H);
     PV.scale = s;
     PV.portrait = portrait;
     wrapEl.style.bottom = barH + 'px';
-    if (document.getElementById('ver')) document.getElementById('ver').textContent = 'v' + PV.VER + (portrait ? ' 竖屏' : ' 横屏') + ' ' + Math.round(s * 100) + '%';
-    screenEl.style.transform = portrait ? ('rotate(90deg) scale(' + s + ')') : ('scale(' + s + ')');
+    screenEl.style.transform = 'translate(-50%,-50%) ' + (portrait ? 'rotate(90deg) ' : '') + 'scale(' + s + ')';
+    if (PV.debugEl) {
+      PV.debugEl.textContent = 'v' + PV.VER + '\ninner ' + vw + ' x ' + vh + '\nbarH ' + barH +
+        '\navail ' + vw + ' x ' + availH + '\nportrait ' + portrait + '\nscale ' + s.toFixed(3) +
+        '\nstage ' + Math.round(W * s) + ' x ' + Math.round(H * s) +
+        '\ndpr ' + (window.devicePixelRatio || 1) + '\nua ' + navigator.userAgent.slice(0, 60);
+    }
+    if (document.getElementById('ver')) {
+      document.getElementById('ver').textContent = 'v' + PV.VER + (portrait ? ' 竖屏' : ' 横屏') + ' ' + Math.round(s * 100) + '%';
+    }
   }
   window.addEventListener('resize', layout);
   function draw(t) {

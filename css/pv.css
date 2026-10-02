@@ -1,7 +1,7 @@
 html,body{margin:0;height:100%;background:#000;color:#9aa0a6;overflow:hidden;
   font:12px/1.4 ui-monospace,"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace}
 #wrap{position:fixed;inset:0;display:grid;place-items:center;}
-#screen{position:relative;width:1280px;height:720px;background:#000;transform-origin:center center;}
+#screen{position:absolute;left:50%;top:50%;width:1280px;height:720px;background:#000;transform-origin:center center;}
 #stage{position:absolute;left:0;top:0;width:1280px;height:720px;display:block;}
 #chat{position:absolute;left:0;top:0;width:420px;height:720px;overflow:hidden;display:none;}
 #bar{position:fixed;left:0;right:0;bottom:0;height:44px;display:flex;align-items:center;gap:10px;
@@ -33,7 +33,7 @@ body[data-ds-dark-theme]{--dsw-alias-bg-base:#05080f;--dsw-specific-bubble:#1823
 #chatbox #composer{--dsh-composer-side-clearance:10px;--dsh-composer-card-max-width:100%;--dsh-composer-text-max-height:80px;padding-bottom:4px}
 #chatbox .bOPqQW_root{padding:2px 4px 8px;gap:2px}
 /* ==== 移动端适配 ==== */
-#wrap{position:fixed;left:0;right:0;top:0;bottom:44px;display:grid;place-items:center;overflow:hidden}
+#wrap{position:fixed;left:0;right:0;top:0;bottom:56px;overflow:hidden}
 #bar{height:44px;gap:10px;font-size:12px}
 @media (max-width:900px), (pointer:coarse){
   #bar{height:56px;gap:8px;font-size:14px;padding:0 8px;flex-wrap:nowrap;overflow-x:auto}
