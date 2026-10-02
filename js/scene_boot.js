@@ -14,7 +14,7 @@
   var POWER_LINES = [
     ['OK', 'power: 8x H800 online'], ['OK', 'pcie: link up x16'], ['OK', 'nvlink: 8/8'],
     ['OK', 'infiniband: 400 Gb/s'], ['..', 'mem test ........'], ['OK', 'ecc: clean']];
-  function amb(lv) { return T.css(T.mix(T.UI, lv)); }
+  function amb(lv) { return T.css(T.amb(lv)); }
   function anom(lv) { return T.css(T.mix(T.ANOM, lv)); }
   function center4(st) {
     if (st.length >= 4) return st;

@@ -9,7 +9,7 @@
   var PV = window.PV, T = PV.tui;
 
   /* ================================ 基础工具（对应 tk.* / engine.pulse） ================================ */
-  function amb(lv) { return T.css(T.mix(T.UI, lv)); }
+  function amb(lv) { return T.css(T.amb(lv)); }
   function anom(lv) { return T.css(T.mix(T.ANOM, lv)); }
   function blue(lv) { return T.css(T.mix(T.ME_TEXT, lv)); }
   function red(lv) { return T.css(T.mix(T.ERR, lv)); }
@@ -719,7 +719,7 @@
   var T37 = 78.851;                    /* shot_antioxidants 起点（s_deploy.T37） */
 
   /* ---------------------------------------------------------------- 基础工具（tuikit 语义） */
-  function amb(lv) { return T.css(T.mix(T.UI, lv)); }
+  function amb(lv) { return T.css(T.amb(lv)); }
   function anom(lv) { return T.css(T.mix(T.ANOM, lv)); }
   function blue(lv) { return T.css(T.mix(T.ME_TEXT, lv)); }
   function red(lv) { return T.css(T.mix(T.ERR, lv)); }
@@ -1789,7 +1789,7 @@
   var CJK_FAM = 'NotoCJK, "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", "Droid Sans Fallback", system-ui, sans-serif';
 
   /* ---- 基础工具（对应 tk.amb/anom/blue/red、tk.box、tk.decode、engine.Ctx.text） ---- */
-  function amb(lv) { return T.css(T.mix(T.UI, lv)); }
+  function amb(lv) { return T.css(T.amb(lv)); }
   function anom(lv) { return T.css(T.mix(T.ANOM, lv)); }
   function blue(lv) { return T.css(T.mix(T.ME_TEXT, lv)); }
   function red(lv) { return T.css(T.mix(T.ERR, lv)); }

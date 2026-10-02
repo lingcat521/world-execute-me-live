@@ -118,7 +118,7 @@
   }
   function header(ctx, t, opt) {
     var col = opt.alert === 'err' ? T.ERR : opt.alert === 'anom' ? T.ANOM : T.UI;
-    function amb(lv) { return T.css(T.mix(col, lv)); }
+    function amb(lv) { return T.css(T.mix(col, lv * (col === T.UI ? T.uiGainNow : 1))); }
     var fh = 13;
     T.textPIL(ctx, 'WORLD.EXECUTE(ME);   whale@deepsea:~$', 24, 14, amb(0.95), fh, 'left', true);
     var mm = Math.floor(t / 60), ss = t - mm * 60;

@@ -34,6 +34,23 @@
     return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')';
   };
   T.ui = function (lv) { return T.mix(T.UI, lv); };
+  /* engine.ui_gain：'系统色就是你。你离开时它开始流失，再也没完全回来。'
+     原始 full/engine.py: keyframes [(0,1.0),(110.4,1.0),(116.5,0.42),(176.9,0.42),(179.5,0.85),(193,0.75),(206,0.45)]
+     只乘在 amb()（tuikit.amb）上：box 边框走 mix() 不受影响，anom/blue/red 也不受影响。 */
+  T.UI_GAIN_KF = [[0, 1.0], [110.4, 1.0], [116.5, 0.42], [176.9, 0.42], [179.5, 0.85], [193, 0.75], [206, 0.45]];
+  T.uiGainAt = function (t) {
+    var KF = T.UI_GAIN_KF, i;
+    if (t <= KF[0][0]) return KF[0][1];
+    for (i = 0; i + 1 < KF.length; i++) {
+      if (t <= KF[i + 1][0]) {
+        var u = (t - KF[i][0]) / (KF[i + 1][0] - KF[i][0]);
+        return KF[i][1] + (KF[i + 1][1] - KF[i][1]) * u;
+      }
+    }
+    return KF[KF.length - 1][1];
+  };
+  T.uiGainNow = 1;                 /* 每帧由 frame.js 更新 */
+  T.amb = function (lv) { return T.mix(T.UI, lv * T.uiGainNow); };
   T.bg = function (lv) { return T.mix(T.UI, lv); };
   T.FAM = '"SpaceMono", ui-monospace, Consolas, "DejaVu Sans Mono", monospace';
   T.CJK = '"Noto Sans SC", "Source Han Sans SC", system-ui, sans-serif';

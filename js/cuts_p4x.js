@@ -162,21 +162,30 @@
     ctx.drawImage(sp, Math.round(cx - w / 2), Math.round(cy - h / 2), w, h);
     ctx.restore();
   }
-  /* kit.ink：把 rect 内的画面抠成「墨」（舞台背景被扣掉），返回 rect 大小的画布 */
+  /* kit.ink：把 rect 内的画面抠成「墨」（舞台背景被扣掉），返回 rect 大小的画布。
+     背景是纯色 + 16px 点阵，直接解析式算出来，省掉一次 getImageData。 */
   function inkCanvas(src, t, rect) {
     var x0 = Math.round(rect[0]), y0 = Math.round(rect[1]);
     var w = Math.round(rect[2] - rect[0]), h = Math.round(rect[3] - rect[1]);
     var out = PV.newCanvas(w, h), g = out.getContext('2d');
-    var bgc = PV.newCanvas(w, h), bg2 = bgc.getContext('2d');
-    if (PV.drawBackground) { bg2.save(); bg2.translate(-x0, -y0); PV.drawBackground(bg2, t); bg2.restore(); }
     g.drawImage(src, x0, y0, w, h, 0, 0, w, h);
-    var d = g.getImageData(0, 0, w, h), b = bg2.getImageData(0, 0, w, h);
-    var dd = d.data, bd = b.data, i, o;
-    for (i = 0; i < w * h; i++) {
-      o = i * 4;
-      var dr = Math.abs(dd[o] - bd[o]), dg = Math.abs(dd[o + 1] - bd[o + 1]), db = Math.abs(dd[o + 2] - bd[o + 2]);
-      var mx = Math.max(dr, Math.max(dg, db));
-      dd[o + 3] = mx < 12 ? 0 : Math.min(255, (mx - 12) * 5);
+    var d = g.getImageData(0, 0, w, h), dd = d.data;
+    var off = ((Math.floor(t * 12) % 16) + 16) % 16;
+    var bg = T.BG, dot = T.mix(T.UI, 0.1);
+    for (var yy = 0; yy < h; yy++) {
+      var dy = (((yy + y0 + off) % 16) + 16) % 16 === 0;
+      for (var xx = 0; xx < w; xx++) {
+        var o = (yy * w + xx) * 4;
+        var isDot = dy && (((xx + x0) % 16) + 16) % 16 === 0;
+        var br = isDot ? dot[0] : bg[0], bg2 = isDot ? dot[1] : bg[1], bb = isDot ? dot[2] : bg[2];
+        var dr = dd[o] - br; if (dr < 0) dr = -dr;
+        var dg = dd[o + 1] - bg2; if (dg < 0) dg = -dg;
+        var db = dd[o + 2] - bb; if (db < 0) db = -db;
+        var mx = dr > dg ? dr : dg;
+        if (db > mx) mx = db;
+        var a = (mx - 12) * 5;
+        dd[o + 3] = mx < 12 ? 0 : (a > 255 ? 255 : a);
+      }
     }
     g.putImageData(d, 0, 0);
     return out;
