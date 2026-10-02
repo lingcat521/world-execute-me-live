@@ -116,7 +116,7 @@
     var mm = inkMetrics(s, size, opt.mono, opt.bold), bl = cy + (mm.asc - mm.desc) / 2;
     ctx.save();
     if (a < 0.999) ctx.globalAlpha = a;
-    if (opt.halo > 0.01) { ctx.shadowColor = T.css(blue(1.0)); ctx.shadowBlur = 12 * opt.halo; }
+    if (opt.halo > 0.01) { ctx.shadowColor = T.css(blue(1.0), Math.min(1, 2.2 * opt.halo)); ctx.shadowBlur = 12 * opt.halo; }
     if (opt.mono) T.textMono(ctx, s, cx - mm.w / 2, bl - T.ascentMono(size), c, size);
     else {
       ctx.font = T.font(size, opt.bold);
@@ -158,7 +158,7 @@
     ctx.save();
     if (lighter) ctx.globalCompositeOperation = 'lighter';
     if (alpha !== undefined && alpha < 0.999) ctx.globalAlpha = clamp01(alpha);
-    if (halo > 0.01) { ctx.shadowColor = T.css(blue(1.0)); ctx.shadowBlur = 12 * halo; }
+    if (halo > 0.01) { ctx.shadowColor = T.css(blue(1.0), Math.min(1, 2.2 * halo)); ctx.shadowBlur = 12 * halo; }
     ctx.drawImage(sp, Math.round(cx - w / 2), Math.round(cy - h / 2), w, h);
     ctx.restore();
   }
