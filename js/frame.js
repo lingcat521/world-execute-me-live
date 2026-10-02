@@ -13,6 +13,21 @@
   PV.GEOM = { LEFT: LEFT, CENTER: CENTER, TICK: TICK, WIN: WIN };
   var TITLES = { left: 'dsh web', center: 'world', tick: 'ops' };
   function box3(ctx, r, title, level) { T.box(ctx, r[0], r[1], r[2], r[3], title, level); }
+  /* 焦点压暗：原始工程 dsh_her.py 的 LEAD 表。谁"主导"时另一方降到 support 亮度，
+     每次切换以 0.25s 缓入。RIGHT = 可视化窗格 + ops 列；她的窗格用她的窗口 alpha。 */
+  var LEAD = [[0.0, 'both'], [5.24, 'left'], [7.08, 'right'], [12.47, 'both'], [16.0, 'both'], [41.21, 'left'],
+              [41.93, 'both'], [103.0, 'left'], [110.40, 'both'], [115.60, 'right'], [123.55, 'left'], [125.0, 'both']];
+  var SUPPORT = 0.42, LEAD_RECT = [392, 44, 1268, 608];
+  function lv(side) { return [side === 'right' ? 0.7 : 1.0, side === 'left' ? SUPPORT : 1.0]; }
+  PV.levels = function (t, fade) {
+    fade = fade === undefined ? 0.25 : fade;
+    var i = 0, k;
+    for (k = 0; k < LEAD.length; k++) if (LEAD[k][0] <= t) i = k;
+    var cur = lv(LEAD[i][1]);
+    if (i === 0) return cur;
+    var p = T.ease(T.clamp01((t - LEAD[i][0]) / fade)), prev = lv(LEAD[i - 1][1]);
+    return [prev[0] + (cur[0] - prev[0]) * p, prev[1] + (cur[1] - prev[1]) * p];
+  };
   PV.drawPanes = function (ctx, t) {
     box3(ctx, LEFT, TITLES.left, 0.45);
   };
@@ -35,6 +50,11 @@
       } catch (e) { PV.chromeErr = e; }
     }
     if (PV.overlay) { try { PV.overlay(ctx, t); } catch (e) {} }
+    /* 注意：LEAD/SUPPORT 不是像素级整块压暗——实测参考在 7.08 切换时左窗格反而变亮(9.59->16.99)、
+       103.0 前后中窗格基本不变(13.25->13.47)。它是作用在窗格自身渲染里的，不能盖一层黑蒙版
+       （试过：会把 6.00s 从中窗格 7.0 压到 2.94，反而破坏吻合）。PV.levels() 保留备用。 */
+    var _lv = PV.levels(t);
+    if (PV.chat && _lv[0] < 0.999) { try { PV.chat.style.opacity = _lv[0]; } catch (e) {} }
     if (PV.bloom !== false) {
       ctx.save();
       /* 关键：自绘前必须把舞台的 RES 倍缩放重置掉。

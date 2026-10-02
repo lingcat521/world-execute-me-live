@@ -798,3 +798,110 @@
     }
   });
 })();
+
+/* ---- C06：init -> world。MORPH：定型的柱条碎成点列，每个点飞向球面的一点
+        （柱顶到上缘、柱身到下纬），到达时变成球面的字符；球在拍点上完整并继续自转。 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var T0 = 11.005, PRE = 0.26, TA = -0.23, TB = 0.23, BASE = 560, GX = 784, GY = 320, GR = 230;
+  function eIo(u) { u = T.clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
+  function glyph(z) { return z < 0.35 ? '\u00b7' : (z < 0.75 ? 'o' : 'O'); }
+  var BARS = null;
+  function bars() {
+    if (BARS) return BARS;
+    var ms = T0 + TA;
+    BARS = PV.initBars(ms, (ms - 9.851) / (11.005 - 9.851));
+    return BARS;
+  }
+  PV.addCut(T0, PRE, 0.32, function (ctx, t, cut) {
+    var ms = T0 + TA, span = TB - TA;
+    PV.reveal(ctx, t,
+      function (c) { PV.shotInit(c, t, Math.max(0, t - 9.851), T.clamp01((t - 9.851) / (11.005 - 9.851)), { bars: false }); },
+      function (c) { PV.shotWorld(c, t, Math.max(0, t - T0), T.clamp01((t - T0) / (12.389 - T0)), { globe: t >= T0 + TB }); },
+      PV.radial(GX, GY, T0 - 0.12, 1400),
+      { region: [405, 44, 1164, 604], cell: [8, 16], dur: 0.09 });
+    var lift = T.clamp01((t - (T0 - PRE)) / 0.1), B = bars(), i;
+    if (t < ms + 0.14) {
+      var k = T.clamp01((t - (ms - 0.06)) / 0.2), hw = 4.5 * (1 - eIo(k));
+      if (hw > 0.3) for (i = 0; i < B.length; i++) {
+        /* 实测参考在这一段是浅灰白的柱条（与 init 镜头同色），不是琥珀 */
+        if (B[i][1] > 0) T.fill(ctx, B[i][0] + 4.5 - hw, BASE - B[i][1], B[i][0] + 4.5 + hw, BASE,
+                                T.ui(0.35 + 0.6 * B[i][2]), 1 - 0.5 * k);
+      }
+    }
+    if (t >= ms - 0.06 && t < T0 + TB + 0.02) {
+      var pts = PV.globePoints(t, GR);
+      for (i = 0; i < pts.length; i++) {
+        var gx = pts[i][0], gy = pts[i][1], z = pts[i][2];
+        var fx = T.clamp01((gx - (GX - GR)) / (2 * GR)), fy = T.clamp01((gy - (GY - GR)) / (2 * GR));
+        var b = B[Math.min(59, Math.max(0, Math.round(fx * 59)))];
+        var sx = b[0] + 4.5, sy = BASE - b[1] * (1 - fy);
+        var u = eIo(T.clamp01((t - (ms + 0.1 * Math.abs(fx - 0.5) * 2)) / (span - 0.1)));
+        var x = sx + (gx - sx) * u, y = sy + (gy - sy) * u;
+        if (u < 0.6) T.fill(ctx, x - 4, y - 1, x + 4, y + 1, T.mix(T.ANOM, 0.35 + 0.6 * b[2]), 1 - u * 0.5);
+        else T.textPIL(ctx, glyph(z), x - 4, y - 8, T.ui(0.35 + 0.65 * z), 15);
+      }
+    }
+  });
+})();
+
+/* ---- C07：world -> begin_sim。CARRY+MORPH：me/you 离开轨道飞进 population 行里各自的词
+        （成为反白 chip）；球面的点塌缩成倒计时 '3' 的点阵，拍点上完整 —— 倒计时是用 world 拼出来的。 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var T0 = 12.389, PRE = 0.26, LAND = 0.23, GX = 784, GY = 320, GR = 230;
+  var POP_TEXT = 'world.population = 2  (me, you)', POP_XY = [430, 572];
+  function eIn(u) { u = T.clamp01(u); return u * u * u; }
+  function eIo(u) { u = T.clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
+  function eBack(u, s) { u = T.clamp01(u); var c = s * 1.70158; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); }
+  function bez(p0, p1, bend, u) {
+    var mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2, dx = p1[0] - p0[0], dy = p1[1] - p0[1];
+    var cx = mx - dy * bend, cy = my + dx * bend, a = 1 - u;
+    return [a * a * p0[0] + 2 * a * u * cx + u * u * p1[0], a * a * p0[1] + 2 * a * u * cy + u * u * p1[1]];
+  }
+  function glyph(z) { return z < 0.35 ? '\u00b7' : (z < 0.75 ? 'o' : 'O'); }
+  var CELLS = null;
+  function cells() {
+    if (CELLS) return CELLS;
+    var bits = PV.bannerBits('3', 14, 2.0), cw = 16 * T.MONO_ADV, out = [], q, r;
+    for (r = 0; r < bits.height; r++) for (q = 0; q < bits.width; q++)
+      if (bits.get(q, r)) out.push([GX - bits.width * cw / 2 + q * cw, 200 + r * 17]);
+    out.sort(function (a, b) { return (a[1] - b[1]) || (a[0] - b[0]); });   /* 与原始实现同序 */
+    CELLS = out; return CELLS;
+  }
+  PV.addCut(T0, PRE, 0.45, function (ctx, t, cut) {
+    var land = T0 + LAND;
+    PV.reveal(ctx, t,
+      function (c) { PV.shotWorld(c, t, Math.max(0, t - 11.005), T.clamp01((t - 11.005) / (12.389 - 11.005)), { globe: false, markers: false }); },
+      function (c) { PV.shotBeginSim(c, t, Math.max(0, t - T0), T.clamp01((t - T0) / (16.082 - T0)), 16.082 - T0, false, false, t < land); },
+      PV.radial(GX, GY, T0 - 0.1, 1500),
+      { region: [405, 44, 1164, 604], cell: [8, 16], dur: 0.09 });
+    var lift = T.clamp01((t - (T0 - PRE)) / 0.12), i;
+    if (t < land) {
+      var pts = PV.globePoints(t, GR), C = cells();
+      pts = pts.slice().sort(function (a, b) { return (a[1] - b[1]) || (a[0] - b[0]); });
+      for (i = 0; i < pts.length; i++) {
+        var gx = pts[i][0], gy = pts[i][1], z = pts[i][2];
+        var cc = C[Math.floor(i * C.length / pts.length)];
+        var u = eIo(T.clamp01((t - (T0 - 0.16 + 0.06 * (i / pts.length))) / (land - (T0 - 0.16 + 0.06 * (i / pts.length)))));
+        var x = (gx - 4) + (cc[0] - (gx - 4)) * u, y = (gy - 8) + (cc[1] - (gy - 8)) * u;
+        if (u < 0.7) T.textPIL(ctx, glyph(z), x, y, T.mix(T.ANOM, 0.35 + 0.65 * z), 15);
+        else T.textPIL(ctx, '3', x, y, T.mix(T.ANOM, 0.95), 16);
+      }
+      var adv = 18 * T.MONO_ADV, words = [['me', 18, T.ME_TEXT], ['you', 23, T.UI]];
+      for (var k = 0; k < 2; k++) {
+        var w = words[k][0], idx = words[k][1];
+        var x0 = POP_XY[0] + idx * adv - 3, y0 = POP_XY[1] - 1, x1 = x0 + w.length * adv + 6, y1 = POP_XY[1] + 21;
+        var mp = PV.markerPos(Math.min(t, T0 - 0.1), k, GR);
+        var uu = T.clamp01((t - (T0 - 0.1)) / (LAND + 0.1));
+        var pos = bez(mp, [(x0 + x1) / 2, (y0 + y1) / 2], k ? 0.22 : -0.22, eBack(uu, 0.9));
+        var hw = 5 + ((x1 - x0) / 2 - 5) * eIn(uu), hh = 5 + ((y1 - y0) / 2 - 5) * eIn(uu);
+        T.fill(ctx, pos[0] - hw, pos[1] - hh, pos[0] + hw, pos[1] + hh, T.mix(words[k][2], 1.0), 1);
+        if (uu < 0.6) T.textMono(ctx, w, pos[0] + 10 + 6 * uu, pos[1] - 10, T.mix(words[k][2], 1.0), 16);
+        else if (uu > 0.72) T.textMono(ctx, w, x0 + 3, POP_XY[1], T.BG, 18);
+      }
+    }
+  });
+})();

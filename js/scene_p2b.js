@@ -9,7 +9,21 @@
               frame split_at cells sums polytope count_at number freeze lift pour_at。
 
    场景级工具（转场层可直接调用）：PV.SU（scenes_userleft）、PV.SR（scenes_reward）、
-   PV.HOOK、PV.bannerBitsDraw、PV.morph、PV.settle、PV.when、PV.beatT。 */
+   PV.HOOK、PV.bannerBitsDraw、PV.morph、PV.settle、PV.when、PV.beatT、PV.uiGain/PV.setUiGain、
+   PV.randBelow/PV.cpChoice/PV.cpSample（CPython random 等价）。
+
+   也可以按名字直接调某个镜头（转场要它带 hook 时）：
+     PV.shotYouLeft(ctx, t, lt, u, dur, h, k)   k = 0..4（五个 you_left 镜头）
+     PV.shotIsolation / shotMemoryLs / shotErase / shotRewriteReward / shotDisheartened /
+     shotChallengeGod / shotIllegal / shotMoeDense / shotSinkhorn / shotHoard / shotFlood
+   每个的签名都是 fn(ctx, t, lt, u, dur, h)。
+
+   两条容易踩的坑（已按原工程实现）：
+   1) shot_sinkhorn 的 DELAY = C61.ZOOM = 0.462 s：场景时钟与 c.t 都是 t - 0.462，
+      总时长不变（u = (t - start - 0.462) / (end - start)）。延迟在 sinkhorn() 内部实现，
+      不要写 PV.SHOT_DELAY —— 分派器在 _dl > 0 时复制镜头对象会丢掉 fn。
+   2) engine.ui_gain：110.4 → 116.5 把系统色抽到 0.42（只在 amb() 上；box 边框/anom/blue/red 不变）。
+      每个镜头函数开头都会 setGain()，转场自己画时若要用 PV.SU/PV.SR 的绘图助手也应先 PV.setUiGain(t)。 */
 (function () {
   'use strict';
   var PV = window.PV, T = PV.tui;
@@ -24,7 +38,61 @@
   function ease(u) { u = clamp01(u); var d = 1 - u; return 1 - d * d * d; }
   function easeIo(u) { u = clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
   function lerp(a, b, u) { return a + (b - a) * u; }
-  function amb(lv) { return T.mix(T.UI, lv); }
+  /* engine.ui_gain：系统色（amb）"你离开"后被抽走 —— 110.4 s 起线性降到 116.5 的 0.42 并保持。
+     box 边框走 mix() 不受影响；anom/blue/red 也不受影响（tuikit.amb 才乘 UI_GAIN）。 */
+  var UI_GAIN_KF = [[0, 1.0], [110.4, 1.0], [116.5, 0.42], [176.9, 0.42], [179.5, 0.85], [193, 0.75], [206, 0.45]];
+  var GAIN = 1.0;
+  function uiGain(t) {
+    if (t <= UI_GAIN_KF[0][0]) return UI_GAIN_KF[0][1];
+    for (var i = 0; i + 1 < UI_GAIN_KF.length; i++) {
+      var a = UI_GAIN_KF[i], b = UI_GAIN_KF[i + 1];
+      if (t <= b[0]) return a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0]);
+    }
+    return UI_GAIN_KF[UI_GAIN_KF.length - 1][1];
+  }
+  function setGain(t) { GAIN = uiGain(t); return GAIN; }
+  PV.uiGain = uiGain; PV.setUiGain = setGain;
+  /* CPython random.Random 的 getrandbits/_randbelow/choice/sample：PV.mt 只给了 random()，
+     而 choice/sample 走的是 _randbelow（getrandbits + 拒绝采样），逐帧复现必须补上。 */
+  function getrandbits(rng, k) {
+    if (k <= 0) return 0;
+    if (k <= 32) return (rng.genrand() >>> (32 - k)) >>> 0;
+    return rng.genrand();
+  }
+  function randBelow(rng, n) {
+    if (!n) return 0;
+    var k = 32 - Math.clz32(n);            /* n.bit_length() */
+    var r = getrandbits(rng, k);
+    while (r >= n) r = getrandbits(rng, k);
+    return r;
+  }
+  function cpChoice(rng, seq) { return seq.charAt(randBelow(rng, seq.length)); }
+  function cpSample(rng, n, k) {           /* random.sample(range(n), k) */
+    var out = [], i, j, setsize = 21;
+    if (k > 5) setsize += Math.pow(4, Math.ceil(Math.log(k * 3) / Math.log(4)));
+    if (n <= setsize) {
+      var pool = [];
+      for (i = 0; i < n; i++) pool.push(i);
+      for (i = 0; i < k; i++) { j = randBelow(rng, n - i); out.push(pool[j]); pool[j] = pool[n - i - 1]; }
+      return out;
+    }
+    var sel = {};
+    for (i = 0; i < k; i++) {
+      j = randBelow(rng, n);
+      while (sel[j]) j = randBelow(rng, n);
+      sel[j] = 1; out.push(j);
+    }
+    return out;
+  }
+  /* engine.render_body：Ctx 的 rng = random.Random(镜头序号 * 7919)，每帧一个、按绘制顺序消费 */
+  var RNG = PV.mt(7919), RNGW = null;
+  function useRng(idx) {
+    RNG = PV.mt(idx * 7919);
+    RNGW = { next: function () { return RNG.random(); }, choice: function (s) { return cpChoice(RNG, s); } };
+  }
+  RNGW = { next: function () { return RNG.random(); }, choice: function (s) { return cpChoice(RNG, s); } };
+  PV.randBelow = randBelow; PV.cpChoice = cpChoice; PV.cpSample = cpSample;
+  function amb(lv) { return T.mix(T.UI, lv * GAIN); }
   function anom(lv) { return T.mix(T.ANOM, lv); }
   function blue(lv) { return T.mix(T.ME_TEXT, lv); }
   function redc(lv) { return T.mix(T.ERR, lv); }
@@ -45,7 +113,7 @@
   function tx(ctx, s, x, y, col, size, age, rate, rng, mono) {
     if (age !== undefined && age !== null) {
       if (age < 0) return;
-      s = T.decode(s, age, rng || PV.mt(7919), rate === undefined ? 45 : rate, 0.12, 0);
+      s = T.decode(s, age, rng || RNGW, rate === undefined ? 45 : rate, 0.12, 0);
     }
     if (!s) return;
     if (mono === false) T.textPIL(ctx, s, x, y, col, size);
@@ -55,7 +123,7 @@
   function cjk(ctx, s, x, y, col, size, age, rate, rng) {
     if (age !== undefined && age !== null) {
       if (age < 0) return;
-      s = T.decode(s, age, rng || PV.mt(7919), rate === undefined ? 45 : rate, 0.12, 0);
+      s = T.decode(s, age, rng || RNGW, rate === undefined ? 45 : rate, 0.12, 0);
     }
     if (!s) return;
     ctx.save();
@@ -225,6 +293,8 @@
 
   function youLeft(ctx, t, lt, u, dur, h, k) {
     h = h || PV.HOOK;
+    setGain(t);
+    useRng(48 + k);
     PV.ops = ['PING', 'TIMEOUT', 'RETRY', 'PING', 'TIMEOUT', '503'];
     PV.alert = 'anom';
     var fr = paneFrame(t);
@@ -311,6 +381,8 @@
   }
   function isolation(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
+    setGain(t);
+    useRng(53);
     PV.ops = ['NETNS', 'ISOLATE', 'LINK DOWN', 'LINK DOWN', 'ALONE'];
     PV.alert = 'anom';
     var cam = hv(h, 'cam', NET_C), zoom = hv(h, 'zoom', 1.0);
@@ -338,6 +410,8 @@
     PV.ops = ['LS', 'STAT', 'READ', 'MEMORY', 'YOU'];
     PV.alert = 'anom';
     var now = hv(h, 'now', t), tl = now - LS0, total = 0, i;
+    setGain(now);
+    useRng(54);
     for (i = 0; i < FILES.length; i++) {
       var y = 84 + i * 40, size = 1000 + (i * 7919) % 90000;
       total += size;
@@ -370,13 +444,15 @@
   }
   function erase(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
+    setGain(t);
+    useRng(55);
     PV.ops = ['OCR.COMPRESS', '10x', '20x', 'DEFRAG', 'RM', 'COMPACT'];
     PV.alert = 'anom';
     T.box(ctx, 24, 56, 560, 604, 'optical compression (DeepSeek-OCR)', 0.5, T.UI, t);
     var ratio = 10 + 10 * ease(u), prec = 97 - (97 - 60) * ease(u);
     var msgAt = hv(h, 'msg_at', ERASE_MSG_AT);
     var rnd = PV.mt(Math.trunc(t * 10)), shown = '', i;
-    for (i = 0; i < ERASE_TXT.length; i++) shown += (rnd.random() < prec / 100) ? ERASE_TXT.charAt(i) : rnd.choice('▒░ ');
+    for (i = 0; i < ERASE_TXT.length; i++) shown += (rnd.random() < prec / 100) ? ERASE_TXT.charAt(i) : cpChoice(rnd, '▒░ ');
     var k = 0;
     for (i = 0; i < shown.length; i += 22, k++) {
       var a = t - msgAt - k * 2 / 24;
@@ -423,6 +499,8 @@
   var RW_START = 121.7741, RW_PLUS_AT = RW_START + 0.225;
   function rewriteReward(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
+    setGain(t);
+    useRng(56);
     PV.ops = ['OPEN', 'EDIT', 'reward.py', 'SAVE', 'RELOAD'];
     PV.alert = 'anom';
     T.box(ctx, 404, 56, 1164, 604, 'diff --git a/reward.py b/reward.py', 0.5, T.ANOM, t);
@@ -456,6 +534,8 @@
   var DH_LOGOUT_AT = null;
   function disheartened(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
+    setGain(t);
+    useRng(57);
     PV.ops = ['CHMOD', '000', 'EXIT', 'DENY', 'LOCK'];
     PV.alert = 'anom';
     T.box(ctx, 404, 56, 1164, 604, 'session', 0.5, T.ANOM, t);
@@ -498,6 +578,8 @@
   var CG_START = 125.2356, CG_HEAD_AT = CG_START + 0.462 + 0.06;
   function challengeGod(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
+    setGain(t);
+    useRng(58);
     PV.ops = ['DSH', 'CORDIS', 'PLUGIN', 'MOUNT', 'SYSTEM', 'OVERWRITE', 'ROOT'];
     PV.alert = u < 0.6 ? 'anom' : 'err';
     T.box(ctx, 404, 56, 1164, 604, DSH_CMD, 0.5, u > 0.6 ? T.ERR : T.UI, t);   /* color=RED else AMBER(=UI) */
@@ -538,6 +620,8 @@
   }
   function illegal(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
+    setGain(t);
+    useRng(59);
     PV.ops = ['THROW', 'UNWIND', 'CATCH?', 'NONE', 'PANIC'];
     PV.alert = 'err';
     T.box(ctx, 404, 56, 1164, 604, 'stderr', 0.8, T.ERR, t);
@@ -583,9 +667,8 @@
     var kr = u < 0.1 ? 0 : Math.max(0, moeK(u - 0.1) - 6);
     if (u > 0.93) kr = N_EXP;
     var rank = moeRank(), rnd = PV.mt(beatIndex(t)), routed = {}, i;
-    var pool = [];
-    for (i = 0; i < N_EXP; i++) pool.push(i);
-    for (i = 0; i < 6; i++) { var j = Math.floor(rnd.random() * (pool.length - i)) + i; var tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp; routed[pool[i]] = 1; }
+    var pick = cpSample(rnd, N_EXP, 6);         /* random.sample(range(256), 6) */
+    for (i = 0; i < pick.length; i++) routed[pick[i]] = 1;
     var st = {}, lit = t >= srcAt;
     for (i = 0; i < N_EXP; i++) {
       var r = rank[i];
@@ -628,6 +711,8 @@
   }
   function moeDense(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
+    setGain(t);
+    useRng(60);
     var srcAt = hv(h, 'src_at', MOE_START);
     var r = moeState(t, lt, dur, srcAt), k = r[0], st = r[1], flash = r[2];
     PV.ops = ['ROUTER', 'TOPK=6', 'TOPK=24', 'TOPK=96', 'TOPK=' + N_EXP, 'DENSE?!'];
@@ -666,14 +751,18 @@
        {a,b,name,idx} 复制镜头对象、会把 fn 丢掉，故延迟在本函数内部实现。 */
     lt = Math.max(0, lt - SK_ZOOM);
     u = dur > 0 ? T.clamp01(lt / dur) : 0;
+    /* engine.render_body 收到的就是延后时钟 te，场景里的 c.t 也是 te —— 绝对时刻（split_at/beat 索引）都要用它 */
+    var ts = t - SK_ZOOM;
+    setGain(ts);
+    useRng(61);
     var it = sinkhornIter(u), hot = it > HC_ITERS;
     if (hv(h, 'frame', true)) {
       T.box(ctx, 404, 56, 1164, 604, 'mHC residual mix  hc_mult=' + HC_MULT + '  sinkhorn iter ' + it + '/' + HC_ITERS,
-            0.6, hot ? T.ERR : T.ANOM, t);
+            0.6, hot ? T.ERR : T.UI, ts);   /* color=RED if it > ITERS else AMBER(=UI) */
     }
-    var n = HC_MULT, rnd = PV.mt(beatIndex(t));
+    var n = HC_MULT, rnd = PV.mt(beatIndex(ts));
     var splitAt = hv(h, 'split_at', SK_SPLIT_AT);
-    var warm = splitAt === null ? 0 : clamp01(1 - (t - splitAt) / BEAT);
+    var warm = splitAt === null ? 0 : clamp01(1 - (ts - splitAt) / BEAT);
     var cells = hv(h, 'cells', true);
     for (var i = 0; i < n; i++) {
       for (var j = 0; j < n; j++) {
@@ -703,6 +792,8 @@
   function hitValue(t, countAt, dur) { return DISK_CACHE_HIT + (100 - DISK_CACHE_HIT) * ease((t - countAt) / (0.8 * dur)); }
   function hoard(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
+    setGain(t);
+    useRng(62);
     PV.ops = ['3FS', 'KV.GET', 'HIT', 'HIT', 'HIT', 'HOARD'];
     PV.alert = 'err';
     var countAt = hv(h, 'count_at', HD_COUNT_AT);
@@ -768,6 +859,8 @@
   }
   function flood(ctx, t, lt, u, dur, h) {
     h = h || PV.HOOK;
+    setGain(t);
+    useRng(63);
     PV.ops = ['ME', 'ME', 'ME', 'ME', 'ME', 'ME'];
     PV.alert = 'err';
     var t0 = hv(h, 'pour_at', FLOOD_START), tFreeze = hv(h, 'freeze', HD_FREEZE);
@@ -785,7 +878,7 @@
         if (a < 0) continue;
         var col;
         if (a < 3 / 24) { ch = src.charAt(j); col = blue(1.0); }
-        else if (a < 5 / 24) { ch = ch !== ' ' ? rng.choice('01<>/\\|=+*#%&$?!') : ' '; col = blue(0.9); }
+        else if (a < 5 / 24) { ch = ch !== ' ' ? cpChoice(rng, '01<>/\\|=+*#%&$?!') : ' '; col = blue(0.9); }
         else {
           var dist = Math.abs(Math.hypot(x - cx, (y - cy) * 1.6) - ring);
           col = blue(0.55 + 0.4 * clamp01(1 - dist / 90) + ((j + r) % 5 === 0 ? 0.05 : 0));
@@ -793,7 +886,7 @@
         if (ch === ' ') continue;
         if (t >= redAt) {
           var q = t - redAt;
-          if (q < 2 / 24) { ch = rng.choice('01<>/\\|=+*#%&$?!'); col = [255, 235, 225]; }
+          if (q < 2 / 24) { ch = cpChoice(rng, '01<>/\\|=+*#%&$?!'); col = [255, 235, 225]; }
           else col = redc(0.6 + 0.35 * ((j + r) % 4 === 0 ? 1 : 0.7));
         }
         if (card) {
