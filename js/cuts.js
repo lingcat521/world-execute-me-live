@@ -666,3 +666,82 @@
     }
   });
 })();
+
+/* ---- C03：pieces -> creation。161 个已加载的格子向网格中心排空（远处的先走），
+        缩成一点、由系统的琥珀色变她的蓝，聚成 8x8 的一个格子；格子再沿弧线飞进她的窗格、成为她的种子。 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var T0 = 5.236, PRE = 0.6, GATHER = 0.10, LAND = 0.46, FRAME = 0.34;
+  var G = [597, 240], S = [204, 300], FULLR = [24, 44, 1168, 608];
+  function eIn(u) { u = T.clamp01(u); return u * u * u; }
+  function eIo(u) { u = T.clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
+  function eOut(u) { u = T.clamp01(u); return 1 - Math.pow(1 - u, 3); }
+  function eBack(u, s) { u = T.clamp01(u); var c = s * 1.70158; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); }
+  function bez(p0, p1, bend, u) {
+    var mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2, dx = p1[0] - p0[0], dy = p1[1] - p0[1];
+    var cx = mx - dy * bend, cy = my + dx * bend, a = 1 - u;
+    return [a * a * p0[0] + 2 * a * u * cx + u * u * p1[0], a * a * p0[1] + 2 * a * u * cy + u * u * p1[1]];
+  }
+  function cellCenter(i) { var g = PV.GRID; return [g.x + (i % g.cols) * g.dx + g.w / 2, g.y + Math.floor(i / g.cols) * g.dy + g.h / 2]; }
+  var ORDER = null, MAXD = 1;
+  function order() {
+    if (ORDER) return ORDER;
+    var g = PV.GRID, arr = [], i, c;
+    MAXD = 0;
+    for (i = 0; i < g.n; i++) { c = cellCenter(i); var dd = Math.hypot(c[0] - G[0], c[1] - G[1]); if (dd > MAXD) MAXD = dd; arr.push([i, dd]); }
+    arr.sort(function (a, b) { return b[1] - a[1]; });   /* 远处的先走 */
+    ORDER = arr; return ORDER;
+  }
+  PV.addCut(T0, PRE, 1.42, function (ctx, t, cut) {
+    var land = T0 + LAND, g = PV.GRID;
+    var oc = PV.newCanvas(1280, 720), og = oc.getContext('2d');
+    if (PV.drawBackground) PV.drawBackground(og, t);
+    PV.shotPieces(og, t, Math.max(0, t - 3.620), 5.236 - 3.620, { cells: false });
+    var stage1 = PV.newCanvas(1280, 720), sg = stage1.getContext('2d');
+    PV.reveal(sg, t,
+      function (c) { c.drawImage(oc, 0, 0); },
+      function (c) { if (PV.drawBackground) PV.drawBackground(c, t); },
+      PV.inward(G[0], G[1], T0 - 0.52, T0 + 0.08, 760), { region: FULLR, cell: [8, 16], dur: 0.09 });
+    PV.reveal(ctx, t,
+      function (c) { c.drawImage(stage1, 0, 0); },
+      function (c) { PV.shotCreation(c, t, Math.max(0, t - T0), 7.082 - T0); },
+      PV.radial(G[0], G[1], T0 + GATHER, 1400), { region: FULLR, cell: [8, 16], dur: 0.09 });
+    var lift = T.clamp01((t - (T0 - PRE)) / 0.05), arrived = 0, i;
+    if (t < T0 + GATHER) {
+      var O = order();
+      for (var k = 0; k < O.length; k++) {
+        i = O[k][0]; var dist = O[k][1], c2 = cellCenter(i);
+        var t0 = T0 - 0.55 + 0.3 * (1 - dist / MAXD);
+        var s = T.clamp01((t - t0) / 0.25);
+        var v = T.clamp01((t - t0 - 0.1) / (T0 + GATHER - t0 - 0.1));
+        if (v >= 1) { arrived++; continue; }
+        var xy = [c2[0] + (G[0] - c2[0]) * eIn(v), c2[1] + (G[1] - c2[1]) * eIn(v)];
+        var hw = 21 + (3 - 21) * s, hh = 18 + (3 - 18) * s;
+        var col = [255 + (196 - 255) * s, 204 + (212 - 204) * s, 0 + 255 * s];
+        T.fill(ctx, xy[0] - hw, xy[1] - hh, xy[0] + hw, xy[1] + hh, col, 1);
+        if (s < 0.3 && k < 40) T.textMono(ctx, ('00' + (i + 1)).slice(-3), xy[0] - hw + 6, xy[1] - hh + 10, T.BG, 13);
+      }
+      var kk = arrived / g.n;
+      if (kk > 0) { var rr = 1 + kk * 4; T.fill(ctx, G[0] - rr, G[1] - rr, G[0] + rr, G[1] + rr, T.mix(T.ME_HI, 1.0), Math.min(1, 0.4 + kk)); }
+    } else if (t < land) {
+      var u = T.clamp01((t - (T0 + GATHER)) / (LAND - GATHER));
+      var trail = [[0.05, 0.25], [0.025, 0.5], [0.0, 1.0]];
+      for (var q = 0; q < 3; q++) {
+        var ug = T.clamp01(u - trail[q][0]);
+        var pos = bez(G, S, 0.28, q === 2 ? eBack(ug, 1.0) : eIo(ug));
+        var ss = 4.5 + 4.5 * Math.sin(Math.PI * ug);
+        T.fill(ctx, pos[0] - ss, pos[1] - ss, pos[0] + ss, pos[1] + ss, T.mix(T.ME_HI, 1.0), trail[q][1]);
+      }
+    }
+    if (t >= land) {
+      var e = eOut((t - land) / FRAME);
+      var rect = [S[0] - 4 + (24 - (S[0] - 4)) * e, S[1] - 4 + (56 - (S[1] - 4)) * e,
+                  S[0] + 4 + (384 - (S[0] + 4)) * e, S[1] + 4 + (604 - (S[1] + 4)) * e];
+      var lvl = 0.45 + 0.35 * PV.pulse(t);
+      T.box(ctx, rect[0], rect[1], rect[2], rect[3], e > 0.97 ? '/dev/me  pid 4471' : '', e > 0.97 ? lvl : lvl + 0.35 * (1 - e));
+      var k2 = Math.max(0, 1 - (t - land) / 0.92);
+      if (k2 > 0) { var s2 = 4 + 3 * PV.pulse(t); T.fill(ctx, S[0] - s2, S[1] - s2, S[0] + s2, S[1] + s2, T.mix(T.ME_HI, 1.0), k2); }
+    }
+  });
+})();

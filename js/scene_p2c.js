@@ -69,11 +69,16 @@
     return blk;
   }
 
+  PV.p2cMine = {};
+  PV.p2cReg = function (name, a, b, fn) {
+    PV.p2cMine[name] = { a: a, b: b, fn: fn, name: name };
+    PV.reg(name, a, b, fn);
+  };
   PV.p2c = {
     W: W, H: H, FPS: FPS, BEAT: BEAT, FB: FB, LEFT: LEFT, CENTER: CENTER, FULL: FULL,
     pulse: pulse, beatT: beatT, beatIndex: beatIndex, mixc: mixc, rgba: rgba, pad: pad, padL: padL, padRa: padRa,
     red: red, amb: amb, blue: blue, anom: anom, mono: mono, monoW: monoW, head: head,
-    bannerBits: bannerBits, bannerFit: bannerFit, bannerBlock: bannerBlock,
+    bannerBits: bannerBits, bannerFit: bannerFit, bannerBlock: bannerBlock, MONO_ADV_W: MONO_ADV,
     bannerBlockTop: bannerBlockTop, bannerBlockDraw: bannerBlockDraw
   };
 })();
@@ -121,7 +126,7 @@
     } else if (lay === 2) {
       var cw = 15 * P.MONO_ADV_W;
       var bits = P.bannerFit('EXECUTE', 26, 16 / cw, cw, 1100);
-      var rng = PV.mt(Math.floor(t * FPS) * 7919 + 7);
+      var rng = PV.mt(Math.floor(t * P.FPS) * 7919 + 7);
       var x0 = 594 - bits.width * cw / 2, y0 = 100 + Math.floor((26 - bits.height) * 16 / 2), r, q;
       for (r = 0; r < bits.height; r++) {
         var s = '';
@@ -198,6 +203,160 @@
       mono(ctx, '      (R1-Zero issue; fixed by a language-consistency reward)', 60, 474, amb(0.7), 16);
     }
     if (n >= 5) mono(ctx, 'reward: language consistency ... ignored', 60, 520, red(1.0), 20, 'left', true);
+  };
+})();
+
+
+/* ================================================================ 头像半调（tuikit.halfblock 的等价物）
+   原工程用 whale-*.webp 立绘做半调网点画；本移植用 avatars/*.png（dsh 鲸鱼小姐）代替，
+   只取亮度+网点，颜色仍然是场景给的 tint（红/蓝），所以两者的观感一致。 */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui, P = PV.p2c;
+  var IMGS = {}, CACHE = {}, READY = false, PENDING = 0;
+  /* 表情名 -> 素材（沿用原工程的 EXPRS 命名，方便逐句对照 Python） */
+  var MAP = {
+    cheerful: 'avatars/complete.png', starry: 'avatars/a3/00900.png', shy: 'avatars/a2/00600.png',
+    serious: 'avatars/a2/00500.png', confused: 'avatars/a2/00400.png', frightened: 'avatars/lost.png',
+    angry: 'avatars/forged.png', exasperated: 'avatars/left.png', full: 'avatars/complete.png'
+  };
+  var CROPS = { full: [0, 0, 1, 1], upper: [0.05, 0.0, 0.95, 0.62], face: [0.15, 0.02, 0.85, 0.45],
+                bust: [0.08, 0.0, 0.92, 0.72] };
+  function load(name) {
+    var path = MAP[name] || MAP.cheerful;
+    if (IMGS[path] !== undefined) return IMGS[path];
+    IMGS[path] = null;
+    if (PV.loadImage) {
+      PENDING++;
+      PV.loadImage(path, function (im) { IMGS[path] = im; PENDING--; READY = true; });
+    }
+    return null;
+  }
+  PV.p2cImagesReady = function () { return PENDING === 0 && READY; };
+  PV.p2cPortraitInfo = function (name, crop, maxW, maxH, px) {
+    var im = load(name), c = CROPS[crop] || CROPS.full;
+    var sw = im ? im.width : 120, sh = im ? im.height : 120;
+    var cw = (c[2] - c[0]) * sw, ch = (c[3] - c[1]) * sh, aspect = ch / cw;
+    var cols = Math.max(2, Math.floor(Math.min(maxW / px, (maxH / px) / aspect)));
+    var rows = Math.max(2, Math.round(cols * aspect)); rows -= rows % 2;
+    return { im: im, x: c[0] * sw, y: c[1] * sh, w: cw, h: ch, cols: cols, rows: rows, px: px };
+  };
+  PV.p2cPortraitSize = function (name, crop, maxW, maxH, px) {
+    var o = PV.p2cPortraitInfo(name, crop, maxW, maxH, px);
+    return [o.cols * px, o.rows * px];
+  };
+  /* 生成半调贴图（一次），返回 {cv, alpha} */
+  PV.p2cPortraitBuild = function (name, crop, maxW, maxH, px, tint) {
+    var key = name + '|' + crop + '|' + maxW + '|' + maxH + '|' + px + '|' + tint.join(',');
+    if (CACHE[key] !== undefined) return CACHE[key];
+    var o = PV.p2cPortraitInfo(name, crop, maxW, maxH, px);
+    if (!o.im) { return null; }
+    var tmp = PV.newCanvas(o.cols, o.rows), g = tmp.getContext('2d');
+    g.imageSmoothingEnabled = true;
+    g.drawImage(o.im, o.x, o.y, o.w, o.h, 0, 0, o.cols, o.rows);
+    var d = g.getImageData(0, 0, o.cols, o.rows).data;
+    var cv = PV.newCanvas(o.cols * px, o.rows * px), c2 = cv.getContext('2d');
+    var levels = 8, step = 255 / (levels - 1), alpha = new Uint8Array(o.cols * o.rows), q, r;
+    for (r = 0; r < o.rows; r++) {
+      for (q = 0; q < o.cols; q++) {
+        var i = (r * o.cols + q) * 4;
+        if (d[i + 3] <= 100) continue;
+        var lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        var v = (0.16 + 0.84 * lum / 255);
+        v = Math.round(v * (levels - 1)) * step / 255;
+        alpha[r * o.cols + q] = 255;
+        c2.fillStyle = T.css(T.mix(tint, v), 1);
+        c2.fillRect(q * px, r * px, px, px);
+      }
+    }
+    /* grid_mask：每格右侧 1px 竖缝（px>=3 时） */
+    if (px >= 3) {
+      c2.fillStyle = T.css(T.BG, 1);
+      for (q = 1; q < o.cols; q++) c2.fillRect(q * px - 1, 0, 1, o.rows * px);
+    }
+    var out = { cv: cv, alpha: alpha, cols: o.cols, rows: o.rows, px: px, w: o.cols * px, h: o.rows * px };
+    CACHE[key] = out;
+    return out;
+  };
+  PV.p2cPortrait = function (ctx, name, crop, maxW, maxH, px, x, y, tint, alpha) {
+    var p = PV.p2cPortraitBuild(name, crop, maxW, maxH, px, tint);
+    if (!p) return null;
+    ctx.save();
+    if (alpha !== undefined && alpha < 0.999) ctx.globalAlpha = Math.max(0, alpha);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(p.cv, Math.round(x), Math.round(y));
+    ctx.restore();
+    return p;
+  };
+  PV.p2cAvatarPath = function (name) { return MAP[name] || MAP.cheerful; };
+})();
+
+/* ---- flash_red：v1 在拍点上把整幅画面（含 chrome）colorize 成红色。
+        canvas 里用 multiply 近似：R 保留、G/B 压掉。注册在 PV.overlay（chrome 之后）。 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV;
+  var W = 1280, H = 720;
+  var prev = PV.overlay;
+  PV.p2cFlash = null;
+  PV.overlay = function (ctx, t) {
+    if (prev) { try { prev(ctx, t); } catch (e) {} }
+    if (PV.p2cFlash !== null && PV.p2cFlash !== undefined && Math.abs(PV.p2cFlash - t) < 1e-6) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.fillStyle = 'rgb(255,86,66)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+    }
+  };
+})();
+
+/* ================================================================ 注册：镜头 64-77（EXECUTION hits + 计数） */
+(function () {
+  'use strict';
+  var PV = window.PV;
+  var T0 = [147.6202, 148.5433, 149.6972, 150.6202, 151.5433, 152.4664, 153.3895, 154.3125, 155.2356, 156.1587,
+            157.0818, 158.0049];
+  for (var k = 0; k < 12; k++) {
+    (function (k) {
+      PV.p2cReg('shot_exec_hit_' + PV.p2c.pad(k, 2), T0[k], T0[k + 1] || 158.6972, function (ctx, t, lt, u, dur) {
+        PV.shotExecHit(ctx, t, lt, u, dur, { k: k });
+      });
+    })(k);
+  }
+  PV.p2cReg('shot_count', 158.6972, 161.4664, function (ctx, t, lt, u, dur) { PV.shotCount(ctx, t, lt, u, dur); });
+  PV.p2cReg('shot_exec_hit_12', 161.4664, 162.1587, function (ctx, t, lt, u, dur) {
+    PV.shotExecHit(ctx, t, lt, u, dur, { k: 12 });
+  });
+  /* cut 78 的出场镜头（#13）在 v2 里按名字取用，这里给它一个标准名 */
+  PV.p2cReg('shot_exec_hit', 161.4664, 162.1587, function (ctx, t, lt, u, dur) {
+    PV.shotExecHit(ctx, t, lt, u, dur, { k: 12 });
+  });
+  PV.p2cHitTimes = T0;
+})();
+
+
+/* ================================================================ 分派
+   scene_boot.js 的通用分支（else if (s.fn)）里引用了那个 IIFE 作用域外的 T，
+   调用 PV.reg 注册的镜头会抛 "T is not defined"。这里在本文件内包一层 PV.scene：
+   先让 cut 层（PV.activeCut）优先，然后处理本文件注册的镜头，其余交回原分派器。 */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var orig = PV.scene, MINE = PV.p2cMine;
+  PV.p2cScene = function (ctx, t) {
+    var s = null;
+    for (var k in MINE) { var m = MINE[k]; if (t >= m.a && t < m.b) s = m; }
+    return s;
+  };
+  PV.scene = function (ctx, t) {
+    if (PV.activeCut && PV.activeCut(t)) { return orig(ctx, t); }
+    var s = PV.p2cScene(ctx, t);
+    if (!s) return orig(ctx, t);
+    var d = (PV.SHOT_DELAY && PV.SHOT_DELAY[s.name]) || 0;
+    var a2 = Math.min(t, s.a + d), lt = Math.max(0, t - a2), dur = s.b - a2;
+    s.fn(ctx, t, lt, dur > 0 ? T.clamp01(lt / dur) : 0, dur);
+    PV.shotName = s.name;
   };
 })();
 
