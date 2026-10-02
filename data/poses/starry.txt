@@ -1,0 +1,129 @@
+[art]
+                                                
+                                                
+             \\\/       \                       
+             \::)     /'_'.''\                  
+              /\:\   '/::::::\-\                
+              \_/:\ /:::::::::::\               
+               \_.:\:::::::@:::::)              
+                  \::\:@:::::::::-\             
+                  /::::::v:::::::\              
+                   (:::|\::\::::::\             
+               --/'::::::/::::\\|::\            
+             //::::\\::::|-\::::|:|/            
+        /\\.-:::::::\::||||::::::\::\           
+       \ -::::::::::::\:|:\___:_//:-/           
+      /:/::..::::::::::\\:::\::::::/:'          
+      \:::/  \:::::::|:-::----::::////          
+       \:::--:::::::::::::::::-:\://            
+        -/:::/::::///:::::::::::\\-             
+          (:\ (::/:::::::::::::::)              
+    \)   /:_   /::::|::::::::::::'              
+    \\'--:// //:::/:|:::::::::::::)             
+        // //::////::::::::::::::::(        /'  
+          /:||///:::\:::::::::::::|:.--\  /':/  
+        /'::||/:/:|::\:::::::\::::|) \':'(:'/   
+       /::::|::/:::::\\:::::\\::::/'   \\:/     
+     /'::::::::::/::::\::::::::://::)    '      
+    /:::::::::::::::|:::::___///::::'   /:)     
+   (::::::::::::::://::::::::::::|:::\ /:.      
+   /:\\::::::::::::|:::::::::::::|::::'::/      
+   .:::\:::::::::::|:::::::::::::|\:|:|//       
+    \.:::-\:::::::|::::::::::::::||:|:|)        
+      \\:::\\:::::::::::::::::::::|:|:::\       
+        \\:::\\:::::::::::::::::::::::|::\      
+          \_..\\\::::::::::::::::::::::::'      
+              \\.'\:::::::::::::::||:::::.      
+                  \\\\::::::::::::/|:::///      
+                   ':\\.'\-_:-:---/:./__/       
+                  /:)    (|:_____/--            
+                 (:_)    (:)                    
+                 \:-)    (:)                    
+                  \'.   /:\)                    
+                        ...                     
+[shade]
+                                                
+                                                
+             6666       4                       
+             6776     65555666                  
+              5665   64333333466                
+              56532 5333344433353               
+               2222233354455443323              
+                  22233566766432444             
+                  3222356666633333              
+                   1122543554343333             
+               223332225543232346456            
+             43222244215536544556366            
+        32333333332234244477766775656           
+       3 3333333333333333255555653343           
+      44344333333333333321122212122234          
+      34344  3333443346543444442222344          
+       44433334444444455566667654344            
+        444444444455456667777666555             
+          444 44443247667777776666              
+    44   444   1222166677776667766              
+    44444444 1122222767777767777765             
+        44 1121222226667767767777662        33  
+          122222222266667666776776622333  3332  
+        2222222222212667666766776651 23333332   
+       22222221222222576666754666631   2222     
+     22222221222222222466666666665221    2      
+    222222222222222223333566765522222   222     
+   23233321222222222333333333323222222 222      
+   565433222222222223333333333333222222223      
+   66766222223222223333344433333322221223       
+    556655533332222333333444333333222222        
+      55677653222233333333443333332222222       
+        5566763222233333333334333333222122      
+          56666533333443333333333322222222      
+              5666543443434334433333223223      
+                  665444444443343346233456      
+                   5676655444444446666667       
+                  565    66666766767            
+                 2554    665                    
+                 1333    675                    
+                  122   3443                    
+                        222                     
+[part]
+                                                
+                                                
+             aaaa       h                       
+             aaaa     wwwwwwww                  
+              aaaa   whhhhhhhhwh                
+              aaaaa hhhhhhhhhhhhh               
+               aaaHHhhhhhhhhhhhhhh              
+                  HHhhhhhhhhhhhhhhh             
+                  aaahhhhhhhhhhhhh              
+                   aahhhhhhhhhhhhhH             
+               HHHHaabbbbHbbbbbHaHaa            
+             HHHHHHaabbbbbbbbbbbaaaa            
+        HHHHHHHHHHHHHbbbbHbbbbbbaaaaa           
+       H HHHHHHHHHHHHHHbbbbbbbbbaaaaa           
+      HHHHHHHHHHHHHHHHHHbbbbbbbbaaaHHH          
+      HHHHH  HHHHHHHHHbbbbbbbHbbaaaHHH          
+       HHHHHHHHHHHHHHHbbbbbbbbbbHHHH            
+        HHHHHHHHHHbbbbbbbbbbbbbbbbb             
+          HHH HHHbsssbbbbbbbbbbbbb              
+    HH   HHH   sssssbbbbbbbbbbbbbb              
+    HHHHHHHH sssssssbbbbbbbbbbbbbbb             
+        HH ssssHHHssbbbbbbbbbbbbbbbt        tt  
+          ssssHHHHssbbbbbbbbbbbbbbbstttt  tttt  
+        sssssssssssssbbbbbbbbbbbbbbs tttttttt   
+       ssssssssssssssbbbbbbbbsbbbbss   tttt     
+     ssssssssssssssssssbbbbbbbbbbbsss    t      
+    sssssssssssssssssssssbbbbbbbsssss   ttt     
+   sssssssssssssssssssssssssssssssssss sss      
+   bbbbsssssssssssssssssssssssssssssssssss      
+   bbbbbsssssssssssssssssssssssssssssssss       
+    bbbbbbbsssssssssssssssssssssssssssss        
+      bbbbbbbssssssssssssssssssssssssssss       
+        bmmmmmmmmmmmmmmmmmmmmmmmmmsmmmmmmm      
+          mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm      
+              mmmmmmmmmmmmmmmmmmmmmmmmmmmm      
+                  mmmmmmmmmmmmmmmmmmmmmmmm      
+                   mmmmmmmmmmmmmmmmmmmmmm       
+                  mmm    mmmmmmmmmmm            
+                 ffff    fff                    
+                 ffff    fff                    
+                  fff   ffff                    
+                        fff                     
