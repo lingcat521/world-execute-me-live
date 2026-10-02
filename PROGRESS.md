@@ -114,3 +114,28 @@ inner 360x662  dpr 2  barH 57  portrait true  scale 0.473  stage 605x340
 - 02 SFT 之前还有 8 个数学图形镜头：shot_points / dimension / circle / circumference / sine / tangent / infinity / limit（29.236 - 44.005 s）。
 - 已定位实现位置：`continuity_full_v2/scenes.py:300-530`，其中 shot_points 依赖 `points_pos(t, u)`。
 
+
+## 数学图形段 + MT19937（29.24 - 32.93 s）
+
+| 镜头 | 时间 | 状态 |
+|---|---|---|
+| shot_points | 29.236-30.851 | ✓ 1400 点点云从随机塌缩成她的轮廓（点集用 Pillow 预生成到 `data/her_points.json`） |
+| shot_dimension | 30.851-32.928 | ✓ me.hidden[0:4096] 逐格传给 you，热力图分布**逐格一致** |
+
+### MT19937（关键基础设施）
+
+项目所有随机都来自 Python 的 `random.Random(n)`（Mersenne Twister）。我实现了 CPython 等价的 `js/mt19937.js`
+（`init_by_array` seeding + `genrand_res53`），并用 4 个种子逐位验证：
+
+```
+种子 9  Python [0.463007357815, 0.373311931395, 0.138539412514, 0.866561849986]
+        JS     [0.463007357815, 0.373311931395, 0.138539412514, 0.866561849986]   ← 完全相同
+```
+
+已把所有随机源换成它（decode 乱码、init 柱状图噪声、点集散落位置、热力图数值、loss 噪声）。
+这是 dimension 镜头能逐格匹配的原因，也是后面所有含随机镜头的共同基础。
+
+### 剩余待做
+- shot_circle / circumference / sine / tangent / infinity / limit（32.928 - 44.005 s）
+- shot_current 起进入 02 SFT 段
+
