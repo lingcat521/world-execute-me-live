@@ -1363,12 +1363,42 @@
   };
 
   /* ---- 95 shot_last_execution ---- */
+  /* C95 的命中：原作是把**上一帧内容**（鲸落那一帧）colorize 成红，再按 k 衰减贴回来——
+     不是压暗当前帧（当前帧已经是暗的，乘红只会更暗）。这里离屏渲染一次并缓存。 */
+  var _red95 = null;
+  PV.p2cRed95 = function () {
+    if (_red95) return _red95;
+    var cv = PV.newCanvas(W, H), c = cv.getContext('2d');
+    var tp = 205.5416;   /* ceil(T*FPS)-1 那一帧 */
+    if (PV.drawBackground) PV.drawBackground(c, tp);
+    var q = PV.shotTime('shot_whale_fall', tp);
+    PV.shotWhaleFall(c, tp, q[0], q[1], 205.5433 - 193.5433, {});
+    var im = c.getImageData(0, 0, W, H), d = im.data;
+    var LUT = [], i, u1, u2;
+    for (i = 0; i < 256; i++) {
+      if (i <= 128) { u1 = i / 128; LUT.push([4 + (150 - 4) * u1, 7 + (30 - 7) * u1, 15 + (20 - 15) * u1]); }
+      else { u2 = (i - 128) / 127; LUT.push([150 + (255 - 150) * u2, 30 + (59 - 30) * u2, 20 + (48 - 20) * u2]); }
+    }
+    for (var j = 0; j < d.length; j += 4) {
+      var lum = (d[j] * 0.299 + d[j + 1] * 0.587 + d[j + 2] * 0.114) | 0;
+      var cc = LUT[lum > 255 ? 255 : lum];
+      d[j] = cc[0]; d[j + 1] = cc[1]; d[j + 2] = cc[2];
+    }
+    c.putImageData(im, 0, 0);
+    _red95 = cv; return cv;
+  };
   PV.shotLastExecution = function (ctx, t, lt, u, dur, o) {
     PV.ops = ["EXECUTE"];
     PV.alert = 'err';
-    /* C95 的命中：前 6 帧整幅变红，强度按原作的 k = [1.0,1.0,0.8,0.55,0.3,0.12][fr] 衰减 */
-    if (lt < 0.25) { PV.p2cFlash = t; PV.p2cFlashK = [1.0, 1.0, 0.8, 0.55, 0.3, 0.12][Math.min(5, Math.round(lt * 24))]; }
-    else { PV.p2cFlash = null; PV.p2cFlashK = 1; }
+    /* C95 的命中：前 6 帧把上一帧的红色版本按 k 衰减贴上来，另加一层平铺红 */
+    PV.p2cFlash = null; PV.p2cFlashK = 1;
+    var fr95 = Math.round(lt * 24);
+    if (fr95 < 6) {
+      var k95 = [1.0, 1.0, 0.8, 0.55, 0.3, 0.12][fr95];
+      ctx.save(); ctx.globalAlpha = k95; ctx.drawImage(PV.p2cRed95(), 0, 0); ctx.restore();
+      ctx.save(); ctx.globalAlpha = (60 / 255) * k95 * (fr95 < 2 ? 1 : 0.5);
+      ctx.fillStyle = T.css(T.ERR); ctx.fillRect(0, 0, W, H); ctx.restore();
+    }
     for (var x = 24; x < 1164; x += 9)
       mono(ctx, (Math.floor(x / 9) % 3) ? '_' : '.', x, 548 + 4 * Math.sin(x * 0.07), amb(0.3), 14);
     T.fill(ctx, 640, 520, 643, 523, blue(1.0), 1);

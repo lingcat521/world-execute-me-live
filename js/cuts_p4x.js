@@ -30,7 +30,7 @@
     return [Math.round(a[0] + (b[0] - a[0]) * u), Math.round(a[1] + (b[1] - a[1]) * u),
             Math.round(a[2] + (b[2] - a[2]) * u)];
   }
-  function amb(lv) { return T.mix(T.UI, lv); }
+  function amb(lv) { return T.amb(lv); }   /* 走共享层：含 engine.ui_gain 曲线 */
   function anom(lv) { return T.mix(T.ANOM, lv); }
   function blue(lv) { return T.mix(T.ME_TEXT, lv); }
   function red(lv) { return T.mix(T.ERR, lv); }

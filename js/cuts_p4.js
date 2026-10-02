@@ -28,7 +28,7 @@
   }
   function red(lv) { return T.mix(T.ERR, lv); }
   function blue(lv) { return T.mix(T.ME_TEXT, lv); }
-  function amb(lv) { return T.mix(T.UI, lv); }
+  function amb(lv) { return T.amb(lv); }   /* 走共享层：含 engine.ui_gain 曲线 */
   function anom(lv) { return T.mix(T.ANOM, lv); }
   function rgba(c, a) { return T.css(c, a === undefined ? 1 : a); }
   function mk() { return PV.newCanvas(W, H); }
