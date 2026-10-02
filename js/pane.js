@@ -116,7 +116,59 @@
       composerCard('', false, t, { placeholder: '发消息或创建任务，/ 调用指令，@ 文件或对话', model: modelLabel(t), running: true }) +
       statsRow(1, 1, null, String(Math.max(1, rngN)), 0);
   }
-  PV.paneBody = function (t) { if (t < CREATE) return ''; return t < SEND ? hero(t) : chat(t); };
+
+  /* ---- batch_a2（16.0 - 29.28 s，01 PRETRAIN）：一轮轮对话长出来 ---- */
+  var A2_T0 = 16.0, A2_T1 = 29.28, TYPE_AHEAD = 0.55;
+  var FREQ = '的 的 。the the , of 是 了 and 的 ， 我 the 。 。 在 a 的';
+  var FRAG = '你好 你好 hello , the world 是 一个 的 时候 我们 is a 。 你 们 好 the day';
+  var BASETXT = '你好，我是一名大三学生，今天想和大家分享一下我的考研经验。首先，要选对学校和专业……';
+  var TURNS = [
+    [SEND, 'soup', SEND + 0.15, 14, 17.30, '00:12'],
+    [beat(39), FREQ, beat(39) + 0.20, 22, beat(39) + 1.35, '03:47'],
+    [beat(47), FRAG, beat(47) + 0.20, 20, beat(47) + 2.30, '09:30'],
+    [beat(55), BASETXT, beat(55) + 0.20, 17, beat(55) + 2.95, '21:05']];
+  function soupOf(n) { var s = '', i; for (i = 0; i < n; i++) s += SOUP[i % SOUP.length]; return s; }
+  function replyText(i, t) {
+    var Tn = TURNS[i], txt = Tn[1], start = Tn[2], rate = Tn[3], end = Tn[4];
+    if (t < start) return '';
+    var n = Math.floor((Math.min(t, end) - start) * rate);
+    if (txt === 'soup') return t < end ? soupOf(n) : soupOf(Math.floor((end - start) * rate));
+    return t < end ? txt.slice(0, n) : txt;
+  }
+  function tailRow(duration, clock) {
+    function icon(n) { return '<button type="button" class="xzv4MW_action">' + svg(n, 16) + '</button>'; }
+    return '<div class="TS9iAW_root" data-actions-reveal="always"><div class="xzv4MW_actions TS9iAW_actions">' +
+      icon('IconCopyOutline16') + icon('IconLikeOutline16') + icon('IconDislikeOutline16') + icon('IconBranchOutline16') +
+      '<span class="Q51KRG_root"><button type="button" class="Q51KRG_trigger">' + svg('IconClockOutline16', 16) +
+      '<span class="Q51KRG_label">用时 ' + esc(duration) + '</span></button></span>' +
+      '<span class="xzv4MW_timeEnd">' + esc(clock) + '</span></div></div>';
+  }
+  function a2Header(t) {
+    return '<div class="pv-head"><div class="pv-pet"><img src="avatars/a2/' + pad(Math.round(t * FPS), 5) + '.png"></div>' +
+      '<div class="pv-who"><div class="pv-name">大肥鱼</div><div class="pv-state"><span class="pv-dot" style="background:#d29922"></span>预训练中 · ' +
+      esc(modelName(t)) + '</div></div></div>';
+  }
+  function a2Body(t) {
+    var rows = [], turnsDone = 0, typing = '', i, j;
+    for (i = 0; i < TURNS.length; i++) {
+      var Tn = TURNS[i], send = Tn[0], end = Tn[4], clock = Tn[5];
+      if (i && t >= send - TYPE_AHEAD && t < send) typing = '你好'.slice(0, 1 + (((t - (send - TYPE_AHEAD)) / (TYPE_AHEAD / 2)) > 1 ? 1 : 0));
+      if (t < send) continue;
+      rows.push('<div style="opacity:' + smooth((t - send) / 0.12).toFixed(3) + '">' + userRow('你好') + '</div>');
+      rows.push(herRow(replyText(i, t) || '\u200b'));
+      if (t >= end + 0.1) { rows.push(tailRow((end - send).toFixed(1) + '秒', clock)); turnsDone++; }
+    }
+    var running = false;
+    for (j = 0; j < TURNS.length; j++) if (t >= TURNS[j][0] && t < TURNS[j][4] + 0.1) running = true;
+    var cache = [0, 33, 50, 61, 66][Math.min(4, turnsDone)];
+    var tokens = 12 + 60 * turnsDone, nTurns = 0;
+    for (j = 0; j < TURNS.length; j++) if (t >= TURNS[j][0]) nTurns++;
+    return a2Header(t) + '<div id="timeline">' + rows.join('') + '</div>' +
+      composerCard(typing, !!typing, t, { model: modelLabel(t), running: running, typing: !!typing }) +
+      statsRow(nTurns, nTurns, null, String(tokens), cache);
+  }
+
+  PV.paneBody = function (t) { if (t < CREATE) return ''; if (t < SEND) return hero(t); if (t < A2_T0) return chat(t); return a2Body(t); };
   PV.paneVisible = function (t) { return t >= PANE_T0; };
   PV.sync = function (t) {
     if (!chatEl) chatEl = document.getElementById('chat');

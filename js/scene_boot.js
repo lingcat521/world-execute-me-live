@@ -95,7 +95,8 @@
     { a: 7.082, b: 9.851, fn: null, name: 'shot_parameters', idx: 4, shell: true },
     { a: 9.851, b: 11.005, fn: null, name: 'shot_init', idx: 5, shell: false },
     { a: 11.005, b: 12.389, fn: null, name: 'shot_world', idx: 6, shell: false },
-    { a: 12.389, b: 16.082, fn: null, name: 'shot_begin_sim', idx: 7, shell: false }];
+    { a: 12.389, b: 16.082, fn: null, name: 'shot_begin_sim', idx: 7, shell: false },
+    { a: 16.082, b: 19.543, fn: null, name: 'shot_corpus', idx: 8, shell: false }];
   PV.powerLog = powerLog;
   PV.logLine = logLine;
   PV.POWER_LOG = POWER_LOG;
@@ -203,6 +204,7 @@
     for (var i = 0; i < PV.SHOTS.length; i++) if (t >= PV.SHOTS[i].a && t < PV.SHOTS[i].b) s = PV.SHOTS[i];
     if (!s) { PV.shotName = null; return; }
     if (s.name === 'shot_power') { PV.ownPower(ctx, t); }
+    else if (s.name === 'shot_corpus') { PV.shotCorpus(ctx, t, Math.max(0, t - s.a)); }
     else if (s.name === 'shot_begin_sim') { PV.shotBeginSim(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a), s.b - s.a); }
     else if (s.name === 'shot_world') { PV.shotWorld(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
     else if (s.name === 'shot_parameters') { PV.shotParameters(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
@@ -220,7 +222,7 @@
   'use strict';
   var PV = window.PV, T = PV.tui;
   var C01_T = 1.312, C01_OPEN = 0.23, SHELL_CMD = './protect';
-  PV.loopEnd = 16.082;
+  PV.loopEnd = 19.543;
   PV.SHELL_SHOTS = [
     { a: 1.312, b: 3.620, cmd: './protect' },
     { a: 7.082, b: 9.851, cmd: 'neofetch' }];
@@ -504,5 +506,46 @@
       T.textMono(ctx, 'simulation: running', 460, 400, T.ui(0.9), 22);
       T.textMono(ctx, 'tokens budget: 45T', 460, 440, T.ui(0.7), 20);
     }
+  };
+})();
+
+/* ---- 镜头 8（corpus）：语料 token 河流 + tokens seen 计数（01 PRETRAIN 起） ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var CORPUS = ['the', 'of', 'print(', 'def', '你好', '数学', 'proof', '∑', 'if', 'return', 'whale', 'ocean', 'light',
+                'loss', 'import', 'λ', 'x²', 'class', '世界', '{', '}', '=>', '0x3F', 'because', 'therefore', '∴',
+                'sin', 'cos', 'limit', 'code', '猫', 'tomato', 'eggplant'];
+  PV.CORPUS = CORPUS;
+  var CJK = /[\u2E80-\uFFFF]/;
+  PV.corpusTokens = function (t) {
+    var out = [];
+    for (var row = 0; row < 20; row++) {
+      var speed = 90 + (row * 37) % 120;
+      var off = (t * speed + row * 53) % 120;
+      var x = 1150 + off - 120;
+      var k = 0;
+      while (x > 420) {
+        var tok = CORPUS[(row * 7 + k + Math.floor((t * speed) / 120)) % CORPUS.length];
+        var lv = 0.25 + 0.5 * (((row + k) % 3 === 0) ? 1 : 0);
+        if (x - 60 >= 414) out.push([x - 60, 80 + row * 24, tok, lv]);
+        x -= 60 + 7 * tok.length;
+        k++;
+      }
+    }
+    return out;
+  };
+  PV.shotCorpus = function (ctx, t, lt) {
+    PV.ops = ['DATALOADER', 'TOKENIZE', 'PACK', 'FORWARD', 'LOSS', 'BACKWARD', 'ALLREDUCE', 'STEP'];
+    T.box(ctx, 404, 56, 1164, 604, 'corpus.stream', 0.5, T.UI, t);
+    var toks = PV.corpusTokens(t);
+    for (var i = 0; i < toks.length; i++) {
+      var tk = toks[i];
+      if (CJK.test(tk[2])) T.textPIL(ctx, tk[2], tk[0], tk[1], T.ui(tk[3]), 15);
+      else T.textMono(ctx, tk[2], tk[0], tk[1], T.ui(tk[3]), 15);
+    }
+    var s = (45 * ((t - 16.0) / 13.3)).toFixed(2);
+    while (s.length < 5) s = ' ' + s;
+    T.textPIL(ctx, 'tokens seen  ' + s + 'T / 45T', 430, 572, T.ui(0.95), 18);
   };
 })();
