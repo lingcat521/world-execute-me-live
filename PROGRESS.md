@@ -188,3 +188,21 @@ inner 360x662  dpr 2  barH 57  portrait true  scale 0.473  stage 605x340
 
 `PV.loopEnd` 已到 50.928。剩余：shot_travel / unite / deeply（50.928-58.543）与 C21-C23 转场。
 
+
+### SFT 段已完成的 4 个镜头（累计）
+
+| 镜头 | 时间 | 验收 |
+|---|---|---|
+| shot_current | 44.005-47.236 | ✓ |
+| shot_blind | 47.236-49.082 | ✓ |
+| shot_dizzy | 49.082-50.928 | ✓✓ 浮点数一致 |
+| shot_travel | 50.928-54.159 | ✓✓ 年份/柱高/指针角度全同 |
+
+`PV.loopEnd = 54.159`。
+
+### 接手要点（unite / deeply）
+- 两个镜头在 **`scenes_chorus1.py`**（不是 scenes.py）：`shot_unite` 在 45 行，`shot_deeply` 在 121 行
+- shot_unite 依赖 `VOCAB`、`CHIP_SPEED`、`chip_x()`、`pulse()`、`token_id()`，以及 `me_pane` 的 glyph/morph 模式
+- shot_deeply 依赖 `deeply_pane()`、`BEAT`，43 层滚动列表 + 移动蓝块
+- 两者都用到 `c.echo`（右侧窗格的副标题），我的 frame.js 目前只画固定标题，需要支持 PV.centerSub 之类的动态副标题
+
