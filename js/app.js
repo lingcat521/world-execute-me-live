@@ -28,7 +28,22 @@
     scale: 1, audioReady: false, hold: false, layers: [], bootQueue: []
   };
   PV.audio = audioEl; PV.chat = chatEl; PV.screen = screenEl;
-  PV.VER = '202610022339';
+  PV.VER = '202610030015';
+  var errEl = document.getElementById('err');
+  PV.showErr = function (msg) {
+    if (!errEl) return;
+    var t = String(msg);
+    if (errEl.textContent.indexOf(t) >= 0) return;
+    errEl.textContent = (errEl.textContent ? errEl.textContent + String.fromCharCode(10) : '') + t;
+    errEl.style.display = 'block';
+  };
+  PV.clearErr = function () { if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; } };
+  window.addEventListener('error', function (e) {
+    PV.showErr('JSERR ' + (e.message || '?') + ' @' + String(e.filename || '').split('/').pop() + ':' + (e.lineno || 0));
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    PV.showErr('REJECT ' + ((e.reason && (e.reason.message || e.reason)) || '?'));
+  });
   PV.loadImage = function (path, cb) {
     var im = new Image();
     im.onload = function () { cb(im); };
@@ -64,7 +79,7 @@
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
     for (var i = 0; i < PV.layers.length; i++) {
       ctx.save();
-      try { PV.layers[i](ctx, t, PV.frame); } catch (e) { PV.err = e; if (!PV.layerLogged) { PV.layerLogged = 1; if (window.console) console.log('layer error', e && e.message); } }
+      try { PV.layers[i](ctx, t, PV.frame); } catch (e) { PV.err = e; PV.showErr('layer ' + (e && e.message)); if (!PV.layerLogged) { PV.layerLogged = 1; if (window.console) console.log('layer error', e && e.message); } }
       ctx.restore();
     }
   }
@@ -83,6 +98,8 @@
   }
   PV.pictureTime = pictureTime;
   function loop(ts) {
+    requestAnimationFrame(loop);   /* 先排队下一帧：任何异常都不能再冻住画面 */
+    try {
     var dt = lastTs ? Math.min(0.2, (ts - lastTs) / 1000) : 0;
     lastTs = ts;
     var usingAudio = PV.audioReady && !audioEl.paused && !audioEl.ended;
@@ -96,8 +113,8 @@
     draw(tq);
     if (PV.sync) { try { PV.sync(tq); } catch (e) { PV.syncErr = e; if (!PV.syncLogged) { PV.syncLogged = 1; if (window.console) console.log('sync error', e && e.message); } } }
     if (seekEl && !seekDragging) { var dd = (PV.audioReady && isFinite(audioEl.duration) && audioEl.duration > 1) ? audioEl.duration : (PV.loopEnd || 211.9); seekEl.value = String(Math.round(1000 * Math.min(1, tq / dd))); }
-    tcEl.textContent = fmt(tq) + '  f' + PV.frame + (PV.shotName ? '  ' + PV.shotName : '') + (PV.audioReady ? '' : '  loop 0-' + (PV.loopEnd || 16.1).toFixed(1) + 's');
-    requestAnimationFrame(loop);
+    if (tcEl) tcEl.textContent = fmt(tq) + '  f' + PV.frame + (PV.shotName ? '  ' + PV.shotName : '') + (PV.audioReady ? '' : '  loop 0-' + (PV.loopEnd || 16.1).toFixed(1) + 's');
+    } catch (e) { PV.loopErr = e; PV.showErr('loop ' + (e && e.message)); }
   }
   var paused = false;
   PV.isPaused = function () { return paused; };
@@ -195,7 +212,7 @@
       var tq = Math.floor(tt * FPS) / FPS;
       draw(tq); if (PV.sync) PV.sync(tq);
       if (seekEl && !seekDragging) { var dd = (PV.audioReady && isFinite(audioEl.duration) && audioEl.duration > 1) ? audioEl.duration : (PV.loopEnd || 211.9); seekEl.value = String(Math.round(1000 * Math.min(1, tq / dd))); }
-    tcEl.textContent = fmt(tq) + '  f' + PV.frame + (PV.shotName ? '  ' + PV.shotName : '') + (PV.audioReady ? '' : '  loop 0-' + (PV.loopEnd || 16.1).toFixed(1) + 's');
+    if (tcEl) tcEl.textContent = fmt(tq) + '  f' + PV.frame + (PV.shotName ? '  ' + PV.shotName : '') + (PV.audioReady ? '' : '  loop 0-' + (PV.loopEnd || 16.1).toFixed(1) + 's');
       if (q.has('shot')) {
         canvas.toBlob(function (b) {
           fetch('/save?name=' + encodeURIComponent(q.get('name') || ('t' + tt)), { method: 'POST', body: b })
