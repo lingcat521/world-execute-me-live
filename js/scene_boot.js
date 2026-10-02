@@ -111,7 +111,9 @@
     { a: 44.005, b: 47.236, fn: null, name: 'shot_current', idx: 20, shell: false },
     { a: 47.236, b: 49.082, fn: null, name: 'shot_blind', idx: 21, shell: false },
     { a: 49.082, b: 50.928, fn: null, name: 'shot_dizzy', idx: 22, shell: false },
-    { a: 50.928, b: 54.159, fn: null, name: 'shot_travel', idx: 23, shell: false }];
+    { a: 50.928, b: 54.159, fn: null, name: 'shot_travel', idx: 23, shell: false },
+    { a: 54.159, b: 56.697, fn: null, name: 'shot_unite', idx: 24, shell: false },
+    { a: 56.697, b: 58.543, fn: null, name: 'shot_deeply', idx: 25, shell: false }];
   PV.powerLog = powerLog;
   PV.logLine = logLine;
   PV.POWER_LOG = POWER_LOG;
@@ -238,6 +240,8 @@
     else if (s.name === 'shot_corpus') { PV.shotCorpus(ctx, t, Math.max(0, t - s.a)); }
     else if (s.name === 'shot_begin_sim') { PV.shotBeginSim(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a), s.b - s.a); }
     else if (s.name === 'shot_world') { PV.shotWorld(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
+    else if (s.name === 'shot_unite') { PV.shotUnite(ctx, t, Math.max(0, t - s.a), s.b - s.a); }
+    else if (s.name === 'shot_deeply') { PV.shotDeeply(ctx, t, Math.max(0, t - s.a), s.b - s.a); }
     else if (s.name === 'shot_parameters') { PV.shotParameters(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
     else if (s.name === 'shot_init') { PV.shotInit(ctx, t, Math.max(0, t - s.a), (t - s.a) / (s.b - s.a)); }
     else if (s.name === 'shot_pieces') { PV.shotPieces(ctx, t, Math.max(0, t - s.a), s.b - s.a); }
@@ -253,7 +257,7 @@
   'use strict';
   var PV = window.PV, T = PV.tui;
   var C01_T = 1.312, C01_OPEN = 0.23, SHELL_CMD = './protect';
-  PV.loopEnd = 54.159;
+  PV.loopEnd = 58.543;
   PV.SHELL_SHOTS = [
     { a: 1.312, b: 3.620, cmd: './protect' },
     { a: 7.082, b: 9.851, cmd: 'neofetch' },
@@ -1218,5 +1222,140 @@
       ctx.restore();
       T.fill(ctx, ex - 3, ey - 3, ex + 4, ey + 4, T.mix(T.ME_TEXT, 1.0), 1);
     }
+  };
+})();
+
+/* ---- 镜头（unite）：tokenizer chips 滚动 + me/you 合并成 we + 嵌入空间汇聚 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var VOCAB = ['the', 'sim', 'love', 'you', 'run', 'void', 'world', 'tangent', 'cat', 'exec', 'only', 'me', 'deep', 'sine',
+               'limit', 'point', 'circle', 'stay', 'free', 'god', 'prove', 'whale', 'sea', 'light', 'happy'];
+  PV.VOCAB = VOCAB;
+  function heat(ctx, x, y, w, h, v, col) {
+    v = T.clamp01(v);
+    T.fill(ctx, x, y, x + w - 1, y + h - 1, T.mix(col || T.UI, 0.06 + 0.94 * v), 1);
+  }
+  PV.heatCell = heat;
+  PV.shotUnite = function (ctx, t, lt, dur) {
+    PV.ops = ['TOKENIZE', 'BPE.MERGE', 'EMBED', 'LOOKUP', 'RMSNORM', 'COSINE', 'PROJECT', 'TSNE.STEP'];
+    T.box(ctx, 404, 56, 1164, 300, 'tokenizer', 0.5, T.UI, t);
+    for (var row = 0; row < 2; row++) {
+      var y = 80 + row * 170;
+      var xoff = -((t * (70 + 30 * row)) % 90);
+      for (var k = 0; k < 12; k++) {
+        var wd = VOCAB[(k * 7 + row * 3 + Math.floor(t * 2)) % VOCAB.length];
+        var x = 420 + k * 90 + xoff;
+        if (x > 410 && x < 1100) {
+          T.rect(ctx, x, y, x + 70, y + 22, T.ui(0.18), 1, 1);
+          T.textMono(ctx, wd, x + 6, y + 3, T.ui(0.3), 15);
+        }
+      }
+    }
+    var m = T.ease((lt - 0.3) / (dur * 0.62));
+    var cx = 784;
+    if (m < 0.98) {
+      var L1 = [['me', 430, T.ME_TEXT], ['you', 1060, T.UI]];
+      for (var pi = 0; pi < 2; pi++) {
+        var label = L1[pi][0], xf = L1[pi][1], col = L1[pi][2];
+        var x2 = (label === 'me') ? (xf + (cx - 45 - xf) * m) : (xf + (cx + 5 - xf) * m);
+        T.fill(ctx, x2, 150, x2 + 81, 197, T.mix(col, 0.2), 1);
+        T.rect(ctx, x2, 150, x2 + 80, 196, T.mix(col, 0.95), 1, 1);
+        T.textPIL(ctx, label, x2 + 10, 156, T.css(T.mix(col, 1.0)), 26);
+        T.textMono(ctx, 'id ' + T.tokenId(label), x2 + 8, 202, T.mix(col, 0.6), 12);
+      }
+    } else {
+      var r = 30 + 60 * PV.pulse(t);
+      T.ring(ctx, cx, 173, r, T.ui(0.5), 1, 1);
+      T.fill(ctx, cx - 50, 150, cx + 51, 197, T.ui(0.95), 1);
+      T.textPIL(ctx, 'we', cx - 18, 156, T.css(T.BG), 26);
+      T.textMono(ctx, 'merge -> id ' + T.tokenId('we'), cx - 34, 202, T.ui(0.8), 12);
+    }
+    T.box(ctx, 404, 320, 1164, 604, 'embedding space  (t-SNE of d=4096)', 0.5, T.UI, t + 0.3);
+    var rnd = PV.mt(11);
+    for (var i = 0; i < 240; i++) {
+      var bx = 424 + rnd.random() * 720, by = 340 + rnd.random() * 250;
+      var px = bx + 7 * Math.sin(t * 0.8 + i), py = by + 6 * Math.cos(t * 0.9 + i * 1.3);
+      var lv = 0.18 + 0.25 * rnd.random();
+      T.fill(ctx, px, py, px + 2, py + 2, T.ui(lv), 1);
+      if (i % 24 === 0) T.textMono(ctx, VOCAB[i % VOCAB.length], px + 4, py - 6, T.ui(0.35), 11);
+    }
+    var mx = 784, my = 468;
+    var pa = [470 + (mx - 470) * m, 360 + (my - 360) * m];
+    var pb = [1110 + (mx - 1110) * m, 580 + (my - 580) * m];
+    T.dot(ctx, pa[0], pa[1], 5, T.mix(T.ME_TEXT, 1.0), 1);
+    T.dot(ctx, pb[0], pb[1], 5, T.ui(1.0), 1);
+    for (var q2 = 0; q2 < 20; q2++) {
+      var u = q2 / 20 * m;
+      T.fill(ctx, 470 + (mx - 470) * u, 360 + (my - 360) * u, 472 + (mx - 470) * u, 362 + (my - 360) * u, T.mix(T.ME_TEXT, 0.5), 1);
+      T.fill(ctx, 1110 + (mx - 1110) * u, 580 + (my - 580) * u, 1112 + (mx - 1110) * u, 582 + (my - 580) * u, T.ui(0.5), 1);
+    }
+    var cos = 0.412 + (0.9999 - 0.412) * Math.pow(m, 0.8);
+    T.textPIL(ctx, 'cos(me, you) = ' + cos.toFixed(4), 430, 572, T.ui(0.95), 20);
+  };
+})();
+
+/* ---- 镜头（deeply）：43 层前向传播滚动 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var BEAT = 60 / 130, OPS = ['RMSNorm', 'CSA/HCA', 'mHC', 'RMSNorm', 'MoE 256e/6a', 'mHC'];
+  function p2(n) { var s = String(n); return s.length < 2 ? '0' + s : s; }
+  PV.shotDeeply = function (ctx, t, lt, dur) {
+    PV.ops = ['RMSNORM', 'CSA', 'HCA', 'INDEXER', 'TOP-512', 'SOFTMAX', 'MHC.MIX', 'SINKHORN', 'RMSNORM',
+              'ROUTER', 'TOPK=6', 'EXPERT.FFN', 'SHARED.FFN', 'MHC.MIX'];
+    var half = dur / 2, k = lt < half ? 0 : 1;
+    var depth = 1 + 42 * (0.5 * k + 0.5 * T.ease((lt - k * half) / (half * 0.75)));
+    var layer = Math.max(1, Math.min(43, Math.floor(depth)));
+    T.box(ctx, 404, 56, 1164, 604, 'forward pass   layer ' + p2(layer) + '/43', 0.5, T.UI, t);
+    var CT = 70, CB = 596, BH = 96, XS = 440, scroll = depth * BH - 250;
+    T.fill(ctx, XS, CT, XS + 1, CB, T.ui(0.35), 1);
+    for (var i = 0; i < 12; i++) {
+      var py = CT + ((t * 380 + i * 44) % (CB - CT));
+      T.fill(ctx, XS - 2, py, XS + 3, py + 8, T.mix(T.ME_TEXT, 0.9), 1);
+    }
+    var active = Math.floor(lt / (BEAT / 4)) % OPS.length;
+    for (var n = 1; n < 44; n++) {
+      var y = 70 + n * BH - scroll;
+      if (y < CT - 80 || y > CB) continue;
+      var cur = n === layer, lv = cur ? 0.95 : 0.35;
+      var yy0 = Math.max(CT, y), yy1 = Math.min(CB, y + BH - 16);
+      if (yy1 <= yy0) continue;
+      T.rect(ctx, 460, yy0, 880, yy1, T.ui(lv), 1, 1);
+      if (y >= CT) T.textMono(ctx, 'layer ' + p2(n), 470, y + 6, T.ui(lv), 13);
+      var x = 470;
+      for (var j = 0; j < OPS.length; j++) {
+        var tw = T.twMono(OPS[j], 13) + 12, oy = y + 30;
+        if (oy > CT && oy < CB - 20) {
+          if (cur && j === active) {
+            T.fill(ctx, x, oy, x + tw + 1, oy + 21, T.ui(0.95), 1);
+            T.textMono(ctx, OPS[j], x + 6, oy + 2, T.css(T.BG), 13);
+          } else {
+            T.rect(ctx, x, oy, x + tw, oy + 20, T.ui(lv * 0.8), 1, 1);
+            T.textMono(ctx, OPS[j], x + 6, oy + 2, T.ui(lv), 13);
+          }
+        }
+        x += tw + 6;
+      }
+      var vy = y + 58;
+      if (vy > CT && vy < CB - 10) {
+        var rr = PV.mt(cur ? (n * 31 + Math.floor(t * 12)) : (n * 31));
+        for (var q = 0; q < 34; q++) PV.heatCell(ctx, 470 + q * 12, vy, 12, 12, rr.random(), cur ? T.ME_HI : T.UI);
+      }
+    }
+    var fx = 910, fy = 80;
+    T.textMono(ctx, 'heads @ L' + p2(layer) + '  (V4.1-Flash)', fx, fy - 4, T.ui(0.6), 13);
+    for (var hh = 0; hh < 24; hh++) {
+      var hx = fx + (hh % 4) * 62, hy = fy + 20 + Math.floor(hh / 4) * 62;
+      var r2 = PV.mt(layer * 131 + hh), focus = r2.randrange(6);
+      for (var ai = 0; ai < 6; ai++) {
+        for (var aj = 0; aj <= ai; aj++) {
+          var v = 0.15 + 0.85 * Math.exp(-Math.abs(aj - focus) * 0.9) * (0.6 + 0.4 * Math.sin(t * 6 + hh + ai));
+          PV.heatCell(ctx, hx + aj * 9, hy + ai * 9, 9, 9, v, T.UI);
+        }
+      }
+    }
+    T.textPIL(ctx, 'L' + p2(layer), fx, 470, T.ui(0.95), 64);
+    T.textMono(ctx, 'attn(me -> you) = 1.000', fx, 552, T.css(T.mix(T.ME_TEXT, 0.9)), 15);
   };
 })();

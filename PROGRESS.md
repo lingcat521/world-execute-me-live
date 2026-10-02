@@ -206,3 +206,19 @@ inner 360x662  dpr 2  barH 57  portrait true  scale 0.473  stage 605x340
 - shot_deeply 依赖 `deeply_pane()`、`BEAT`，43 层滚动列表 + 移动蓝块
 - 两者都用到 `c.echo`（右侧窗格的副标题），我的 frame.js 目前只画固定标题，需要支持 PV.centerSub 之类的动态副标题
 
+
+## 02 SFT 段完成（44.005 - 58.543 s，6 个镜头）
+
+| 镜头 | 时间 | 验收 |
+|---|---|---|
+| shot_current | 44.005-47.236 | AC/DC 电流波形（8 张 GPU）|
+| shot_blind | 47.236-49.082 | ✓ |
+| shot_dizzy | 49.082-50.928 | ✓ |
+| shot_travel | 50.928-54.159 | ✓ |
+| shot_unite | 54.159-56.697 | ✓✓ tokenizer chips / me+you 方块与 token id / 240 散点 / cos 数值 / 歌词 token 全同 |
+| shot_deeply | 56.697-58.543 | ✓✓ layer NN/43 标题 / 43 层滚动 / op chips / 当前层高亮 / 热力格 / 24 个三角注意力图 / L22 大字 全同 |
+
+- 新增原语：`T.ring`（PIL 的 ellipse outline 等价物）
+- `c.echo` 经核对就是窗格标题里的 `layer NN/43` 本身，不需要单独通道
+- **至此 0 - 58.543 秒连续可播**（BOOT 8 镜 + PRETRAIN 12 镜 + SFT 6 镜）
+
