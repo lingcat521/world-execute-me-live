@@ -61,6 +61,7 @@
     return (a * 67108864 + b) / 9007199254740992;
   };
   MT.prototype.randrange = function (n) { return Math.floor(this.random() * n); };
+  MT.prototype.next = function () { return this.random(); };
   MT.prototype.choice = function (str) { return str.charAt(Math.floor(this.random() * str.length)); };
   MT.prototype.gauss = function (mu, sigma) {
     mu = mu || 0; sigma = sigma === undefined ? 1 : sigma;
