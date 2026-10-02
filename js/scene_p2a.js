@@ -206,10 +206,18 @@
   /* tuikit.CROPS（Python 的裁切比例，和上面给 avatars/*.png 用的那套不同） */
   var WCROPS = { full: null, upper: [0.10, 0.0, 0.90, 0.47], face: [0.20, 0.0, 0.78, 0.26],
                  bust: [0.16, 0.0, 0.84, 0.34] };
-  /* happy 的脸部特写：Python 用 H3 的 (80,80,335,250)（她的大头照）。whale 立绘是全身像，
-     0.20..0.78 × 0..0.26 会把举起的手和肩膀一起画进来（亮像素是参考的 2.1 倍），
-     所以这里按「头 + 头饰」取景： */
-  var FACE_CROP = [0.26,0.0,0.62,0.22];
+  /* happy 的脸部特写：Python 用 H3 的 (80,80,335,250)（她的大头照，随舞步在窗格里移动）。
+     whale 立绘是全身像：0.20..0.78 × 0..0.26 会把举起的手和肩膀一起画进来
+     （实测亮像素是参考的 2.1 倍），所以按 H3 那格的取景比例（宽 0.667、高 0.247，格子 130x87）
+     取「头 + 头饰」；参考帧里她的头在 happy 段内是向右漂移的（质心 x：66.50→344 / 67.00→411 /
+     67.50→504），静态立绘用裁切窗口跟随这个漂移。 */
+  var FACE_CROP = [0.02, 0.0, 0.687, 0.247];
+  function faceCropAt(u) {
+    var x0 = 0.02 + 0.30 * (0.73 - u);          /* u=0.46 -> 0.10 ; u=0.73 -> 0.02 */
+    x0 = T.clamp(x0, -0.04, 0.24);
+    return [x0, FACE_CROP[1], x0 + 0.667, FACE_CROP[3]];
+  }
+  var FACE_CROP_NOW = FACE_CROP;
   function whaleRect(im, crop) {          /* sprite_src：裁切框（full = alpha 包围盒） */
     if (!WCROPS[crop]) {                  /* crop === 'full' */
       var key = im.src || ('w' + im.width + 'x' + im.height);
@@ -225,7 +233,7 @@
       if (x1 < 0) { x0 = y0 = 0; x1 = im.width - 1; y1 = im.height - 1; }
       return (_wbox[key] = [x0, y0, x1 + 1, y1 + 1]);
     }
-    var c = crop === 'face' ? FACE_CROP : WCROPS[crop], w = im.width, h = im.height;
+    var c = crop === 'face' ? FACE_CROP_NOW : WCROPS[crop], w = im.width, h = im.height;
     return [Math.floor(w * c[0]), Math.floor(h * c[1]), Math.floor(w * c[2]), Math.floor(h * c[3])];
   }
   function whaleAspect(expr, crop) {
@@ -234,12 +242,18 @@
     return (rc[3] - rc[1]) / Math.max(1, rc[2] - rc[0]);
   }
   /* src.resize((cols,rows), LANCZOS) 的等价物：亮度（未预乘，和 PIL convert("L") 一致）+ alpha */
-  function whaleCells(expr, crop, cols, rows) {
+  function whaleCells(expr, crop, cols, rows, padX) {
     var im = WHALE[expr];
     if (!im || cols < 1 || rows < 1) return null;
-    var key = expr + '|' + crop + '|' + cols + 'x' + rows;
+    var key = expr + '|' + crop + '|' + cols + 'x' + rows + '|' + (padX || 1);
     if (_wcell[key]) return _wcell[key];
-    var rc = whaleRect(im, crop), cv = PV.newCanvas(cols, rows), g = cv.getContext('2d');
+    var rc = whaleRect(im, crop);
+    if (padX && padX > 1) {                 /* 横向加宽裁切框：H3 的 'full' 是一整帧，她只占中间一条，
+                                               而 whale 立绘的 alpha 包围盒紧贴她本人 —— 直接照抄会让特征图里她占满整格 */
+      var ccx = (rc[0] + rc[2]) / 2, ww = (rc[2] - rc[0]) * padX;
+      rc = [ccx - ww / 2, rc[1], ccx + ww / 2, rc[3]];
+    }
+    var cv = PV.newCanvas(cols, rows), g = cv.getContext('2d');
     g.drawImage(im, rc[0], rc[1], rc[2] - rc[0], rc[3] - rc[1], 0, 0, cols, rows);
     var d = g.getImageData(0, 0, cols, rows).data;
     var lum = new Float32Array(cols * rows), al = new Uint8Array(cols * rows), k, i;
@@ -294,8 +308,8 @@
     return [cols * px, rows * px];
   }
   /* tuikit.conv_maps()：先把 RGBA 合成到黑底再转 L，再 resize 到 (cols,rows) */
-  function wConvMaps(expr, crop, cols, rows) {
-    var C = whaleCells(expr, crop, cols, rows); if (!C) return null;
+  function wConvMaps(expr, crop, cols, rows, padX) {
+    var C = whaleCells(expr, crop, cols, rows, padX); if (!C) return null;
     var base = new Float32Array(cols * rows), k;
     for (k = 0; k < cols * rows; k++) base[k] = C.lum[k] * C.alpha[k] / 255;
     return convMapsFrom(base, cols, rows);
@@ -594,7 +608,7 @@
     var p = T.ease(((layer2 ? lt - half : lt)) / (half * 0.92));
     var fc = 34, fr = 64;
     /* Python: conv_maps("cheerful","full",34,64) —— 立绘用 whale-cheerful.webp */
-    var maps = wConvMaps('cheerful', 'full', fc, fr) || convMaps(fc, fr, 'fig'), mc = fc, mr = fr;
+    var maps = wConvMaps('cheerful', 'full', fc, fr, 1.6) || convMaps(fc, fr, 'fig'), mc = fc, mr = fr;
     if (!maps) {   /* 立绘还没加载完（浏览器首帧）时的兜底，避免抛错 */
       var KN = ['sobel_x', 'sobel_y', 'laplace', 'sharpen', 'emboss', 'blur'];
       maps = [];
@@ -744,12 +758,13 @@
     var rng = PV.rngFor(t, 7919);
     var d = ctx;
     var expr = u < 0.5 ? 'cheerful' : 'starry';
+    FACE_CROP_NOW = faceCropAt(u);          /* 裁切窗口跟随参考里她头部的漂移 */
     box(d, 24, 56, 700, 604, 'dsh web  grad-cam  L61  class=happy(you)', 0.55 + 0.3 * pulse(t), T.UI, t);
     /* Python: sp = halfblock(expr,"face",650,520,5); sx,sy = 24+(676-sp.width)//2, 70（tint=blue） */
     var px = 5, sz = halfblockSize(expr, 'face', 650, 520, px), cols, rows;
     if (sz) { cols = sz[0]; rows = sz[1]; } else { var szb = herSize(360, 238, px, 'bust'); cols = szb[0]; rows = szb[1]; }
     var spW = cols * px, spH = rows * px;
-    var sx = 24 + Math.floor((676 - spW) / 2) + 150, sy = 70;
+    var sx = 24 + Math.floor((676 - spW) / 2), sy = 70;
     if (sz) wHalfblock(d, sx, sy, expr, 'face', 650, 520, px, 'blue', 1);
     else { var cells0 = herCells(cols, rows, 'bust'); if (cells0) halfblock(d, sx, sy, 360, 238, px, 'bust', 'color', 1); }
     /* heat map：三个热斑 + 一条扫描带 */
