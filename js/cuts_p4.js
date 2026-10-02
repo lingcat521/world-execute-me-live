@@ -992,4 +992,211 @@
     }
   });
 
+  /* ================================================================ C89（182.4664）
+     question_me -> answer_all（UNFOLD，shell staging）。七条满格被压进第一条；那条再缩成第一个蓝色 'love' 答案，
+     骑在它末尾的 you 格子变成光标，之后每个答案都由它打出来。 */
+  var C89 = { T: 182.4664, pre: 0.30, post: 0.45, LAND89: 0.231 };
+  var EVAL_ROWS = ['LoveBench', 'LoveQA', 'MMLU-Love', 'GPQA-Love', 'SWE-Love', 'IMO-Love', 'LiveLoveBench'];
+  var LOVE_X = 840;
+  function a_y(i) { return 80 + i * 38; }
+  function cursorAfterLove(i) { return [LOVE_X + 44 + 10, a_y(i) + 9]; }
+  PV.addCut(C89.T, C89.pre, C89.post, function (ctx, t, cut) {
+    var Tt = C89.T, land = Tt + C89.LAND89, t0 = Tt - C89.pre, i;
+    var pr = pair(t), oc = pr[0], og = pr[1], nc = pr[2], ng = pr[3];
+    drawShot(og, 'shot_question_me', t);
+    drawShot(ng, 'shot_answer_all', t);
+    /* 七条压进第一条（原实现走 squeeze hook，这里在旧画面上重画被压的行） */
+    var q = PV.shotTime('shot_question_me', t), lt = q[0];
+    patchBg(og, 424, qy(1) - 10, 1012, qy(6) + 34, t);
+    function drawRow(g, i2, s) {
+      var y = lerp(qy(i2), qy(0), s), al = 1 - s, gg = T.ease((lt - i2 * 0.1) / 0.8);
+      if (al <= 0.02) return;
+      g.save(); g.globalAlpha = al;
+      textAt(g, EVAL_ROWS[i2], 430, y, amb(0.9), 20, 1, 1, 0, 0, true);
+      T.rect(g, 700, y + 4, 1000, y + 26, amb(0.25), 1, 1);
+      T.fill(g, 700, y + 4, 700 + Math.floor(300 * gg), y + 26, blue(0.9), 1);
+      textAt(g, (100 * gg).toFixed(1), 1020, y, gg > 0.99 ? blue(1.0) : amb(0.8), 20, 1, 1, 0, 0);
+      g.restore();
+    }
+    drawRow(og, 0, 0);
+    for (i = 1; i < 7; i++) drawRow(og, i, eIo(clamp01((t - t0 - 0.015 * i) / 0.26)));
+    revealC(ctx, t, oc, og, nc, ng, PV.radial(LOVE_X + 20, a_y(0) + 10, Tt - 0.06, 1600.0),
+            { region: PANE, cell: [8, 16], dur: 0.08 }, 89, 0.4, red);
+    var tgt = [LOVE_X, a_y(0) + 1, LOVE_X + 44, a_y(0) + 16];
+    var src = [BAR_X0, qy(0) + 4, BAR_X1, qy(0) + 26];
+    var cx = BAR_X1 + 12, cy = qy(0) + 15;
+    if (t < Tt - 0.02) {
+      putCell(ctx, cx, cy, YOU_S, 0.35 + 0.4 * clamp01((t - t0) / 0.2));
+    } else if (t < land + 0.04) {
+      var u = clamp01((t - (Tt - 0.02)) / (land - Tt + 0.02)), e = eIo(u);
+      T.rect(ctx, lerp(src[0], tgt[0], e), lerp(src[1], tgt[1], e), lerp(src[2], tgt[2], e), lerp(src[3], tgt[3], e),
+             blue(0.9), u < 0.7 ? 1 : 0, 1);
+      if (u < 0.7) T.fill(ctx, lerp(src[0], tgt[0], e), lerp(src[1], tgt[1], e), lerp(src[2], tgt[2], e),
+                          lerp(src[3], tgt[3], e), blue(0.9), 1);
+      var wa = clamp01((u - 0.45) / 0.35);
+      if (wa > 0.01) textAt(ctx, 'love', LOVE_X, a_y(0), blue(1.0), 20, 1, t < land ? wa : 0, 0.6 * (1 - u), 0, true);
+      var end = [lerp(src[2], tgt[2], e) + 12, (lerp(src[1], tgt[1], e) + lerp(src[3], tgt[3], e)) / 2];
+      var tc = cursorAfterLove(0);
+      putCell(ctx, lerp(end[0], tc[0], clamp01((u - 0.6) / 0.4)), lerp(end[1], tc[1], clamp01((u - 0.6) / 0.4)), YOU_S, 0.7);
+    }
+  });
+
+  /* ================================================================ C90（184.3125）
+     answer_all -> algebra（UNFOLD）。十二个 'love' 答案一帧一个向左滑、叠进公式的第一个 token 'love('；
+     问题在它们前面从右往左被清掉；光标随最后一个答案进去，成为公式的光标。 */
+  var C90 = { T: 184.3125, pre: 0.30, post: 0.72, LAND90: 0.461 };
+  function algY(i) { return 90 + i * 60; }
+  PV.addCut(C90.T, C90.pre, C90.post, function (ctx, t, cut) {
+    var Tt = C90.T, t0 = Tt - C90.pre, land0 = Tt + C90.LAND90, i;
+    var fly = land0 - (Tt - 0.26);
+    var pr = pair(t), oc = pr[0], og = pr[1], nc = pr[2], ng = pr[3];
+    drawShot(og, 'shot_answer_all', t);
+    /* 已经飞走的答案从旧画面上抹掉（原实现走 gone hook） */
+    for (i = 0; i < 12; i++) {
+      if (t >= (Tt - 0.26 + i / FPS)) patchBg(og, 836, a_y(i) - 6, 892, a_y(i) + 26, t);
+    }
+    /* 问题的清屏（q_alpha=0 的等价物）：做一张没有问题文字的旧画面，再按 sweep 逐格换过去 */
+    var bare = PV.newCanvas(W, H), bg2 = bare.getContext('2d');
+    bg2.drawImage(og, 0, 0);
+    patchBg(bg2, 426, 74, 836, 550, t);
+    var sw = sweep([LOVE_X - 10, 0], [-1, 0], Tt - 0.27, 1500.0);
+    var R = [404, 56, LOVE_X - 4, 604], cw = 8, ch = 16;
+    var cols = Math.floor((R[2] - R[0]) / cw), rows = Math.floor((R[3] - R[1]) / ch);
+    for (var r2 = 0; r2 < rows; r2++) {
+      for (var q2 = 0; q2 < cols; q2++) {
+        var cx2 = R[0] + q2 * cw + cw / 2, cy2 = R[1] + r2 * ch + ch / 2;
+        var p2 = clamp01((t - sw(cx2, cy2)) / 0.08);
+        if (p2 <= 0.02) continue;
+        ctx.save(); ctx.globalAlpha = p2;
+        ctx.drawImage(bare, R[0] + q2 * cw, R[1] + r2 * ch, cw, ch, R[0] + q2 * cw, R[1] + r2 * ch, cw, ch);
+        ctx.restore();
+      }
+    }
+    drawShot(ng, 'shot_algebra', t);
+    revealC(ctx, t, oc, og, nc, ng, PV.radial(430, 100, land0 - 0.05, 1500.0),
+            { region: PANE, cell: [8, 16], dur: 0.08 }, 90, 0.4, red);
+    /* 答案滑进 'love(' */
+    var dst = [430, algY(0)];
+    var dy = FSYM_DY;
+    for (i = 0; i < 12; i++) {
+      var dep = Tt - 0.26 + i / FPS, arr = dep + fly;
+      if (t < dep || t >= arr + 0.03) continue;
+      var u = clamp01((t - dep) / fly);
+      var p = bez([LOVE_X, a_y(i)], [dst[0], dst[1] + dy], 0.08 + 0.01 * i, eIo(u));
+      var sc = 1.0 + 0.3 * Math.sin(Math.PI * u);
+      textAt(ctx, 'love', p[0], p[1] - (20 * sc - 20) / 2, blue(1.0), 20 * sc, 1, t < arr ? 1 : 0,
+             0.5 * Math.sin(Math.PI * u), 0, true);
+      if (i === 11) {
+        var c0 = cursorAfterLove(11);
+        var head = [430 + PV.p2c.monoW('love', 22) + 8, algY(0) + 18];
+        var cp = bez(c0, head, 0.08, eIo(u));
+        putCell(ctx, cp[0], cp[1], YOU_S, 0.6);
+      }
+    }
+    var kk = 0;
+    for (i = 0; i < 12; i++) {
+      var arr2 = Tt - 0.26 + i / FPS + fly;
+      if (arr2 <= t) kk = Math.max(kk, 1 - (t - arr2) / 0.12);
+    }
+    if (t >= land0 && kk > 0.01) {
+      textAt(ctx, 'love', dst[0], dst[1], blue(1.0), 22, 1 + 0.06 * kk, 1, 0.7 * kk, 0.3 * kk, true);
+      putCell(ctx, 430 + PV.p2c.monoW('love', 22) + 8, dst[1] + 18, YOU_S, 0.5);
+    }
+  });
+
+  /* ================================================================ C91（188.0049）
+     algebra -> you_free（CARRY）。'∴ love = you' 里的 'you' 与它的光标格子亮起；在重拍上 '=' 淡出，
+     那个 'you' 带着格子飞出去、加速穿过沙箱右墙（you_free 画这一跑）。 */
+  var C91 = { T: 188.0049, pre: 0.22, post: 0.0 };
+  var YOU_SLOT = [430 + 145, algY(5)], YOU_CELL = [65, 31];
+  var FSYM_DY = (function () {
+    var c = PV.newCanvas(8, 8).getContext('2d');
+    return 0;
+  })();
+  PV.addCut(C91.T, C91.pre, C91.post, function (ctx, t, cut) {
+    var Tt = C91.T, pr = pair(t), oc = pr[0], og = pr[1];
+    drawShot(og, 'shot_algebra', t);
+    ctx.drawImage(oc, 0, 0);
+    var k = clamp01((t - (Tt - C91.pre)) / 0.18);
+    ctx.save();
+    ctx.shadowColor = T.css(blue(1.0), 1);
+    ctx.shadowBlur = 8 * 0.5 * k;
+    textAt(ctx, 'you', YOU_SLOT[0], YOU_SLOT[1], blue(1.0), 34, 1, 1, 0, 0.25 * k, true);
+    ctx.restore();
+    putCell(ctx, YOU_SLOT[0] + YOU_CELL[0], YOU_SLOT[1] + YOU_CELL[1], YOU_S, 0.35 + 0.4 * k);
+  });
+
+  /* ================================================================ C92（189.1587）
+     you_free -> me_trapped（RETAIN + 局部更新）。'you: exited (0)' 与 'status: free' 升出沙箱、落到
+     进程列表的第一行并变暗（历史）。公式从 'you' 原来的位置被清掉；她的窗格改成 '/dev/me  state=D'。 */
+  var C92 = { T: 189.1587, pre: 0.25, post: 0.4, LAND92: 0.231 };
+  PV.addCut(C92.T, C92.pre, C92.post, function (ctx, t, cut) {
+    var Tt = C92.T, land = Tt + C92.LAND92, t0 = Tt - C92.pre;
+    var pr = pair(t), oc = pr[0], og = pr[1], nc = pr[2], ng = pr[3];
+    drawShot(og, 'shot_you_free', t);
+    patchBg(og, 56, 552, 700, 588, t);              /* status=False：旧画面上的那行抹掉 */
+    drawShot(ng, 'shot_me_trapped', t);
+    revealC(ctx, t, oc, og, nc, ng, sweep([0, algY(5) + 110], [0, -1], Tt - 0.25, 2400.0),
+            { region: PANE, cell: [8, 16], dur: 0.08 }, 92, 0.4, red);
+    var lift = clamp01((t - t0) / 0.18);
+    var u = clamp01((t - (Tt - 0.06)) / (land - Tt + 0.06)), e = eIo(u);
+    var al = t < land ? 1 : 0;
+    var p1 = bez([60, 560], [430, 96], 0.18, e);
+    textAt(ctx, 'you: exited (0)', p1[0], p1[1], lerpR(amb(0.95), amb(0.55), e), 22,
+           1 + 0.12 * Math.sin(Math.PI * u), al, 0.5 * lift * (1 - e), 0.2 * lift * (1 - e), true);
+    var p2 = bez([336, 560], [430 + PV.p2c.monoW('you: exited (0)   ', 22), 96], 0.1, e);
+    textAt(ctx, 'status: free', p2[0], p2[1], lerpR(amb(0.7), amb(0.4), e), 20, 1, al, 0, 0, true);
+  });
+
+  /* ================================================================ C93（190.3125）
+     me_trapped -> love_loop（CARRY）。'wait_for(you)' 从她的 WCHAN 行抬起，列表从那里让位；
+     它飞过空面板、在拍点上锁进 next-token logits 的第二行当那行的标签；logits 面板与输出流从它向外解码。 */
+  var C93 = { T: 190.3125, pre: 0.30, post: 0.62, LAND93: 0.461 };
+  PV.addCut(C93.T, C93.pre, C93.post, function (ctx, t, cut) {
+    var Tt = C93.T, land = Tt + C93.LAND93, t0 = Tt - C93.pre;
+    var WCHAN_X = 800, WCHAN_Y = 280;
+    var src = [WCHAN_X + PV.p2c.monoW('WCHAN  ', 22), WCHAN_Y];
+    var dst = [48, 140];
+    var pr = pair(t), oc = pr[0], og = pr[1], nc = pr[2], ng = pr[3];
+    drawShot(og, 'shot_me_trapped', t);
+    if (t >= Tt - 0.25) {
+      patchBg(og, WCHAN_X + PV.p2c.monoW('WCHAN  ', 22) - 2, WCHAN_Y - 4, 1200, WCHAN_Y + 28, t);
+      textAt(og, 'WCHAN', WCHAN_X, WCHAN_Y, amb(0.9), 22, 1, 1, 0, 0, true);
+    }
+    var bare = PV.newCanvas(W, H);
+    if (PV.drawBackground) PV.drawBackground(bare.getContext('2d'), t);
+    revealC(ctx, t, oc, og, bare, bare.getContext('2d'), PV.radial(src[0] + 60, src[1] + 12, Tt - 0.2, 700.0),
+            { region: PANE, cell: [8, 16], dur: 0.08 }, 193, 0.4, red);
+    drawShot(ng, 'shot_love_loop', t);
+    revealC(ctx, t, oc, og, nc, ng, PV.radial(dst[0] + 40, dst[1] + 12, Tt + 0.24, 1300.0),
+            { region: PANE, cell: [8, 16], dur: 0.08 }, 93, 0.4, red);
+    var lift = clamp01((t - t0) / 0.2);
+    if (t < land + 0.03) {
+      var u = clamp01((t - (Tt - 0.05)) / (land - Tt + 0.05));
+      var e = eIo(u) + 0.05 * Math.sin(Math.PI * clamp01((u - 0.72) / 0.28));
+      var p = bez(src, dst, -0.22, e);
+      var size = 22 - 2 * eIo(u);
+      textAt(ctx, 'wait_for(you)', p[0], p[1], amb(0.9), size, 1 + 0.08 * Math.sin(Math.PI * u), t < land ? 1 : 0,
+             0.6 * lift * (1 - 0.6 * u), 0.3 * lift * (1 - u), true);
+    }
+  });
+
+  /* ================================================================ C94（193.5433）
+     love_loop -> whale_fall（CARRY）。下拍前四帧每个 love 词与 logit 在原地亮起；在拍点上它们松手 ——
+     第一帧保持各自的屏幕位置 —— 作为海雪沉下去；chrome 在 11 帧内收回，她的窗格框淡出。 */
+  var C94 = { T: 193.5433, pre: 0.30, post: 0.0 };
+  PV.addCut(C94.T, C94.pre, C94.post, function (ctx, t, cut) {
+    var Tt = C94.T, pr = pair(t), oc = pr[0], og = pr[1];
+    drawShot(og, 'shot_love_loop', t);
+    ctx.drawImage(oc, 0, 0);
+    var k = clamp01((t - (Tt - 4 / FPS)) / (4 / FPS));
+    if (k > 0.01) {                       /* lift：love 词与 logit 亮起（原实现走 lift hook） */
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.5 * k;
+      ctx.drawImage(oc, 0, 0);
+      ctx.restore();
+    }
+  });
+
 })();
