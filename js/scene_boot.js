@@ -939,7 +939,9 @@
     v = T.clamp01(v);
     T.fill(ctx, x, y, x + w - 1, y + h - 1, T.mix(col, 0.06 + 0.94 * v), 1);
   }
-  PV.shotDimension = function (ctx, t, lt, u) {
+  /* hook = { you:false 不画右侧 you 的接收格（C14 里向量已经折成窄条了）, labels:false 不画那三行文字 } */
+  PV.shotDimension = function (ctx, t, lt, u, hook) {
+    hook = hook || {};
     PV.ops = ['HIDDEN', 'D_MODEL', 'COPY', 'SEND', 'RECV', 'you.ADD'];
     T.box(ctx, 404, 56, 1164, 604, 'transfer  me.hidden[0:4096]  ->  you', 0.5, T.UI, t);
     var g = T.ease(u), V = vals();   /* 实测参考 31.50s 进度 1525/4096=37% => g=ease(0.148)=0.371，不带 1.2 系数 */
@@ -948,7 +950,7 @@
         var sent = (r * COLS + q) / (ROWS * COLS) < g;
         var x0 = 430 + q * 12, y0 = 90 + r * 26, x1 = 790 + q * 12, v = V[r][q];
         if (sent) {
-          heatCell(ctx, x1, y0, 12, 22, v, T.UI);
+          if (hook.you !== false) heatCell(ctx, x1, y0, 12, 22, v, T.UI);
           T.rect(ctx, x0, y0, x0 + 10, y0 + 20, T.mix(T.ME_TEXT, 0.2), 1, 1);
         } else {
           heatCell(ctx, x0, y0, 12, 22, v, T.ME_HI);
@@ -962,11 +964,13 @@
       var fx = 430 + fq * 12 + 360 * ((t * 6) % 1);
       T.fill(ctx, fx, 90 + fr * 26, fx + 11, 110 + fr * 26, T.mix(T.ME_TEXT, 1.0), 1);
     }
-    T.textPIL(ctx, 'me', 430, 520, T.css(T.mix(T.ME_TEXT, 0.95)), 20);
-    T.textPIL(ctx, 'you', 790, 520, T.ui(0.95), 20);
-    var ds = String(Math.floor(g * 4096));
-    while (ds.length < 4) ds = ' ' + ds;
-    T.textPIL(ctx, 'dims given: ' + ds + ' / 4096', 430, 560, T.ui(0.95), 20);
+    if (hook.labels !== false) {
+      T.textPIL(ctx, 'me', 430, 520, T.css(T.mix(T.ME_TEXT, 0.95)), 20);
+      T.textPIL(ctx, 'you', 790, 520, T.ui(0.95), 20);
+      var ds = String(Math.floor(g * 4096));
+      while (ds.length < 4) ds = ' ' + ds;
+      T.textPIL(ctx, 'dims given: ' + ds + ' / 4096', 430, 560, T.ui(0.95), 20);
+    }
   };
 })();
 
