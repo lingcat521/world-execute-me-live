@@ -36,3 +36,10 @@
 - C07 转场的载具：`world.population = 2 (me, you)` 与 me/you 标签飞入状态行的动画尚未实现。
 - 左侧 dsh 聊天窗（HTML 层）尚未开始：0-16 秒参考帧里它已有内容（头像方块 / 探索未至之境 / new-world / ckpt-000000）。
 - 字体：本机无 Consolas，node 渲染用 DroidSansMono 代替，字形宽度有细微差异。
+
+## 部署
+
+- 线上地址：https://lingcat521.github.io/world-execute-me-live/
+- 仓库：https://github.com/lingcat521/world-execute-me-live
+- 提交方式：本机 shell 连不上 github.com:443，改用 api.github.com 的 Git Data API 提交文件树（`pvport/push_api.py`）
+- 默认分辨率：1080p（canvas 1920x1080，逻辑坐标仍是 1280x720，绘制时整体 scale 1.5）；URL 加 `?res=1` 可切回 720p 对照参考帧
