@@ -941,3 +941,95 @@
     ctx.restore();
   });
 })();
+
+/* ---- C21：current -> blind。八条功率轨迹亮起、各自量化成十二段（在矩阵列上采样保持），
+        再胀成格子逐排填进注意力矩阵；最后一排锁在 102.5 拍，每排落地后把下一排展开出来。
+        GPU 标签从矩阵原点解码移开。随后在 'blind'（103 拍）上遮罩从左上一扫而下。 ---- */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui;
+  var T0 = 47.236, PRE = 0.34, BEAT = 60 / 130, SEG = 640 / 12;
+  var ROWS21 = [0, 2, 3, 5, 6, 8, 9, 11], UNFOLD21 = { 1: 0, 4: 3, 7: 6, 10: 9 };
+  var MX = 470, MY = 80, N = 12, CS = 40, CUR0 = 44.005, WHITE = [232, 238, 255];
+  function eIo(u) { u = T.clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
+  function eOut(u) { u = T.clamp01(u); return 1 - Math.pow(1 - u, 3); }
+  function qStart(g) { return T0 - 0.30 + g * 0.01; }
+  function depart(g) { return qStart(g) + 0.12; }
+  function land(g) { return T0 + BEAT / 2 - (7 - g) * 0.02; }
+  function unfold(i) { var g = ROWS21.indexOf(UNFOLD21[i]); return [land(g) + 0.02, land(g) + 0.18]; }
+  function rect(i, j) { return [MX + j * CS, MY + i * CS, MX + j * CS + CS - 2, MY + i * CS + CS - 2]; }
+  function cellColor(i, j) { return T.mix(T.ANOM, 0.06 + 0.94 * PV.blindCellValue(i, j)); }
+  function cellA(t) {
+    var m = {}, g, i;
+    for (g = 0; g < 8; g++) m[ROWS21[g]] = land(g);
+    for (i in UNFOLD21) m[i] = unfold(i)[1];
+    return function (a, b) { return t >= m[a] ? 1 : 0; };
+  }
+  PV.addCut(T0, PRE, 0.45, function (ctx, t, cut) {
+    var nc = PV.newCanvas(1280, 720), ng = nc.getContext('2d');
+    if (PV.drawBackground) PV.drawBackground(ng, t);
+    PV.shotBlind(ng, t, Math.max(0, t - T0), cellA(t));
+    PV.reveal(ctx, t,
+      function (c) { PV.shotCurrent(c, t, Math.max(0, t - CUR0), { traces: false }); },
+      function (c) { c.drawImage(nc, 0, 0); },
+      PV.radial(MX, MY, T0 - 0.12, 1600),
+      { region: [405, 44, 1164, 604], cell: [8, 16], dur: 0.09 });
+    /* 矩阵区原本只有轨迹：落位的格子直接贴回去 */
+    ctx.drawImage(nc, MX, MY, N * CS, N * CS, MX, MY, N * CS, N * CS);
+    var lift = T.clamp01((t - (T0 - PRE)) / 0.15), g, j, i, p;
+    for (g = 0; g < 8; g++) {
+      var r = ROWS21[g];
+      if (t >= land(g)) continue;
+      var live = PV.currentTrace(g, t, t - CUR0)[0];
+      var q = eIo((t - qStart(g)) / 0.12), u = T.clamp01((t - depart(g)) / (land(g) - depart(g)));
+      for (j = 0; j < 12; j++) {
+        var seg = [], xa = 460 + j * SEG, xb = 460 + (j + 1) * SEG;
+        for (p = 0; p < live.length; p++) if (live[p][0] >= xa && live[p][0] < xb) seg.push(live[p]);
+        if (seg.length < 2) continue;
+        var mean = 0;
+        for (p = 0; p < seg.length; p++) mean += seg[p][1];
+        mean /= seg.length;
+        var base = [255 + (WHITE[0] - 255) * 0.7 * lift, 204 + (WHITE[1] - 204) * 0.7 * lift, 0 + (WHITE[2] - 0) * 0.7 * lift];
+        var cc = cellColor(r, j), e2 = eOut(u);
+        var col = [base[0] + (cc[0] - base[0]) * e2, base[1] + (cc[1] - base[1]) * e2, base[2] + (cc[2] - base[2]) * e2];
+        if (u <= 0) {
+          var trim = 7 * q, sxa = seg[0][0] + trim, sxb = seg[seg.length - 1][0] - trim;
+          if (sxb > sxa) {
+            ctx.save(); ctx.strokeStyle = T.css(col); ctx.lineWidth = lift > 0.5 ? 2 : 1; ctx.beginPath();
+            var st = false;
+            for (p = 0; p < seg.length; p++) {
+              if (seg[p][0] < sxa || seg[p][0] > sxb) continue;
+              var yy = seg[p][1] + (mean - seg[p][1]) * q;
+              if (!st) { ctx.moveTo(seg[p][0], yy); st = true; } else ctx.lineTo(seg[p][0], yy);
+            }
+            ctx.stroke(); ctx.restore();
+          }
+          continue;
+        }
+        var s0 = seg[0][0] + 7, s1 = seg[seg.length - 1][0] - 7, rc = rect(r, j);
+        var tcx = (rc[0] + rc[2]) / 2, tcy = (rc[1] + rc[3]) / 2;
+        var cx = (s0 + s1) / 2 + (tcx - (s0 + s1) / 2) * e2, cy = mean + (tcy - mean) * e2;
+        var w = ((s1 - s0) + ((rc[2] - rc[0]) - (s1 - s0)) * e2) / 2;
+        var hh = 1 + ((rc[3] - rc[1]) / 2 - 1) * e2;
+        T.fill(ctx, cx - w, cy - hh, cx + w, cy + hh, col, 1);
+      }
+    }
+    for (i in UNFOLD21) {
+      var uf = unfold(i);
+      if (t < uf[0] || t >= uf[1]) continue;
+      var eu = eOut((t - uf[0]) / (uf[1] - uf[0]));
+      for (j = 0; j < 12; j++) {
+        var rs = rect(UNFOLD21[i], j), rd = rect(i, j);
+        var cc2 = cellColor(UNFOLD21[i], j), cd = cellColor(i, j);
+        var cm = [cc2[0] + (cd[0] - cc2[0]) * eu, cc2[1] + (cd[1] - cc2[1]) * eu, cc2[2] + (cd[2] - cc2[2]) * eu];
+        var y0 = rs[1] + (rd[1] - rs[1]) * eu;
+        T.fill(ctx, rs[0], y0, rs[2], y0 + (rd[3] - rd[1]), cm, 1);
+      }
+    }
+    for (g = 0; g < 8; g++) {
+      var k = 1 - (t - land(g)) / 0.12;
+      if (k <= 0 || k > 1) continue;
+      for (j = 0; j < 12; j++) { var rf = rect(ROWS21[g], j); T.fill(ctx, rf[0], rf[1], rf[2], rf[3], WHITE, 0.35 * k * k); }
+    }
+  });
+})();

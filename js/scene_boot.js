@@ -1197,11 +1197,15 @@
     return T_BLIND + MASK_DUR * (1 - Math.pow(1 - th, 1 / 3));
   };
   PV.T_BLIND = T_BLIND;
-  PV.shotBlind = function (ctx, t, lt) {
+  PV.blindCellXY = cellXY;
+  PV.blindCellValue = cellValue;
+  PV.shotBlind = function (ctx, t, lt, cellA) {
+    /* cellA(i,j) -> 1/0：C21 用它决定哪些格子已经"落位"（未落位的交给转场层画轨迹） */
     PV.ops = ['MASK', 'TRIU', '-INF', 'SOFTMAX', 'BLIND'];
     T.box(ctx, 404, 56, 1164, 604, 'causal mask', 0.5, T.UI, t);
     for (var i = 0; i < N; i++) {
       for (var j = 0; j < N; j++) {
+        if (cellA && !cellA(i, j)) continue;
         var p = cellXY(i, j), tm = PV.maskTime(i, j);
         if (tm !== null && t >= tm) {
           T.fill(ctx, p[0], p[1], p[0] + CS - 2, p[1] + CS - 2, [0, 0, 0], 1);
