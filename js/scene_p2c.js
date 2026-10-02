@@ -400,10 +400,14 @@
   var FB_Y = 30;
   PV.p2cFullbleedS = FB_S; PV.p2cFullbleedY = FB_Y;
 
-  /* 镜头 64-77 的 layout（full/direction.py EXEC_HIT + 计数强制 fullbleed） */
+  /* 镜头 64-77 的 layout（full/direction.py EXEC_HIT + 计数强制 fullbleed）
+     EXEC_HIT = {0:"fullbleed", 1:"split", 2:"fullbleed", 3:"split", 4:"split"}
+     —— lay 3 是 **split**（她的立绘画在左侧 (24,70)，右边是 ps -ef 框），
+     原来这里把 3 也算成 fullbleed，于是 150.6-151.5 / 154.3-155.2 两次
+     整幅被 1.1228 缩放+裁剪，左侧那张立绘就没了（用户反馈 2:30 / 2:35）。 */
   PV.p2cHitMode = function (k) {
     var lay = (k === 11) ? 4 : (k >= 12 ? 0 : k % 4);
-    return (lay === 0 || lay === 2 || lay === 3) ? 'fullbleed' : 'split';
+    return (lay === 0 || lay === 2) ? 'fullbleed' : 'split';
   };
   var FULLBLEED_SHOTS = {};
   for (var k = 0; k < 13; k++) if (PV.p2cHitMode(k) === 'fullbleed') FULLBLEED_SHOTS['shot_exec_hit_' + P.pad(k, 2)] = 1;
@@ -1398,6 +1402,7 @@
      最后被海底吞掉。无头渲染画不出左窗格的 HTML，这里用半调立绘当替身，但轨迹/淡出/海底裁剪全部照抄。 */
   var WF_T0 = 193.5433, WF_T1 = 205.5433, WF_TC = WF_T1 - 2.0;   /* TC：她落到海底、开始被吸收 */
   var WF_FLOOR = 540, WF_HX = 590, WF_FIG_CX = 216;
+  var WF_PANE = [24, 56, 384, 532];                /* s_eval.WhaleFall.CALL_VIEW 的 rect */
   var WF_FOSSILS = ['deepseek-chat · retired 2026-07-24', 'V2 · V2.5 · V3 · R1 · V3.1 · V3.2 · V4',
                     'deepseek-reasoner · retired 2026-07-24'];
   /* WF_LINES: [u 起点, 文本(null=运行时算), amb 亮度(null=蓝), 是否 CJK]；i=4 是补丁删掉的那行 */
@@ -1458,7 +1463,7 @@
       mono(ctx, WF_FOSSILS[i], 90 + i * 400, WF_FLOOR + 30 + (i % 2) * 18, amb(0.75), 14);
     var arrive = t - lt + dur - 2.0;                 /* 她沉底后加入前面那些模型的队列（TC = T1-2） */
     if (t >= arrive) {
-      var ax = 490 + monoW(WF_FOSSILS[1], 14);
+      var ax = 490 + P.monoW(WF_FOSSILS[1], 14);
       mono(ctx, T.decode(' · V4.1-Flash', t - arrive, PV.rngFor(t, 7919), 20, 0.12, 0), ax, WF_FLOOR + 48,
            blue(0.95), 14);
     }
@@ -1483,7 +1488,7 @@
       else mono(ctx, T.decode(s, a, PV.rngFor(t, 7919), 30, 0.12, 0), 800, 110 + i * 44, col, 22, 'left', true);
     }
     /* --- 海洋雪（画在她下面，先画） --- */
-    var snow = wfSnow(), q_;
+    var snow = PV.WF_NOSNOW ? [] : wfSnow(), q_;
     for (i = 0; i < snow.length; i++) {
       q_ = snow[i];
       if (t < q_.b) continue;
@@ -1500,18 +1505,11 @@
       if (lv2 <= 0.02) continue;
       T.fill(ctx, sx, sy, sx + q_.sz, sy + q_.sz, blue(Math.min(1, lv2)), 1);
     }
-    /* --- 她：窗格整块被带走、下沉，海底以下剪掉，并随 u 淡成一道痕 --- */
-    var pr = PV.p2cPortraitBuild('shy', 'full', 354, 464, 4, 'blue');
-    if (pr) {
-      var off = wfOffset(t), dx = Math.round(off[0]), dy = Math.round(off[1]);
-      var fade = 1 - 0.3 * P.smooth2((t - WF_T0 - 3.0) / (WF_TC - WF_T0 - 3.0));
-      ctx.save();
-      wfFloorClip(ctx);
-      ctx.globalAlpha = Math.max(0, fade);
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(pr.cv, WF_PANE[0] + 3 + dx, WF_PANE[1] + 9 + dy);
-      ctx.restore();
-    }
+    /* --- 她：参考里这一块是她那块 dsh 窗格（真 HTML #chat）被带走：右移 374px、下沉 262px、
+       沉到海底以下被剪掉、最后淡成一道痕（s_eval.WhaleFall.her）。窗格在 canvas 里画不出来
+       （paneplace.js 已经在 DOM 层做水平滑出）；试过用亮蓝半调立绘当替身，200.00 三个指标全部变差
+       （canvas 14.3->26.5、full 12.3->17.9、left 不变），而且图上一眼不像（参考那里是暗的聊天窗）。
+       所以这里不再用立绘重复画她；竖向下沉 + 海底裁剪应由 paneplace.js 补。 */
   };
 
   /* ---- 95 shot_last_execution ---- */

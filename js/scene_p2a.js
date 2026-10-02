@@ -124,10 +124,10 @@
     T.fill(ctx, r[0], r[1], r[2], r[3], T.BG, 1);
     T.rect(ctx, r[0], r[1], r[2], r[3], blue(0.9), 1, Math.max(1, Math.round(s)));
     var tw = Math.round(166 * s), th = Math.round(122 * s), px = Math.max(1, Math.round(3 * s));
-    var tsz = halfblockSize('starry', 'upper', 166, 122, 3);
+    var tsz = halfblockSize('starry', 'upper', 166, 122, 3, SIM_PADX, SIM_PADY);
     if (tsz) { tw = tsz[0] * px; th = tsz[1] * px; }
     var dx0 = r[0] + Math.floor((w - tw) / 2), dy0 = r[1] + Math.round(142 * s) - th;
-    if (wDiffusionTile(ctx, dx0, dy0, 'starry', 'upper', 166, 122, px, 1.0, 900) === null)
+    if (wDiffusionTile(ctx, dx0, dy0, 'starry', 'upper', 166, 122, px, 1.0, 900, SIM_PADX, SIM_PADY) === null)
       diffusionTile(ctx, dx0, dy0, tw, th, px, 'upper', 1.0, 900);
     T.textMono(ctx, '#0000 t=000', r[0] + Math.round(6 * s), r[1] + Math.round(4 * s), blue(0.95),
                Math.max(8, Math.round(12 * s)));
@@ -142,6 +142,10 @@
       T.fill(ctx, x0, r[1], x1 - 2, r[3] - 2, T.mix(T.UI, 0.06 + 0.94 * rr.random()), 1);
     }
   }
+  /* Python 的 H3 帧里 sprite_src('upper') = (0,70,420,350)：她只占约 38% 宽、60% 高。
+     whale 立绘的 'upper' 裁切紧贴她本人，所以把裁切框按同样取景放大（宽 x2.63、高 x1.66，
+     于是 aspect 也回到 H3 的 0.667，格子数/格子大小与参考一致）。 */
+  var SIM_PADX = 2.63, SIM_PADY = 1.66;
   var SAMPLE_HOME = [414, 549, 480, 603], VECTOR_HOME = [516, 567, 946, 589];
   var ONLY_HOME = [1038, 582, 1154, 604], YOU_HOME = [916, 572, 1018, 600];
   /* continuity.retained_objects()：全部用屏幕坐标画（body_image 之后） */
@@ -259,16 +263,18 @@
     return (rc[3] - rc[1]) / Math.max(1, rc[2] - rc[0]);
   }
   /* src.resize((cols,rows), LANCZOS) 的等价物：亮度（未预乘，和 PIL convert("L") 一致）+ alpha */
-  function whaleCells(expr, crop, cols, rows, padX) {
+  function whaleCells(expr, crop, cols, rows, padX, padY) {
     var im = WHALE[expr];
     if (!im || cols < 1 || rows < 1) return null;
-    var key = expr + '|' + crop + '|' + cols + 'x' + rows + '|' + (padX || 1);
+    var key = expr + '|' + crop + '|' + cols + 'x' + rows + '|' + (padX || 1) + '|' + (padY || 1);
     if (_wcell[key]) return _wcell[key];
     var rc = whaleRect(im, crop);
-    if (padX && padX > 1) {                 /* 横向加宽裁切框：H3 的 'full' 是一整帧，她只占中间一条，
-                                               而 whale 立绘的 alpha 包围盒紧贴她本人 —— 直接照抄会让特征图里她占满整格 */
-      var ccx = (rc[0] + rc[2]) / 2, ww = (rc[2] - rc[0]) * padX;
-      rc = [ccx - ww / 2, rc[1], ccx + ww / 2, rc[3]];
+    /* H3 的裁切框是「一整帧里的一条」（她只占其中一部分），whale 立绘的 alpha 包围盒紧贴她本人。
+       不改的话特征图/采样格里她会占满整格，墨量远超参考 —— 所以按参考取景比例把框放大。 */
+    if ((padX && padX > 1) || (padY && padY > 1)) {
+      var ccx = (rc[0] + rc[2]) / 2, ccy = (rc[1] + rc[3]) / 2;
+      var ww = (rc[2] - rc[0]) * (padX || 1), hh = (rc[3] - rc[1]) * (padY || 1);
+      rc = [ccx - ww / 2, ccy - hh / 2, ccx + ww / 2, ccy + hh / 2];
     }
     var cv = PV.newCanvas(cols, rows), g = cv.getContext('2d');
     g.drawImage(im, rc[0], rc[1], rc[2] - rc[0], rc[3] - rc[1], 0, 0, cols, rows);
@@ -290,17 +296,18 @@
       T.fill(ctx, x, y, x + px - 1, y + px, col, a0);
     }
   }
-  function halfblockSize(expr, crop, maxW, maxH, px) {
+  function halfblockSize(expr, crop, maxW, maxH, px, padX, padY) {
     var asp = whaleAspect(expr, crop);
+    if (asp !== null) asp = asp * (padY || 1) / (padX || 1);
     if (asp === null) return null;
     var cols = Math.max(2, Math.floor(Math.min(maxW / px, (maxH / px) / asp)));
     var rows = Math.max(2, Math.round(cols * asp)); rows -= rows % 2;
     return [cols, rows];
   }
   /* tk.halfblock()：levels=8 量化亮度 + 网点掩码 + tint colorize；返回 [w,h] 或 null */
-  function wHalfblock(ctx, sx, sy, expr, crop, maxW, maxH, px, tint, aK) {
-    var sz = halfblockSize(expr, crop, maxW, maxH, px); if (!sz) return null;
-    var cols = sz[0], rows = sz[1], C = whaleCells(expr, crop, cols, rows); if (!C) return null;
+  function wHalfblock(ctx, sx, sy, expr, crop, maxW, maxH, px, tint, aK, padX, padY) {
+    var sz = halfblockSize(expr, crop, maxW, maxH, px, padX, padY); if (!sz) return null;
+    var cols = sz[0], rows = sz[1], C = whaleCells(expr, crop, cols, rows, padX, padY); if (!C) return null;
     var q = 255 / 7, a0 = aK === undefined ? 1 : aK, r, k;
     for (r = 0; r < rows; r++) for (k = 0; k < cols; k++) {
       if (C.alpha[r * cols + k] <= 100) continue;
@@ -310,8 +317,8 @@
     return [cols * px, rows * px];
   }
   /* tk.diffusion_tile()：clean 半调 + 噪声网点按 (1-s)^1.3 / s 叠合 */
-  function wDiffusionTile(ctx, x, y, expr, crop, maxW, maxH, px, s, seed) {
-    var sz = halfblockSize(expr, crop, maxW, maxH, px); if (!sz) return null;
+  function wDiffusionTile(ctx, x, y, expr, crop, maxW, maxH, px, s, seed, padX, padY) {
+    var sz = halfblockSize(expr, crop, maxW, maxH, px, padX, padY); if (!sz) return null;
     var cols = sz[0], rows = sz[1];
     if (s < 0.999) {
       var nr = PV.mt(seed), lum = new Float32Array(cols * rows), k;
@@ -321,7 +328,7 @@
       }
       tileFromLum(ctx, lum, cols, rows, x, y, px, 'blue', undefined, Math.pow(1 - s, 1.3));
     }
-    wHalfblock(ctx, x, y, expr, crop, maxW, maxH, px, 'blue', s);
+    wHalfblock(ctx, x, y, expr, crop, maxW, maxH, px, 'blue', s, padX, padY);
     return [cols * px, rows * px];
   }
   /* tuikit.conv_maps()：先把 RGBA 合成到黑底再转 L，再 resize 到 (cols,rows) */
@@ -591,10 +598,10 @@
       T.rect(ctx, x, y, x + tw - 8, y + th - 8, hot(i) ? T.ME_TEXT : T.UI, 1, 1);
       /* Python: diffusion_tile(EXPRS[(i*3)%8], "upper", tw-20, th-30, 3, s) */
       var ex = WEXP[(i * 3) % WEXP.length];
-      var sz = halfblockSize(ex, 'upper', tw - 20, th - 30, 3) || herSize(tw - 20, th - 30, 3, 'upper');
+      var sz = halfblockSize(ex, 'upper', tw - 20, th - 30, 3, SIM_PADX, SIM_PADY) || herSize(tw - 20, th - 30, 3, 'upper');
       var tww = sz[0] * 3, thh = sz[1] * 3;
       var tx0 = x + Math.floor((tw - 8 - tww) / 2), ty0 = y + th - 10 - thh;
-      if (wDiffusionTile(ctx, tx0, ty0, ex, 'upper', tw - 20, th - 30, 3, s, 900 + i) === null)
+      if (wDiffusionTile(ctx, tx0, ty0, ex, 'upper', tw - 20, th - 30, 3, s, 900 + i, SIM_PADX, SIM_PADY) === null)
         diffusionTile(ctx, tx0, ty0, tw - 20, th - 30, 3, 'upper', s, 900 + i);
       pil(ctx, '#' + pad4(i) + ' t=' + pad3(Math.floor(999 * (1 - s))), x + 6, y + 4,
           i === 0 ? blue(0.95) : amb(0.7), 12);
