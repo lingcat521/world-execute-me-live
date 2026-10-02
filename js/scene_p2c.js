@@ -43,8 +43,8 @@
   function head(ctx, s, x, y, col, size, align, bold) { T.textPIL(ctx, s, x, y, col, size, align, bold); }
 
   /* ---------------- banner_bits / banner_block（tuikit 同名函数） ---------------- */
-  var BANNER_K = 1.121;   /* 标定：见 pvport 比对（参考帧 1065x220，未标定时 950x220） */
-  function bannerBits(text, rows, aspect) { return PV.bannerBits(text, rows, aspect * BANNER_K); }
+  /* 参考成片的 EXECUTION banner = 未标定的 950x220 画布块经 fullbleed 缩放(1.1228)后的 1066x247 -> 不需要标定 */
+  function bannerBits(text, rows, aspect) { return PV.bannerBits(text, rows, aspect); }
   function bannerFit(text, rows, cellAspect, cw, maxW) {
     var bits = bannerBits(text, rows, cellAspect);
     while (bits.width * (cw || 1) > maxW && rows > 2) { rows -= 1; bits = bannerBits(text, rows, cellAspect); }
@@ -499,6 +499,112 @@
   PV.paneVisible = function (t) {
     if (PV.p2cInFullbleed(t) || PV.p2cInRaw(t)) return false;
     return origPane ? origPane(t) : true;
+  };
+})();
+
+
+/* ================================================================ 立绘的像素级素材（tuikit 的 glyph_grid / conv_maps / halfblock）
+   原工程用 whale-*.webp 立绘；本移植用 avatars/*.png，取亮度与 alpha。 */
+(function () {
+  'use strict';
+  var PV = window.PV, T = PV.tui, P = PV.p2c;
+  var RAMP = " .:-=+*#%@";
+  var CROPS = { full: [0, 0, 1, 1], upper: [0.05, 0.0, 0.95, 0.62], face: [0.15, 0.02, 0.85, 0.45],
+                bust: [0.08, 0.0, 0.92, 0.72] };
+  var LUMC = {}, GRIDC = {}, CONVC = {};
+  function srcOf(name) { return PV.p2cImages[PV.p2cAvatarPath(name)] || null; }
+  /* 亮度 + alpha 网格（cols x rows） */
+  P.lumGrid = function (name, crop, cols, rows) {
+    var key = name + '|' + crop + '|' + cols + '|' + rows;
+    if (LUMC[key]) return LUMC[key];
+    var im = srcOf(name);
+    if (!im) return null;
+    var c = CROPS[crop] || CROPS.full, sw = im.width, sh = im.height;
+    var tmp = PV.newCanvas(cols, rows), g = tmp.getContext('2d');
+    g.imageSmoothingEnabled = true;
+    g.drawImage(im, c[0] * sw, c[1] * sh, (c[2] - c[0]) * sw, (c[3] - c[1]) * sh, 0, 0, cols, rows);
+    var d = g.getImageData(0, 0, cols, rows).data;
+    var lum = new Float32Array(cols * rows), al = new Uint8Array(cols * rows);
+    for (var i = 0; i < cols * rows; i++) {
+      lum[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+      al[i] = d[i * 4 + 3] > 110 ? 255 : 0;
+    }
+    var out = { lum: lum, alpha: al, cols: cols, rows: rows };
+    LUMC[key] = out;
+    return out;
+  };
+  /* glyph_grid：边缘格给方向笔画，内部格给密度字符 */
+  P.glyphGrid = function (name, crop, cols, rows) {
+    var key = name + '|' + crop + '|' + cols + '|' + rows;
+    if (GRIDC[key]) return GRIDC[key];
+    var L = P.lumGrid(name, crop, cols, rows);
+    if (!L) return null;
+    var lines = [], bright = new Float32Array(cols * rows), q, r;
+    function at(x, y) { return L.lum[Math.min(rows - 1, Math.max(0, y)) * cols + Math.min(cols - 1, Math.max(0, x))]; }
+    for (r = 0; r < rows; r++) {
+      var line = '';
+      for (q = 0; q < cols; q++) {
+        if (L.alpha[r * cols + q] < 110) { line += ' '; continue; }
+        var v = L.lum[r * cols + q] / 255;
+        var gx = 0, gy = 0, k;
+        var KX = [-1, 0, 1, -2, 0, 2, -1, 0, 1], KY = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+        for (k = 0; k < 9; k++) {
+          var vv = at(q + (k % 3) - 1, r + Math.floor(k / 3) - 1);
+          gx += KX[k] * vv; gy += KY[k] * vv;
+        }
+        var ex = gx / 128, ey = gy / 128, mag = Math.sqrt(ex * ex + ey * ey);
+        if (mag > 1.1) {
+          var ang = (Math.atan2(ey, ex) * 180 / Math.PI + 180) % 180;
+          line += (ang < 22.5 || ang >= 157.5) ? '|' : (ang < 67.5 ? '\\' : (ang < 112.5 ? '-' : '/'));
+          bright[r * cols + q] = 255;
+        } else {
+          line += RAMP[Math.min(9, 1 + Math.floor(v * 9))];
+          bright[r * cols + q] = 255 * (0.35 + 0.65 * v);
+        }
+      }
+      lines.push(line);
+    }
+    var out = { lines: lines, bright: bright };
+    GRIDC[key] = out;
+    return out;
+  };
+  /* conv_maps：6 张特征图（sobel_x/sobel_y/laplace/sharpen/emboss/blur），autocontrast 到 0..255 */
+  P.convMaps = function (name, crop, cols, rows) {
+    var key = name + '|' + crop + '|' + cols + '|' + rows;
+    if (CONVC[key]) return CONVC[key];
+    var L = P.lumGrid(name, crop, cols, rows);
+    if (!L) return null;
+    var K = [['sobel_x', [-1, 0, 1, -2, 0, 2, -1, 0, 1], 1], ['sobel_y', [-1, -2, -1, 0, 0, 0, 1, 2, 1], 1],
+             ['laplace', [0, 1, 0, 1, -4, 1, 0, 1, 0], 1], ['sharpen', [0, -1, 0, -1, 5, -1, 0, -1, 0], 1],
+             ['emboss', [-2, -1, 0, -1, 1, 1, 0, 1, 2], 1], ['blur', [1, 2, 1, 2, 4, 2, 1, 2, 1], 16]];
+    var out = [];
+    for (var m = 0; m < K.length; m++) {
+      var nm = K[m][0], kk = K[m][1], sc = K[m][2];
+      var arr = new Float32Array(cols * rows);
+      var signed = (nm === 'sobel_x' || nm === 'sobel_y' || nm === 'laplace');
+      var lo = 1e9, hi = -1e9;
+      for (var r = 0; r < rows; r++) for (var q = 0; q < cols; q++) {
+        var acc = 0;
+        for (var i = 0; i < 9; i++) {
+          var xx = Math.min(cols - 1, Math.max(0, q + (i % 3) - 1)), yy = Math.min(rows - 1, Math.max(0, r + Math.floor(i / 3) - 1));
+          acc += kk[i] * L.lum[yy * cols + xx];
+        }
+        acc /= sc;
+        if (nm === 'emboss') acc += 128;
+        if (signed) acc = Math.abs(acc);
+        arr[r * cols + q] = acc;
+        if (acc < lo) lo = acc; if (acc > hi) hi = acc;
+      }
+      /* autocontrast(cutoff=1) 近似：按 1%/99% 分位拉伸 */
+      var sorted = Array.prototype.slice.call(arr).sort(function (a, b) { return a - b; });
+      var a1 = sorted[Math.floor(sorted.length * 0.01)], a99 = sorted[Math.floor(sorted.length * 0.99)];
+      if (a99 - a1 < 1) { a1 = lo; a99 = hi || 1; }
+      var norm = new Float32Array(cols * rows);
+      for (var j = 0; j < arr.length; j++) norm[j] = Math.max(0, Math.min(255, (arr[j] - a1) / (a99 - a1) * 255));
+      out.push({ name: nm, v: norm });
+    }
+    CONVC[key] = out;
+    return out;
   };
 })();
 

@@ -11,7 +11,7 @@ Cut.T = 进入镜头的起点；窗口 = [T-pre, T+post]。我们已实现的镜
 | C04 | 7.082 | 已实现 | creation -> parameters. RETAIN：me.* 块先亮起并留在原地；chrome 收回 shell staging |
 | C05 | 9.851 | 已实现 | parameters -> init. CARRY：'552,000,000,000 params' 亮起、沿弧线升起，落在直方图标题上 |
 | C06 | 11.005 | 已实现 | init -> world. MORPH：定型的柱条亮起并碎成点列，每点飞向球面的一点 |
-| C07 | 12.389 | 待做 | world -> begin_sim. CARRY+MORPH：me 与 you 离开轨道，各自飞进 population 行的词里 |
+| C07 | 12.389 | 已实现 | world -> begin_sim. CARRY+MORPH：me 与 you 离开轨道，各自飞进 population 行的词里 |
 | C08 | 16.082 | 已实现 | begin_sim -> corpus. RUN 亮起后碎成词块飞进 token 河；预算行飞下去变成计数器 |
 | C09 | 19.700 | 已实现 | corpus -> losscurve. 语料词加速吸进 loss 曲线原点，曲线从那里开始画 |
 | C10 | 23.236 | 已实现 | losscurve -> dualpipe. 端点长大、沿曲线往回把它吃掉，到原点后跳进 pipeline 第一格 |
@@ -30,4 +30,4 @@ Cut.T = 进入镜头的起点；窗口 = [T-pre, T+post]。我们已实现的镜
 | C23 | 50.928 | 待做 | dizzy -> travel. 镜头只在窗格内后拉：旋转的碗向左离开，年份条（已在 2026 AD）进来 |
 | C24 | 54.159 | 待做 | travel -> unite（进入 unite 镜头） |
 
-已完成 19 / 24（C01-C06 + C08-C20）
+已完成 20 / 24（C01-C07 开场全部 + C08-C20）；剩余 C21-C24
