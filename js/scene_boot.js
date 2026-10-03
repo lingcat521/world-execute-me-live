@@ -1128,7 +1128,23 @@
   }
   PV.tangentState = state;
   PV.TAN = { Y0: Y0, A: A, K: K, X0: X0, VIEW: VIEW };
-  PV.riderSprite = function () { return riderImg; };
+  var _riderCv = null, _riderKey = null;
+  /* 权威 h3_full.py:284-286：`scenes.RIDER[0] = lambda t: tk.halfblock('h3','upper',70,80,2)`
+     —— 小骑手是 **H3 逐帧取源 + tuikit.halfblock**（8 级量化 + 网点），不是静态 png。
+     这里走 scene_p2c 的 p2cPortraitBuild（已被接到 PV.h3.cells），按 (池帧, k2, cut) 做单条缓存；
+     没有 H3（或它返回 null）时回落静态 avatars/rider.png。H3 'upper' 框 aspect 0.6667 -> 35x22 格 = 70x44px。 */
+  PV.riderSprite = function () {
+    if (PV.h3 && PV.h3.frame && PV.p2cPortraitBuild) {
+      var hf = PV.h3.frame(PV.h3.now()), key = hf.k + '|' + hf.k2 + '|' + hf.cut;
+      if (key !== _riderKey) {
+        var p = null;
+        try { p = PV.p2cPortraitBuild('h3', 'upper', 70, 80, 2, 'blue'); } catch (e) { p = null; }
+        _riderCv = p ? p.cv : null; _riderKey = key;
+      }
+      if (_riderCv) return _riderCv;
+    }
+    return riderImg;
+  };
   PV.shotTangent = function (ctx, t, lt, u, dur, opts) {
     opts = opts || {};
     PV.ops = ['DERIV', 'COS', 'TANGENT', 'SLOPE', 'SIT'];
