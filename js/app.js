@@ -38,7 +38,7 @@
   audioEl.addEventListener('loadedmetadata', function () {
     if (isFinite(audioEl.duration) && audioEl.duration > 1) PV.audioDur = audioEl.duration;
   });
-  PV.VER = '202610043100';
+  PV.VER = '202610043200';
   var errEl = document.getElementById('err');
   PV.showErr = function (msg) {
     if (!errEl) return;

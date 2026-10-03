@@ -92,29 +92,39 @@
   }
 
   /* ---------- 顶栏 ---------- */
+  /* dsh_wave.draw() 的忠实移植（dshpv/film/pv_dsh_frontend_20260927/dsh_wave.py:52-78）。
+     原来有 5 处偏离：①BAR=3 是「1px 竖条+2px 间隙」的间距，我们画成 3px 实心条（所以糊成一片）
+     ②方向反了（我们从右往左，权威从左往右）③每格时长用 dt=SPAN/GAP 而不是 SPAN/n（整条带时间轴不对）
+     ④取单个 1ms 采样而不是该格窗口的均值 ⑤明暗包络 age=k/n 因方向反过来而镜像。 */
   function drawWave(ctx, t, x1, amb) {
-    var X0 = 364, YC = 23, AMP = 11, GAP = 30, SPAN = 2.4, BAR = 3;
-    var n = Math.max(1, Math.floor((x1 - X0) / BAR)), dt = SPAN / GAP;
-    for (var k = 0; k < n; k++) {
-      var x = x1 - (k + 1) * BAR;
-      if (x < X0) break;
-      var v = T.clamp01((PV.rmsAt(t - k * BAR * dt) - 0.05) / 0.57);
-      v = Math.pow(v, 1.1);
-      var h = Math.round(AMP * v);
-      if (h <= 0) continue;
-      var lit = (0.14 + 0.62 * Math.pow(k / n, 1.8)) * (0.65 + 0.35 * v);
-      var core = Math.floor(h / 2);
-      for (var j = 0; j < h; j++) {
-        var a = T.clamp01(lit + (j < core ? 0.18 : 0));
-        var xa = x, xb = x + BAR - 1;
-        ctx.fillStyle = amb(a);
-        ctx.fillRect(xa, YC - j - 1, xb - xa + 1, 1);
-        ctx.fillRect(xa, YC + j, xb - xa + 1, 1);
+    var X0 = 364, YC = 23, AMP = 11, SPAN = 2.4, BAR = 3, LO = 0.05, HI = 0.62, GAMMA = 1.1;
+    function level(rms) { return Math.pow(T.clamp01((rms - LO) / (HI - LO)), GAMMA); }
+    var n = Math.max(1, Math.floor((x1 - X0) / BAR));
+    var x, k, i;
+    for (x = X0; x < x1; x += 4) { ctx.fillStyle = amb(0.14); ctx.fillRect(x, YC, 1, 1); }   /* 淡淡的中心点线 */
+    for (k = 0; k < n; k++) {
+      var a = t - SPAN * (1 - k / n), b = a + SPAN / n;
+      var i0 = Math.max(0, Math.floor(a * 1000)), i1 = Math.max(0, Math.floor(b * 1000));
+      if (i1 <= i0) continue;
+      var sum = 0, cnt = 0;
+      for (i = i0; i < i1; i++) { sum += PV.rmsAt(i / 1000); cnt++; }
+      if (!cnt) continue;
+      var v = level(sum / cnt);
+      var h = Math.max(0, Math.round(AMP * v));
+      var age = k / n;                                   /* 0=最旧, 1=现在（越靠右越亮） */
+      var lit = (0.14 + 0.62 * Math.pow(age, 1.8)) * (0.65 + 0.35 * v);
+      var px = X0 + k * BAR;
+      if (h > 0) {
+        ctx.fillStyle = amb(lit);
+        ctx.fillRect(px, YC - h, 1, h * 2 + 1);          /* PIL d.line([x,YC-h,x,YC+h]) = 竖线 2h+1 */
+        var core = Math.floor(h / 2);
+        if (core) { ctx.fillStyle = amb(Math.min(1, lit + 0.18)); ctx.fillRect(px, YC - core, 1, core * 2 + 1); }
       }
     }
-    for (var x2 = X0; x2 < x1; x2 += 4) { ctx.fillStyle = amb(0.14); ctx.fillRect(x2, YC, 1, 1); }
-    var lv = PV.rmsAt(t);
-    T.dot(ctx, x1 + 7, YC, 1.5 + 1.5 * lv, amb(0.85));
+    var now = Math.floor(t * 1000), s2 = 0, c2 = 0;
+    for (i = Math.max(0, now - 40); i <= now; i++) { s2 += PV.rmsAt(i / 1000); c2++; }
+    var lv = c2 ? level(s2 / c2) : 0;
+    T.dot(ctx, x1 + 7, YC, 1.5 + 1.5 * lv, amb(0.55 + 0.45 * lv));
   }
   function header(ctx, t, opt) {
     var col = opt.alert === 'err' ? T.ERR : opt.alert === 'anom' ? T.ANOM : T.UI;
