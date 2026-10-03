@@ -1310,7 +1310,8 @@
      Python scenes_chorus1 的 halfblock(expr,"face",650,520,5)，H3 的 face 框是 255x170（aspect 0.6667）
      -> cols=130 rows=86 -> 650x430 @ (37,70)。原来那套「whale 静态立绘 + 墨量校正（520x345 @ sy=153）」
      是给**错误取源**打的补丁，取源修正后必须关掉，否则会盖住正确的画。 */
-  if (PV.HAPPY_PORTRAIT_FIX === undefined) PV.HAPPY_PORTRAIT_FIX = false;
+  /* 【2026-10-03 主代理·实测回退】H3 取源接线后我一度把它关掉（让 scene_p2a 按权威几何 650x430@(37,70) 画），但用官方参考帧（pvport/refall2，1920x1080 缩到 1280x720）实测**变差**：t=67.5 canvas 13.91 -> 16.55、left 15.10 -> 27.26；t=66.5 canvas 8.18 -> 10.57。原因：本机 H3 cache 是 placeholder 替身（maid-left.webp），而下面这套 520x345@sy=153 的墨量校正是照着参考调出来的。按「以参考成片为准」的验收口径，先保留校正版；等真 H3 素材到位再把取源换过去重测。 */
+  if (PV.HAPPY_PORTRAIT_FIX === undefined) PV.HAPPY_PORTRAIT_FIX = true;
 
   function whaleAspect(expr, crop) {
     var im = WHALE[expr]; if (!im) return null;
