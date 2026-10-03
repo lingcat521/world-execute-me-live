@@ -1152,8 +1152,13 @@
         var pos = bez(src, dst, -0.3, e);
         var sc = 1.2 + 1.0 * Math.sin(Math.PI * Math.min(1, e * 1.1)) + (TILE_SCALE - 1.2) * eBack(u, 1.4);
         sc = Math.max(1, sc);
-        placeSprite(ctx, tileSprite(Math.round(sc * 100) / 100, 0.9, 0), pos[0], pos[1],
-                    0.9 * (1 - e), 0.7 * (1 - e));
+        /* 权威 s_userleft.py:397-399：sp = tile_sprite(round(sc,2), 0.9, 0.9*(1-e)) 后
+           place(over, haloed(sp, 0.7*(1-e)), pos) —— **精灵本身不淡出**（不透明），只有光晕淡出、
+           蓝环（第 3 个参数）随 e 淡出。原来我们把它写成 alpha=0.9*(1-e) 且 ring=0：
+           磁贴在落位前 1-2 帧先淡没、然后被 shot_completion 的停靠磁贴"弹"回来（用户报的
+           f2574「白色方块里的 you 本该消失又弹回来」）。 */
+        placeSprite(ctx, tileSprite(Math.round(sc * 100) / 100, 0.9, 0.9 * (1 - e)), pos[0], pos[1],
+                    1, 0.7 * (1 - e));
       }
     }
   });
