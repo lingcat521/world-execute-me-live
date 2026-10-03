@@ -141,7 +141,8 @@
       var ts = T0 + 0.45 + (i - 1) * BEAT / 2;
       if (t < ts) return null;
       var u = eOut((t - ts) / 0.2), c = PV.ropeCenter(i);
-      return { cx: c0[0] + (c[0] - c0[0]) * u, cy: c0[1] + (c[1] - c0[1]) * u, R: 18 + 52 * u, a: 0.3 + 0.7 * u, labels: u >= 1 };
+      /* sweep/hand 必须给：drawRope 只在 sweep>0 时画圆，缺了它这 5 个圆就只剩十字轴线（用户两次报"五个圆不可见"就是这个） */
+      return { cx: c0[0] + (c[0] - c0[0]) * u, cy: c0[1] + (c[1] - c0[1]) * u, R: 18 + 52 * u, a: 0.3 + 0.7 * u, sweep: u, hand: u >= 1, labels: u >= 1 };
     }
     PV.circleSpec = circles;
     try {
