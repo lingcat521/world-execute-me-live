@@ -50,7 +50,24 @@
         PV.chrome(ctx, t, { chapter: chapterAt(t), ops: PV.ops, retract: PV.retract === undefined ? 0 : PV.retract, shell: PV.shell, alert: PV.alert });
       } catch (e) { PV.chromeErr = e; }
     }
-    if (PV.overlay) { try { PV.overlay(ctx, t); } catch (e) {} }
+    /* overlay 在 Python 里是 composited **在她之上**（v2.py: fr.over 在 her 之后合成）。
+       我们的她窗格是真 HTML（#chat 在 #stage 之后 => 永远盖住画布），所以叠在她上面的东西
+       必须画到另一个画布 #top 上（它在 #chat 之后）。没有 #top 时退回主画布。 */
+    if (PV.overlay) {
+      var tc = null;
+      try { tc = document.getElementById('top'); } catch (e) { tc = null; }
+      if (tc) {
+        var r2 = PV.RES || 1, tw = Math.round(1280 * r2), th = Math.round(720 * r2);
+        if (tc.width !== tw || tc.height !== th) { tc.width = tw; tc.height = th; }
+        var tx2 = tc.getContext('2d');
+        tx2.setTransform(1, 0, 0, 1, 0, 0);
+        tx2.clearRect(0, 0, tw, th);
+        tx2.setTransform(r2, 0, 0, r2, 0, 0);
+        try { PV.overlay(tx2, t); } catch (e) { PV.ovErr = e; }
+      } else {
+        try { PV.overlay(ctx, t); } catch (e) {}
+      }
+    }
     /* 注意：LEAD/SUPPORT 不是像素级整块压暗——实测参考在 7.08 切换时左窗格反而变亮(9.59->16.99)、
        103.0 前后中窗格基本不变(13.25->13.47)。它是作用在窗格自身渲染里的，不能盖一层黑蒙版
        （试过：会把 6.00s 从中窗格 7.0 压到 2.94，反而破坏吻合）。PV.levels() 保留备用。 */
