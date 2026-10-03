@@ -50,8 +50,24 @@
     var n = PV.shotName;
     return (n && n.indexOf('shot_whale_fall') === 0 && t >= WF_T0) ? PV.whaleFallDy(t) : 0;
   };
+  /* shot_moe_dense（134.466-138.159）入场时她的窗格不是直接消失，而是**从上往下被擦掉**。
+     逐帧量（12fps，取左侧饱和红区 bbox，x 基本不变）：
+        134.43  y 56..603     134.52  y 56..603（整块被红填满，闪一下）
+        134.60  y 118..603    134.68  y 300..603     134.77 起 没有了
+     拟合 y0 = 56 + 548*u^2, u = (t-134.50)/0.28；我们 #chatbox 顶边在设计 y=65，
+     所以 clip-path 的 top inset = max(0, y0-65)。134.78 之后交给 paneVisible 隐藏。 */
+  var ERASE_A = 134.50, ERASE_B = 134.78;
+  PV.eraseInset = function (t) {
+    if (t < ERASE_A || t >= ERASE_B) return 0;
+    var u = (t - ERASE_A) / (ERASE_B - ERASE_A);
+    var y0 = 56 + 548 * u * u;
+    return Math.max(0, y0 - 65);
+  };
+  PV.eraseHidden = function (t) { return t >= ERASE_B && t < 138.1587; };
+
   var baseVis = PV.paneVisible;
   PV.paneVisible = function (t) {
+    if (PV.eraseHidden(t)) return false;                 /* 134.78 起她已被擦掉 */
     if (PV.hoardHidden(t)) return false;                 /* hoard 入场前的黑场 */
     if (inHoard(t)) return true;                          /* hoard 期间她在画面右侧 */
     var n = PV.shotName;
@@ -73,6 +89,8 @@
     var dx = PV.paneDx(t), dy = PV.paneDy(t);
     chat.style.transform = (dx > 0.001 || Math.abs(dy) > 0.001)
       ? 'translate(' + dx.toFixed(2) + 'px,' + dy.toFixed(2) + 'px)' : '';
+    var ins = PV.eraseInset(t);
+    chat.style.clipPath = ins > 0.5 ? ('inset(' + ins.toFixed(1) + 'px 0 0 0)') : '';
   };
 })();
 
