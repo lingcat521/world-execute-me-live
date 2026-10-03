@@ -295,11 +295,22 @@
       WARM.seen[p] = 1; WARM.q.push(p);
     }
   }
+  /* 只在真浏览器里预热：pvport/*.mjs 那类离线 harness 把 pane.js 塞进极简 vm 沙箱
+     （有 setTimeout、没有 Image/location），预热器在里面既没图可取、又会在定时器里抛
+     ReferenceError，所以整套跳过。?nowarm=1 也给手动关掉的开关。 */
+  function warmSupported() {
+    try {
+      if (typeof Image !== 'function' || typeof setTimeout !== 'function') return false;
+      if (typeof document === 'undefined' || !document || typeof document.createElement !== 'function') return false;
+      if (/(^|[?&])nowarm=1(&|$)/.test(location.search || '')) return false;
+    } catch (e) { return false; }
+    return true;
+  }
   function warmStart() {
     if (WARM.timer) return;
     warmBoost(PV.t || 0);
     warmTick();
-    WARM.timer = setInterval(function () { warmBoost(PV.t || 0); warmTick(); }, 500);
+    if (typeof setInterval === 'function') WARM.timer = setInterval(function () { warmBoost(PV.t || 0); warmTick(); }, 500);
   }
 
   /* ---- ?perf=1：每秒把「整窗重建次数 / 头像换图次数 / 预热进度」报到 console 与 #ver ---- */
@@ -316,7 +327,7 @@
     if (p !== PF.lastPet) PF.src++;
     PF.lastPet = p;
   }
-  if (PERF) setInterval(function () {
+  if (PERF && typeof setInterval === 'function') setInterval(function () {
     var now = Date.now(), dt = PF.t0 ? (now - PF.t0) / 1000 : 1; PF.t0 = now;
     var line = '[pv-perf] t=' + (PV.t ? PV.t.toFixed(2) : '?') + 's'
       + ' rebuild/s=' + (PF.rebuild / dt).toFixed(1)
@@ -2991,6 +3002,6 @@
   try { document.body.setAttribute('data-ds-dark-theme', 'true'); } catch (e) {}
   /* 页面一起步就预热（延后 300ms，先让音频/图标的请求发出去）；暂停/未开播时照样在热，
      等于白送几秒提前量。 */
-  setTimeout(warmStart, 300);
+  if (warmSupported()) setTimeout(warmStart, 300);
 })();
 
