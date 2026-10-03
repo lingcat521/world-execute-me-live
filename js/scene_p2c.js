@@ -1958,6 +1958,7 @@
   reg('shot_love_loop', 190.3125, 193.5433, function (c, t, lt, u, dur, o) { PV.shotLoveLoop(c, t, lt, u, dur, o); });
   reg('shot_whale_fall', 193.5433, 205.5433, function (c, t, lt, u, dur, o) { PV.shotWhaleFall(c, t, lt, u, dur, o); });
   reg('shot_last_execution', 205.5433, 207.0833, function (c, t, lt, u, dur, o) { PV.shotLastExecution(c, t, lt, u, dur, o); });
-  reg('shot_black', 207.0833, 211.0, function (c, t, lt, u, dur, o) { PV.shotBlack(c, t, lt, u, dur, o); });
+  /* v2.py:46-48 ALL[-1].start = HARD_CUT = 4970/24 = 207.0833，而渲染循环跑到 engine.END_T = 成片总长 211.872（我们的 FILM_LEN）。原来这里写 211.0，最后 0.872s（21 帧）没有任何镜头在画 —— 用户报的「只做到 3:27.6」。 */
+  reg('shot_black', 207.0833, 211.872, function (c, t, lt, u, dur, o) { PV.shotBlack(c, t, lt, u, dur, o); });
 })();
 
