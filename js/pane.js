@@ -2590,7 +2590,8 @@
       ctx = ctx + (100 - ctx) * f;
     }
     var turns = F_E_TURNS + 1, steps = F_E_STEPS + tools;
-    return '<style>#timeline>*{flex:none}</style>' + fSqueezeCss(t) + fHeader(t, state, dotC) +
+    var theme = red ? '<style>' + F_RED + '</style>' : '';
+    return theme + '<style>#timeline>*{flex:none}</style>' + fSqueezeCss(t) + fHeader(t, state, dotC) +
       fTimelineOpen(t) + rows.join('') + (fWallsOn(t) ? fWallsHtml(t) : '') + '</div>' +
       fComposer(t, running, full, ctx) + statsRow(turns, steps, null, fFmtTok(tok), 100) + fRiskDialog(t) + fPointer(t);
   }

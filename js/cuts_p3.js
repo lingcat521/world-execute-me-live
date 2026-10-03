@@ -402,6 +402,32 @@
     };
   })();
 
+  /* 窗格的**外框与标题**是画在画布上的（frame.js 的 box3(LEFT)，24/56/384/604），必须和 #chatbox
+     内容走同一套仿射，否则「内容滑走了、外框还在原地」—— 用户报的 141.2-141.6 shot_hoard 现象。
+     video1.mp4 逐帧实测的框左右边：t=141.208 → 24&384；141.292 → 29&389；141.375 → 107&467；
+     141.500 → 557&917；141.625 → 775&1135 —— 正好 = 24/384 + 760*eIo((t-141.2395)/0.45)，
+     与 paneStateAt 的 C62 分支逐帧吻合（含 k2 的 141.25 仍停在 24/384）。
+     变换式与 #chatbox 完全一致：translate(st.x, st.y) scale(sx,sy) translate(-PANE_X,-PANE_Y)；
+     st 无位移（绝大多数时刻）时是恒等变换，行为不变。C56/C61 滑出、C60 压扁、相机段同理。 */
+  (function () {
+    var basePanes = PV.drawPanes;
+    if (!basePanes) return;
+    PV.drawPanes = function (ctx, t) {
+      var st;
+      try { st = paneStateAt(t); } catch (e) { st = null; }
+      if (st && (Math.abs(st.x - PANE_X) > 1e-3 || Math.abs(st.y - PANE_Y) > 1e-3 ||
+                 Math.abs(st.sx - 1) > 1e-3 || Math.abs(st.sy - 1) > 1e-3)) {
+        ctx.save();
+        ctx.translate(st.x, st.y);
+        ctx.scale(st.sx, st.sy);
+        ctx.translate(-PANE_X, -PANE_Y);
+        try { basePanes.call(this, ctx, t); } finally { ctx.restore(); }
+        return;
+      }
+      basePanes.call(this, ctx, t);
+    };
+  })();
+
   /* ================================================================ C55 memory_ls -> erase */
   (function () {
     var T0 = 119.6972, PRE = 0.35, POST = 0.8, LAND = 0.462, LOCK = 0.06;
