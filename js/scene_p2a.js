@@ -304,13 +304,17 @@
   }
   /* tk.grid_mask：每格最后 1px 竖缝全透明；每两行之间的那条像素行 alpha=70/255 */
   function tileCell(ctx, x, y, px, r, col, a0) {
-    /* PIL 里一格是 px 行 × px 列，掩码再去掉最后一列、把奇数列块的最后一行的 alpha 压到 70/255。
+    /* 权威 tuikit.py:156-164 grid_mask：
+         if px >= 3:  for x in range(px-1, w, px)  -> 挖 1px 竖缝（仅 px>=3！）
+         for y in range(2*px-1, h, 2*px)         -> 每 2px 行压一条 alpha=70 的横线
+       原来**无条件**挖竖缝，px=2 时就多挖了一条（rider 的 halfblock(...,2) 会看到）。
        T.fill(x0,y0,x1,y1) 覆盖 [x0,x1)×[y0,y1)，所以行数要写 y+px。 */
+    var seam = px >= 3 ? 1 : 0;
     if (r % 2 === 1) {
-      T.fill(ctx, x, y, x + px - 1, y + px - 1, col, a0);
-      T.fill(ctx, x, y + px - 1, x + px - 1, y + px, col, a0 * 70 / 255);
+      T.fill(ctx, x, y, x + px - seam, y + px - 1, col, a0);
+      T.fill(ctx, x, y + px - 1, x + px - seam, y + px, col, a0 * 70 / 255);
     } else {
-      T.fill(ctx, x, y, x + px - 1, y + px, col, a0);
+      T.fill(ctx, x, y, x + px - seam, y + px, col, a0);
     }
   }
   function halfblockSize(expr, crop, maxW, maxH, px, padX, padY) {
