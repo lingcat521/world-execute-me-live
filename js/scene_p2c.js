@@ -1603,7 +1603,7 @@
       ctx.restore();
       T.fill(ctx, bx + ins, by + ins, bx + 280 - ins, by + 70 - ins, T.DS_BLUE, 0.18 + 0.42 * k);
       T.rect(ctx, bx + ins, by + ins, bx + 280 - ins, by + 70 - ins, blue(1.0), 1, 3);
-      mono(ctx, '[ log out ]', bx + 60, by + 18, T.mix(T.BLUE_HI, 0.4 + 0.6 * k), 26, 'left', true);
+      mono(ctx, '[ log out ]', bx + 60, by + 18, T.mix(T.ME_HI, 0.4 + 0.6 * k), 26, 'left', true);
     }
     ctx.restore();
   }
