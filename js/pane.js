@@ -1537,7 +1537,7 @@
   var D_CASCADE = [[0.00, 's-palette'], [0.12, 's-pv'], [0.24, 's-vendor'], [0.24, 's-index'], [0.36, 's-components']];
   var D_SOURCE = ('<div id="app">\n' +
     ' <div class="pv-head">\n' +
-    '  <div class="pv-pet"><img src="avatars/complete.png"></div>\n' +
+    '  <div class="pv-pet"><img src="' + avMosaic('cheerful', 12) + '"></div>\n' +
     '  <div class="pv-name">大肥鱼</div>\n' +
     '  <div class="pv-state">等待中</div>\n' +
     ' </div>\n' +
@@ -2169,7 +2169,7 @@
       if (F_OK_AT[F_YOU] <= t && t < F_HIT_T[12]) return [avRed('frightened'), 0.0];
       return [avRed('starry'), 1.0];
     }
-    if (F_C82 <= t && t < F_I3) return [fFlick(t) ? 'avatars/complete.png' : avRed('starry'), 0.0];
+    if (F_C82 <= t && t < F_I3) return [fFlick(t) ? avMosaic('cheerful', 12) : avRed('starry'), 0.0];
     if (t >= F_C84) return [avRed('frightened'), fEyeLevel(t)];
     return [avRed('starry'), fEyeLevel(t)];
   }
@@ -2308,7 +2308,7 @@
     }
     var rows = [you('今天也谢谢你。', 1), herRow('不客气～明天也要来找我哦 (｡･ω･｡)'), tailRow('3.4秒', '23:57'),
                 you('你会一直在吗？', 2), thinkRow(THINK_1[0], false), herRow('我一直在。'), tailRow('2.1秒', '23:59')];
-    var head = '<div class="pv-head"><div class="pv-pet"><img src="avatars/complete.png"></div>' +
+    var head = '<div class="pv-head"><div class="pv-pet"><img src="' + avMosaic('cheerful', 12) + '"></div>' +
       '<div class="pv-who"><div class="pv-name">大肥鱼</div><div class="pv-state"><span class="pv-dot" ' +
       'style="background:#3fb950"></span>在线 · ' + esc(MODEL) + '</div></div></div>';
     return head + '<div id="timeline">' + rows.join('') + '</div>' + composerCard('', false, t) +
