@@ -12,7 +12,7 @@
   var PV = window.PV;
   if (!PV || PV.PANEPLACE_OFF) return;
   var T = PV.tui;
-  var PLACE = { shot_hoard: 762 };
+  var PLACE = { shot_hoard: 750 };   /* 精测：参考里她的窗格 x ≈ 764..1148（32px 带），我们内容 354 宽、左边缘 27 -> 中心对齐 = 750 */
   var WF_T0 = 193.5433, WF_T1 = 203.5433, WF_DX = 374, WF_RISE = 24, WF_SINK = 262, WF_SINK0 = 194.0433, WF_SINKSPAN = 9.5;
   var WF_END = 205.5433;
   function easeIo(u) { u = T.clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
