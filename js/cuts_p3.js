@@ -417,10 +417,13 @@
       for (i = 0; i < keep.length; i++) out.push([keep[i], T0 + LAND + (i - 10) * 0.008]);
       return out;
     })();
-    var FLYERS = (function () {   /* her figure 的 ink 取不到（她是 DOM），按同样的 21x26 网格取下半部的 20 格 */
+    /* her figure 的 ink 取不到（她是 DOM）。按成片帧实测：黄格流从她的上半身/头顶一带
+       （成片 119.667 起点实测 x≈347-370、y≈161-198，即格网 q≈15-19、r≈3-8）沿对角线
+       下滑进 defrag 网格；旧的 r=16..25（y≈400-600）在成片里对应不到任何黄格。 */
+    var FLYERS = (function () {
       var out = [], rng = PV.mt(55), k, q, r;
       for (k = 0; k < 20; k++) {
-        q = 3 + ((k * 7) % 15); r = 16 + ((k * 5) % 10);
+        q = 17 + ((k * 3) % 4); r = 3 + ((k * 5) % 7);
         var tgt = TARGETS[k], dc = PV.SR.defragCell(tgt[0]);
         out.push({ q: q, r: r, t0: Math.min(T0 - 0.25 + 0.40 * r / (ROWS - 1) + 0.03 * q / (COLS - 1), tgt[1] - 0.3),
                    tl: tgt[1], i: tgt[0], dst: [dc[0] + 7, dc[1] + 9],
