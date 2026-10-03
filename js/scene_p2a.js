@@ -1013,7 +1013,9 @@
                         red(0.95), 5, 5, true, false);
     if (last && last[1] < 90) pil(d, 'loss = NaN', 440, 540, red(1.0), 26, true);
     box(d, 780, 56, 1164, 604, 'W[61].expert[07]', 0.8, T.ERR, t + 0.3);
-    var rnd = PV.mt(8), radius = Math.max(0, (u - 0.1) * 26), fsz = 14;
+    var rnd = PV.mt(8), radius = Math.max(0, (u - 0.1) * 26),
+        fsz = (PV.STRANGE_FSZ === undefined ? 14 : PV.STRANGE_FSZ),
+        cstep = (PV.STRANGE_STEP === undefined ? 7 * 14 * T.MONO_ADV : PV.STRANGE_STEP);
     for (r = 0; r < 24; r++) {
       var row = [], bad = [];
       for (q = 0; q < 6; q++) {
@@ -1025,25 +1027,28 @@
         }
       }
       var y = 76 + r * 21, s = row.join(' ');
-      T.textMono(d, T.decode(s, null, rng, 45, 0.12, corrupt * 0.5), 796, y, amb(0.55), fsz);
+      /* 红色高亮必须重画**同一串已损坏的字符**：原来重画干净的 ' NaN  '，把 decode 的乱码整个盖掉了，
+         参考里红字自己也是乱的（in$ / N@N / @nf）。*/
+      var cdec = T.decode(s, null, rng, 45, 0.12, corrupt * 0.5);
+      T.textMono(d, cdec, 796, y, amb(0.55), fsz);
       for (i = 0; i < bad.length; i++) {
         q = bad[i];
-        T.textMono(d, ((q + r) % 3) ? ' NaN  ' : ' inf  ', 796 + q * 7 * fsz * T.MONO_ADV, y, red(1.0), fsz);
+        T.textMono(d, cdec.substr(q * 7, 6), 796 + q * cstep, y, red(1.0), fsz);
       }
     }
     var onsets = [0.10, 0.38];
     for (i = 0; i < onsets.length; i++) {
       var onset = onsets[i];
-      if (onset < u && u < onset + 0.22) {
+      if (onset < u && u < onset + (PV.STRANGE_BDUR === undefined ? 0.22 : PV.STRANGE_BDUR)) {
         /* Python: f = font(F_MONO_B, 16); cw, ch = f.getlength("M"), 16; banner_bits("STRANGE", 13, ch/cw)
            —— 字号是 16 不是 14，格子宽按 16px 的等宽 advance 算 */
         var cw2 = 16 * T.MONO_ADV, ch2 = 16;
-        var bits = PV.bannerBits('STRANGE', 13, ch2 / cw2);
+        var bits = PV.bannerBits('STRANGE', 13, PV.STRANGE_BASP === undefined ? ch2 / cw2 : PV.STRANGE_BASP);
         var ox2 = 640 - bits.width * cw2 / 2 + gaussPy(rng, 0, 6);
         for (r = 0; r < bits.height; r++) {
           var srow = '';
           for (q = 0; q < bits.width; q++) srow += bits.get(q, r) ? 'STRANGE'.charAt((q + r) % 7) : ' ';
-          T.textMono(d, T.decode(srow, null, rng, 45, 0.12, 0.25), ox2, 230 + r * ch2, amb(1.0), 16);
+          T.textMono(d, T.decode(srow, null, rng, 45, 0.12, 0.25), ox2, 230 + r * ch2 + (PV.STRANGE_BY === undefined ? 2 : PV.STRANGE_BY), amb(1.0), 16);
         }
       }
     }

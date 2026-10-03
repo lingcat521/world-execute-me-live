@@ -569,14 +569,37 @@
     var G = PV.GRID;
     return [G.x + (k % G.cols) * G.dx + G.w / 2, G.y + Math.floor(k / G.cols) * G.dy + G.h / 2];
   }
+  /* 参考实测的落地时刻表（24fps 逐帧数格子，帧 N <-> t=(N-1)/24）：
+     前 62 格 10ms/格（与原实现一致），4.30s 起一波加速爆发，4.667s 满 161 格。
+     验收（tilecount）：帧106/107/108/109 = 89/118/138/150。 */
+  var LAND_KF = [[0, 3.640], [62, 4.260], [67, 4.300], [89, 4.375], [118, 4.417],
+                 [138, 4.458], [150, 4.500], [157, 4.542], [160, 4.583], [161, 4.667]];
+  function landAt(k) {
+    var i;
+    if (k <= LAND_KF[0][0]) return LAND_KF[0][1];
+    for (i = 0; i + 1 < LAND_KF.length; i++) {
+      var a = LAND_KF[i], b = LAND_KF[i + 1];
+      if (k <= b[0]) return a[1] + (b[1] - a[1]) * (k - a[0]) / (b[0] - a[0]);
+    }
+    return LAND_KF[LAND_KF.length - 1][1];
+  }
   function dots() {
     if (DOTS) return DOTS;
     var S = PV.shieldCells(), raw = S.dots || [];
     var order = raw.slice().sort(function (a, b) { return (a[3] - b[3]) || (a[2] - b[2]); });
+    var n = order.length, N = (PV.GRID && PV.GRID.n) || 161, k;
     DOTS = [];
-    for (var k = 0; k < order.length; k++) {
-      var p = order[k], td = T0 - 0.22 + k * 0.010;
-      DOTS.push({ src: [p[0], p[1]], cell: k, td: td, tl: td + FLY, bend: (k % 2) ? 0.16 : 0.1 });
+    /* 盾牌上的点只有 ~70 个、网格有 161 格 —— 原来一个点对一格，所以亮到 67 格就没点可飞了
+       （帧106-108 卡在 67 就是这个）。改为在盾牌点列上按比例插值出 161 个落点，一格一个。 */
+    for (k = 0; k < N; k++) {
+      var i0 = n > 1 ? Math.round(k * (n - 1) / (N - 1)) : 0;   /* 用盾牌上原有的点，不插值出新坐标 */
+      var src = n ? [order[i0][0], order[i0][1]] : [0, 0];
+      var tl = landAt(k);
+      /* 飞行时长跟着本地落地节拍：慢速段 0.24s（与原实现一致），爆发段收到 ~10ms，
+         否则几十个点在飞、把还没点亮的格子也照亮（帧107 实测多算了 26 格）。 */
+      var iv = landAt(k + 1) - tl;
+      var fl = (iv > 0 && iv < 0.005) ? Math.max(0.010, iv * 4) : FLY;
+      DOTS.push({ src: src, cell: k, td: tl - fl, tl: tl, fl: fl, bend: (k % 2) ? 0.16 : 0.1 });
     }
     return DOTS;
   }
@@ -663,7 +686,7 @@
     for (k = 0; k < D.length; k++) {
       var p = D[k];
       if (t >= p.tl) continue;
-      var cc = cellCenter(p.cell), v = T.clamp01((t - p.td) / FLY);
+      var cc = cellCenter(p.cell), v = T.clamp01((t - p.td) / (p.fl || FLY));
       if (v <= 0) { T.fill(ctx, p.src[0] - 1.5, p.src[1] - 1.5, p.src[0] + 1.5, p.src[1] + 1.5, T.mix(T.ANOM, 0.9), 0.6 * lift); continue; }
       var pos = bez(p.src, cc, p.bend, eIo(v)), g = T.clamp01((v - 0.55) / 0.45);
       var s0 = 3.5 + 3.0 * Math.sin(Math.PI * Math.min(1, v / 0.55));

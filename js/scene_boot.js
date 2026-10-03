@@ -333,7 +333,7 @@
   PV.piecesLit = function (lt, dur) {
     var out = {}, i;
     /* 参考实测（逐帧数格子）：4.50s=150 格、4.54s=157、4.60s=161（满） → 用 smoothstep 在 dur*0.68 处收满 */
-    var k = Math.floor(GRID.n * T.smoothstep(Math.max(0, lt) / Math.max(0.3, dur) / 0.68));
+    var k = Math.floor(GRID.n * T.smoothstep(Math.max(0, lt) / Math.max(0.3, dur) / 0.65));
     for (i = 0; i < Math.min(k, GRID.n); i++) out[i] = (k - i <= 3) ? 0.0 : 1.0;
     return out;
   };
@@ -346,7 +346,13 @@
       on = {};
       for (var _k in opts.landed) {
         var _dt = t - opts.landed[_k];
-        if (_dt >= 0) on[_k] = _dt < 0.13 ? 0.0 : 1.0;   /* 参考：亮闪只持续约 0.13s（实测 t=4.00 亮带 24-36、t=4.25 亮带 49-61）*/
+        if (_dt >= 0) {
+          /* 亮闪窗口跟着落地节拍走：慢速段(10ms/格) 0.13s ≈ 13 格（t=4.00 亮带 24-36、t=4.25 亮带 49-61）；
+             爆发段(约 2ms/格) 收到 ~8 格（参考帧106 只有 8 格亮）。 */
+          var _nx = opts.landed[(+_k) + 1], _iv = (_nx === undefined) ? 0 : (_nx - opts.landed[_k]);
+          var _w = (_iv > 0 && _iv < 0.005) ? Math.max(0.012, 8 * _iv) : 0.13;
+          on[_k] = _dt < _w ? 0.0 : 1.0;
+        }
       }
     } else on = PV.piecesLit(lt, dur);
     for (i in on) done++;
