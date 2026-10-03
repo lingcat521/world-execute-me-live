@@ -3,7 +3,7 @@ html,body{margin:0;height:100%;background:#000;color:#9aa0a6;overflow:hidden;
 #wrap{position:fixed;inset:0;display:grid;place-items:center;}
 #screen{position:absolute;left:50%;top:50%;width:1280px;height:720px;background:#000;transform-origin:center center;}
 #stage{position:absolute;left:0;top:0;width:1280px;height:720px;display:block;}
-#chat{position:absolute;left:0;top:0;width:420px;height:720px;overflow:hidden;display:none;}
+#chat{position:absolute;left:0;top:0;width:420px;height:720px;overflow:visible;display:none;}
 #bar{position:fixed;left:0;right:0;bottom:0;height:44px;display:flex;align-items:center;gap:10px;
   padding:0 10px;background:#0b0d10;border-top:1px solid #1d2126;z-index:10;}
 #bar button{background:#1b2027;color:#cfd6dd;border:1px solid #2b323b;border-radius:4px;padding:4px 10px;}
@@ -16,7 +16,7 @@ input[type=number]{background:#12161b;color:#cfd6dd;border:1px solid #2b323b;bor
 /* ==== 左侧 dsh 聊天窗（film 的 deepsea 主题 + 骨架布局，对应 seg.html / s-pv） ==== */
 body[data-ds-dark-theme]{--dsw-alias-bg-base:#05080f;--dsw-specific-bubble:#18233d;--dsw-specific-input-major:#0d1528;
   --dsw-specific-selector:#1a2440;--dsw-alias-border-l1:#1b2540;--dsw-alias-border-l2:#223052}
-#chat{position:absolute;left:0;top:0;width:420px;height:720px;overflow:hidden;display:none}
+#chat{position:absolute;left:0;top:0;width:420px;height:720px;overflow:visible;display:none}
 #chatbox{position:absolute;left:0;top:0;width:354px;height:537px;overflow:hidden;transform-origin:0 0;
   background:var(--dsw-alias-bg-base,#05080f);font-family:var(--dsw-font-family,system-ui,sans-serif);
   -webkit-font-smoothing:antialiased;--pv-her:#6b8cff;
