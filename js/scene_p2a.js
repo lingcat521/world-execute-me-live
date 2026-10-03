@@ -560,20 +560,14 @@
        所以参考里这幅画每帧重排而轮廓不变）。68 列 = Python 的 g_cols_n = int(33*16/cw)。无 H3 时回落旧静态立绘。 */
     /* 取源统一走 PV.h3.rows()（= h3_full.sprite_src + glyph_grid，按当前帧重算）；
        H3IF 那份预生成数据只作回落，最后才回到旧静态立绘。 */
-    var H3 = window.H3IF, gCols2, glines;
-    if (PV.h3 && PV.h3.rows) {
-      gCols2 = Math.floor(rows * ch / cw);   /* 权威 g_cols_n = int(rows*CH/CW)；实测 66，原来写死 68 */
-      glines = PV.h3.rows(t, gCols2, rows, 'upper');
-    }
-    if (!glines && H3 && H3.frames && H3.frames.length) {
-      gCols2 = H3.cols;
-      var fi = Math.round((t - H3.t0) / H3.step);
-      fi = fi < 0 ? 0 : (fi >= H3.frames.length ? H3.frames.length - 1 : fi);
-      glines = H3.frames[fi];
-    } else if (!glines) {
-      gCols2 = Math.round(rows * ch / cw * 0.52);
-      glines = glyphLines(gCols2, rows, 'fig', 0.30);
-    }
+    /* 取源统一走 PV.h3.rows()（= h3_full.sprite_src + glyph_grid：Sobel 方向梯度 + 密度 ramp + alpha 阈值，
+       含 take 边界 4 帧的 join），列数用权威 g_cols_n = int(rows*CH/CW)。
+       原来还有一条 js/h3_ifcan.js 的预生成回落（31 帧、列数写死 68、只覆盖 59.4-60.65，
+       之前的帧一律 clamp 到第 0 帧）—— 按 PORT_AUDIT 第 8/9 条已删除引用；
+       该数据文件保留但已无消费者，可随后删除。 */
+    var gCols2 = Math.floor(rows * ch / cw), glines = null;
+    if (PV.h3 && PV.h3.rows) glines = PV.h3.rows(t, gCols2, rows, 'upper');
+    if (!glines) { gCols2 = Math.round(rows * ch / cw * 0.52); glines = glyphLines(gCols2, rows, 'fig', 0.30); }
     var gx0 = Math.floor((cols - gCols2) / 2);
     function bRows(q, r) {
       var qq = q - gx0;
