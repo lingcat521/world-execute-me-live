@@ -2788,10 +2788,24 @@
      CHIME-0.1（207.774）起把页面贴回来。 */
   var HIDE_SHOTS = { shot_power: 1, shot_protection: 1, shot_pieces: 1, shot_erase: 1, shot_moe_dense: 1,
                      shot_flood: 1, shot_collapse: 1, shot_last_execution: 1, shot_black: 1, shot_whale_fall: 1 };
+  /* continuity C60 塌掉不是 display:none，而是**从上往下擦掉**：24fps 实测（video1.mp4 134.3-135.0，
+     取 x<420 的饱和红区上边界）红块闪一下之后 y0 走 56(134.51) → 75(134.55) → 117(134.59) →
+     189(134.63) → 299(134.68) → 603(134.72)，之后完全消失。用 clip-path inset 复刻这条曲线。 */
+  var ERASE_KF = [[134.500, 56], [134.550, 75], [134.592, 117], [134.633, 189], [134.675, 299], [134.717, 603]];
+  PV.paneEraseY = function (t) {
+    if (t < ERASE_KF[0][0] || t > ERASE_KF[ERASE_KF.length - 1][0]) return null;
+    for (var i = 0; i + 1 < ERASE_KF.length; i++) {
+      if (t <= ERASE_KF[i + 1][0]) {
+        var u = (t - ERASE_KF[i][0]) / (ERASE_KF[i + 1][0] - ERASE_KF[i][0]);
+        return ERASE_KF[i][1] + (ERASE_KF[i + 1][1] - ERASE_KF[i][1]) * u;
+      }
+    }
+    return 603;
+  };
   PV.paneVisible = function (t) {
     if (t < PANE_T0) return false;
     if (t >= D_GONE && t < D_BACK) return false;              /* 115.42-121.77：她只剩一个光标，画在 canvas 上 */
-    if (t >= 134.8764 && t < 138.1587) return false;          /* shot_moe_dense：C60 塌掉之后 */
+    if (t >= 134.74 && t < 138.1587) return false;            /* shot_moe_dense：C60 塌掉（见 paneEraseY）*/
     if (t >= 144.44 && t < 147.6202) return false;            /* shot_flood：她被洪水吃掉 */
     if (t >= 193.543 && t < 207.7738) return false;           /* 鲸落 + last_execution：窗格滑出画面 */
     var n = PV.shotName;
@@ -2860,7 +2874,9 @@
     if (!app) app = document.getElementById('app');
     if (!chatEl || !app) return;
     var vis = PV.paneVisible(t);
-    chatEl.style.display = vis ? 'block' : 'none';
+    var wipe = PV.paneEraseY(t);                  /* 134.50-134.72 的从上往下擦除 */
+    chatEl.style.display = (vis || wipe !== null) ? 'block' : 'none';
+    chatEl.style.clipPath = (wipe !== null) ? 'inset(' + wipe.toFixed(1) + 'px 0 0 0)' : '';
     if (!vis) return;
     var boxel = document.getElementById('chatbox');
     if (boxel) boxel.style.transform = 'translate(27px,65px)';
