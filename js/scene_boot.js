@@ -332,7 +332,8 @@
   PV.pad = pad; PV.padR = padR;
   PV.piecesLit = function (lt, dur) {
     var out = {}, i;
-    var k = Math.floor(GRID.n * T.ease(Math.max(0, lt) / Math.max(0.3, dur) * 1.05));
+    /* 参考实测（逐帧数格子）：4.50s=150 格、4.54s=157、4.60s=161（满） → 用 smoothstep 在 dur*0.68 处收满 */
+    var k = Math.floor(GRID.n * T.smoothstep(Math.max(0, lt) / Math.max(0.3, dur) / 0.68));
     for (i = 0; i < Math.min(k, GRID.n); i++) out[i] = (k - i <= 3) ? 0.0 : 1.0;
     return out;
   };
@@ -345,7 +346,7 @@
       on = {};
       for (var _k in opts.landed) {
         var _dt = t - opts.landed[_k];
-        if (_dt >= 0) on[_k] = _dt < 0.2 ? 0.0 : 1.0;
+        if (_dt >= 0) on[_k] = _dt < 0.13 ? 0.0 : 1.0;   /* 参考：亮闪只持续约 0.13s（实测 t=4.00 亮带 24-36、t=4.25 亮带 49-61）*/
       }
     } else on = PV.piecesLit(lt, dur);
     for (i in on) done++;
@@ -362,7 +363,8 @@
       }
     }
     var cur = Math.min(GRID.n, done + 1);
-    T.textPIL(ctx, 'model-' + pad(cur, 5) + '.safetensors', 48, 440, T.ui(0.95), 22);
+    /* 参考这一行和下面的 params 行是同一个等宽字体（实测宽 273px/22 字符）；textPIL 是比例字体，宽 306px 且更矮 → 改等宽 */
+    T.textMono(ctx, 'model-' + pad(cur, 5) + '.safetensors', 48, 441, T.ui(0.95), 22);
     T.textMono(ctx, 'params loaded  ' + fmt7(552 * done / GRID.n) + 'B / 552B', 48, 480, T.ui(0.75), 20);
     T.fill(ctx, 48, 520, 48 + Math.floor(1080 * done / GRID.n), 541, T.ui(0.9), 1);
     T.rect(ctx, 48, 520, 1128, 540, T.ui(0.3), 1, 1);
@@ -532,7 +534,8 @@
     var pts = opts.globe === false ? [] : PV.globePoints(t, R);   /* C06：球面由转场层逐点拼出来 */
     for (var i = 0; i < pts.length; i++) {
       var p = pts[i], z = p[2];
-      T.textPIL(ctx, z < 0.35 ? '·' : (z < 0.75 ? 'o' : 'O'), p[0] - 4, p[1] - 8, T.ui(0.35 + 0.65 * z), 15);
+      /* 参考的球面字符是等宽体的窄椭圆（实测 8.8x12），textPIL(SpaceMono) 画出来是 10.4x11.2 的圆 -> 改等宽 */
+      T.textMono(ctx, z < 0.35 ? '·' : (z < 0.75 ? 'o' : 'O'), p[0] - 4, p[1] - 3, T.ui(0.35 + 0.65 * z), 15);
     }
     for (var k = 0; opts.markers !== false && k < 2; k++) {   /* C07：标记由转场层接管 */
       var mp = PV.markerPos(t, k, R);
@@ -1140,7 +1143,9 @@
     var k = Math.min(3, Math.floor(u * 4)), g = T.ease((u * 4) % 1);
     var cur = k > 0 ? STAGES[k - 1] + (STAGES[k] - STAGES[k - 1]) * g : STAGES[0] * g;
     var frac = Math.log10(Math.max(1, cur)) / 9;
-    T.fill(ctx, 430, 200, 430 + Math.floor(700 * frac), 241, T.ui(0.85), 1);
+    /* 参考实测（逐帧量 41.1-41.5s）：进入最后一段 1M->1e9 时填充由亮转暗（t=41.18 开始，41.43 到 L~100）*/
+    var fade = T.clamp01((u - 0.5) / 0.19);
+    T.fill(ctx, 430, 200, 430 + Math.floor(700 * frac), 241, T.ui(0.85 + (0.33 - 0.85) * fade), 1);
     T.rect(ctx, 430, 200, 1130, 240, T.ui(0.3), 1, 1);
     for (var i = 0; i < 3; i++) {
       var s = STAGES[i], xx = 430 + Math.floor(700 * Math.log10(s) / 9);

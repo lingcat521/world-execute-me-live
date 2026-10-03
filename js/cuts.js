@@ -724,9 +724,10 @@
         if (v >= 1) { arrived++; continue; }
         var xy = [c2[0] + (G[0] - c2[0]) * eIn(v), c2[1] + (G[1] - c2[1]) * eIn(v)];
         var hw = 21 + (3 - 21) * s, hh = 18 + (3 - 18) * s;
-        var col = [255 + (196 - 255) * s, 204 + (212 - 204) * s, 0 + 255 * s];
-        T.fill(ctx, xy[0] - hw, xy[1] - hh, xy[0] + hw, xy[1] + hh, col, 1);
-        if (s < 0.3 && k < 40) T.textMono(ctx, ('00' + (i + 1)).slice(-3), xy[0] - hw + 6, xy[1] - hh + 10, T.BG, 13);
+        /* 参考实测（t=4.75 逐格取色）：排空的格子仍是加载态的蓝灰底、只是整体提亮约 +43 灰阶
+           （(138,149,167)->(181,193,211)），不是黄色；3 位数字一直保留到格子缩没。 */
+        T.fill(ctx, xy[0] - hw, xy[1] - hh, xy[0] + hw, xy[1] + hh, T.ui(0.78 - 0.23 * s), 1);
+        if (hw > 8) T.textMono(ctx, ('00' + (i + 1)).slice(-3), xy[0] - hw + 6, xy[1] - hh + 10, T.BG, 13);
       }
       var kk = arrived / g.n;
       if (kk > 0) { var rr = 1 + kk * 4; T.fill(ctx, G[0] - rr, G[1] - rr, G[0] + rr, G[1] + rr, T.mix(T.ME_HI, 1.0), Math.min(1, 0.4 + kk)); }

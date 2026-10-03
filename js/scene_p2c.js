@@ -447,11 +447,22 @@
         c2.fillRect(q * px, r * px, px, px);
       }
     }
-    /* grid_mask：每格右侧 1px 竖缝（px>=3 时） */
-    if (px >= 3) {
-      c2.fillStyle = T.css(T.BG, 1);
-      for (q = 1; q < o.cols; q++) c2.fillRect(q * px - 1, 0, 1, o.rows * px);
-    }
+    /* grid_mask（tuikit 同名函数，1:1）：每格右缝 1px 全透明（px>=3 时），另外**每 2 行**
+      在 y=2*px-1, 4*px-1, ... 压一条 70/255 的横线。原来是"把竖缝涂成 BG 底色、完全没有横线"，
+       所以网点看着是一团糊的色块；现在按 Python 的 alpha 相乘（destination-in）做。 */
+    var mcv = PV.newCanvas(cv.width, cv.height), mg = mcv.getContext('2d');
+    mg.fillStyle = 'rgba(255,255,255,1)';
+    mg.fillRect(0, 0, cv.width, cv.height);
+    mg.globalCompositeOperation = 'destination-out';      /* 用擦除来写 alpha，别用 alpha=0 的 source-over（那是空操作） */
+    mg.globalAlpha = 1;
+    if (px >= 3) for (q = 1; q * px - 1 < cv.width; q++) mg.fillRect(q * px - 1, 0, 1, cv.height);
+    mg.globalAlpha = 1 - 70 / 255;
+    for (r = 1; 2 * px * r - 1 < cv.height; r++) mg.fillRect(0, 2 * px * r - 1, cv.width, 1);
+    mg.globalAlpha = 1;
+    mg.globalCompositeOperation = 'source-over';
+    c2.globalCompositeOperation = 'destination-in';
+    c2.drawImage(mcv, 0, 0);
+    c2.globalCompositeOperation = 'source-over';
     var out = { cv: cv, alpha: alpha, cols: o.cols, rows: o.rows, px: px, w: o.cols * px, h: o.rows * px };
     CACHE[key] = out;
     return out;

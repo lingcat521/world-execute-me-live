@@ -2328,10 +2328,21 @@
       var xy = cell_xy(q, r); x = xy[0]; y = xy[1];
       if (!is_you) rnd.random();                        /* kept = is_you or rnd.random() < ...（短路） */
       k = is_you ? 1.0 : 0.0;
-      T.fill(ctx, x, y, x + 39, y + 33, amb(0.06 + 0.84 * k), 1);      /* fill 含边界 */
+      T.fill(ctx, x, y, x + 39, y + 33, amb(0.022 + 0.878 * k), 1);    /* fill 含边界（空格只留一点底，实测参考空格只比底色高 ~3）*/
       T.rect(ctx, x, y, x + 39, y + 33, amb(0.2), 1, 1);               /* outline */
       if (is_you) pil(ctx, 'you', x + 4, y + 8, (k < 0.5) ? amb(0.4) : T.css(T.BG), 13, true);
     }
+    /* 参考在 103.0-107.0 把「世界」整块乘性压暗到约 0.423（frame.js 的 LEAD[103.0,'left']/SUPPORT=0.42）：
+       实测同一帧里 'you' 磁贴 241->102、波形峰值 223->92、页面底色 B 19->11，都是同一个乘性因子。
+       在镜头末尾盖一层 alpha=1-0.423 的黑即可（bloom 是线性的，放在它前面数学上等价）。 */
+    ctx.save();
+    ctx.globalAlpha = (PV.FEELYOU_FADE === undefined ? 0.500 : PV.FEELYOU_FADE);
+    /* 只压「画面内容」、不动底色：out = 0.577*BG + 0.423*in。
+       实测参考里 'you' 磁贴 241->87、波形箱 18->10、而窗格底色基本不变（5.8 -> 3.4）——
+       用黑色盖会把底色也压掉（-3 灰阶），改成盖底色 T.BG 才对。 */
+    ctx.fillStyle = T.css(T.BG);
+    ctx.fillRect(0, 0, 1280, 720);
+    ctx.restore();
   });
 
   /* ================================================================ 47 shot_completion

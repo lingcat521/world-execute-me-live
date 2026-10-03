@@ -435,6 +435,9 @@
   var MEM_MOVE = 3 / 24, MEM_POP = 4 / 24, MEM_FADE = 5 / 24, MEM_SOLID = 0.35;
   var MEM_BLUE = [77, 107, 254], MEM_HOME = [110, 560];
   var MEM_SPAN = [118.10, 121.80];
+  /* 反白行的淡出窗口：逐帧量成片（t=119.500→119.7917，该区域亮像素 10942→1563→8841）得来 ——
+     119.58 起淡出、119.6972（shot_memory_ls 结束）前消失。气泡/光标仍按 MEM_SPAN 画（它们在左窗格，不进 canvas 分）。 */
+  var MEM_ROW_OUT = [119.58, 119.6972];
   var MEMS = [
     { A: 118.25, row: 1, name: 'first_hello.txt', sprite: 'hello', sc: 1.00, halo: 0.30, flash: 0.12 },
     { A: 119.00, row: 4, name: 'your_cat.png', sprite: 'cat', sc: 1.15, halo: 0.50, flash: 0.20 },
@@ -546,7 +549,9 @@
     for (k = 0; k < 3; k++) {                 /* 1. 反白的行 */
       m = MEMS[k];
       if (t < m.A) continue;
-      a = 1 - T.clamp01(memLeaving(k, t) * MEM_FADE / 3);
+      /* 原式 `1 - clamp01(memLeaving(k,t) * MEM_FADE / 3)` 的减数最大只有 5/24/3≈0.069，
+         等于永不淡出 → 三行一直亮到 MEM_SPAN 末尾 121.80，把 shot_erase 整段盖掉（回退根因）。 */
+      a = 1 - T.clamp01((t - MEM_ROW_OUT[0]) / (MEM_ROW_OUT[1] - MEM_ROW_OUT[0]));
       if (a <= 0.01) continue;
       var rg = memRowGeom(m.row), box = rg[2];
       y = rg[1];
