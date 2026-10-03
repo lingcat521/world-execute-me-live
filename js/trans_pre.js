@@ -75,6 +75,34 @@
     }
     ctx.drawImage(oc, 0, 0);
     if (!any) return;
+    if (opts.crossfade) {                               /* kit.py:364-378：mask=int(255*p) -> 逐格**线性混合** */
+      for (r = 0; r < rows; r++) for (q = 0; q < cols; q++) {
+        var pc = p[r * cols + q];
+        if (pc <= 0.02) continue;
+        ctx.save();
+        ctx.globalAlpha = pc;
+        ctx.drawImage(nc, x0 + q * cw, y0 + r * ch, cw, ch, x0 + q * cw, y0 + r * ch, cw, ch);
+        ctx.restore();
+      }
+      if (!ps.length || !front) return;
+      var bgc0 = buf1280('bgr'), bg0 = PV.newCanvas(cols, rows).getContext('2d');
+      if (PV.drawBackground) PV.drawBackground(bgc0.getContext('2d'), t);
+      var ib0 = inkSmall(bgc0, cols, rows), io0 = inkSmall(oc, cols, rows), in0 = inkSmall(nc, cols, rows);
+      var rng0 = PV.mt(seed * 9973 + Math.floor(t * FPS));
+      ctx.save();
+      for (var i2 = 0; i2 < ps.length; i2 += 3) {
+        var q2 = ps[i2], r2 = ps[i2 + 1], k2p = ps[i2 + 2];
+        var chg = rng0.choice(GLYPHS);
+        var kk4 = (r2 * cols + q2) * 4;
+        var j0 = Math.max(Math.abs(io0[kk4] - ib0[kk4]), Math.abs(io0[kk4 + 1] - ib0[kk4 + 1]), Math.abs(io0[kk4 + 2] - ib0[kk4 + 2]));
+        var j1 = Math.max(Math.abs(in0[kk4] - ib0[kk4]), Math.abs(in0[kk4 + 1] - ib0[kk4 + 1]), Math.abs(in0[kk4 + 2] - ib0[kk4 + 2]));
+        if ((j0 < 6 && j1 < 6) || rng0.random() > density) continue;
+        var kk5 = 1 - Math.abs(2 * k2p - 1);
+        T.textMono(ctx, chg, x0 + q2 * cw, y0 + r2 * ch + 1, T.css(T.mix(T.ME_TEXT, 0.2 + 0.6 * kk5)), 13);
+      }
+      ctx.restore();
+      return;
+    }
     for (r = 0; r < rows; r++) {                        /* 每行按连续段贴新画面（整格硬切换） */
       var run = -1;
       for (q = 0; q <= cols; q++) {

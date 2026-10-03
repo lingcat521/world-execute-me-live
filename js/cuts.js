@@ -40,6 +40,16 @@
     if (PV.drawBackground) { PV.drawBackground(octx, t); PV.drawBackground(nctx, t); }
     oldDraw(octx, t);
     newDraw(nctx, t);
+    /* kit.reveal 的完整语义（kit.py:364-394）= 逐格**交叉淡入** + 缺口处叠一层解码字形。
+       原来只有淡入、没有字形层。trans_pre.js 的 PV.trRevealCanvas 两半都有（crossfade 选项走淡入那条），
+       这里直接委托；万一它不在（加载顺序变化）就退回原来的逐格淡入循环。
+       注意：**不要**把这里改成硬切 —— trans_pre.js:8-9 那句「kit.reveal 是硬切换」与源码不符。 */
+    if (PV.trRevealCanvas) {
+      PV.trRevealCanvas(ctx, t, oc, nc, delayFn,
+        { region: [x0, y0, x0 + cols * cw, y0 + rows * ch], cell: [cw, ch], dur: dur,
+          crossfade: true, seed: opts.seed === undefined ? 0 : opts.seed });
+      return;
+    }
     ctx.drawImage(oc, 0, 0);
     for (var r = 0; r < rows; r++) {
       var cy = y0 + r * ch + ch / 2;
