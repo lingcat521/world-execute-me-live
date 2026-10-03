@@ -1020,7 +1020,7 @@
   /* 原始半调（full 全身，166x136@px3）；cols/rows/px/alpha 供 C79 的 artBBox 使用 */
   function tileArtRaw(i) {
     if (TILE_CACHE[i]) return TILE_CACHE[i];
-    var p = PV.p2cPortraitBuild(tileExpr(i), 'full', TILE_W - 20, TILE_H - 36, 3, 'blue');
+    var p = PV.p2cPortraitBuild(tileExpr(i), 'upper', TILE_W - 20, TILE_H - 30, 3, 'blue');
     if (p) TILE_CACHE[i] = p;
     return p || null;
   }
