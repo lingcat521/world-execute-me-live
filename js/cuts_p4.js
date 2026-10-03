@@ -393,6 +393,7 @@
     var lift = clamp01((t - (Tt - C79.pre)) / 0.12);
     drawShot(og, 'shot_red_if_i_can', t, { burst: function (q, r) { return t >= (P.td[q + ',' + r] === undefined ? 1e9 : P.td[q + ',' + r]); },
                                            lift: lift });
+    var _so = snapOps();
     drawShot(ng, 'shot_execute_all', t);
     pickOps(t, Tt, _so);
     PV.p2cFlash = null;
