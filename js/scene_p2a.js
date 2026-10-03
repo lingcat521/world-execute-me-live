@@ -2336,7 +2336,7 @@
        实测同一帧里 'you' 磁贴 241->102、波形峰值 223->92、页面底色 B 19->11，都是同一个乘性因子。
        在镜头末尾盖一层 alpha=1-0.423 的黑即可（bloom 是线性的，放在它前面数学上等价）。 */
     ctx.save();
-    ctx.globalAlpha = (PV.FEELYOU_FADE === undefined ? 0.500 : PV.FEELYOU_FADE);
+    ctx.globalAlpha = (PV.FEELYOU_FADE === undefined ? 0.620 : PV.FEELYOU_FADE);   /* 0.62 = 实测最优（104.5/105.5 双点扫描 0.58~0.68）*/
     /* 只压「画面内容」、不动底色：out = 0.577*BG + 0.423*in。
        实测参考里 'you' 磁贴 241->87、波形箱 18->10、而窗格底色基本不变（5.8 -> 3.4）——
        用黑色盖会把底色也压掉（-3 灰阶），改成盖底色 T.BG 才对。 */

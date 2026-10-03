@@ -226,6 +226,108 @@
     });
   }
 
+  /* ================================================================ 头像预热 + ?perf=1 计数
+     —— 为什么（2026-10-04 实测，不动素材）：A2/A3 段头像 src **每帧都换一张**
+     （全片 4960 帧扫一遍：A2 100% 帧、A3 100% 帧 src 变化 = 24 张/秒），而同步路径是
+     「paneBody 字符串变 → app.innerHTML 整窗重建 → 新建 <img> 才知道要新 URL」，
+     = 完全没有流水线：同时只飞一个请求，41ms 后这个 <img> 又被下一次重建销毁。
+     实测 lingcat521.github.io：单发 0.42-0.65s/张，串行 8 张 6.28s；12 路并发 48.8 张/秒
+     （p50 88ms）、24 路 79.7、32 路 100.8 —— 延迟/带宽都不是瓶颈，缺的是**提前量**。
+     avatars/a2(319 张) + a3(353 张) + a1_*(38 张) 共 710 张小图（a2+a3 合计仅 669KB，
+     单张 ~1KB），且每张 URL 全片只被用到一次，所以「用过了再缓存」根本来不及 —
+     必须在播放头到达之前把图取回来。响应头 Cache-Control: max-age=600 > 片长 211.9s，
+     预热过的 URL 整轮播放都命中浏览器缓存，<img> 一创建就有图。
+     并发取 12 路：实测 6 路只有 18.7 张/秒 < 24 张/秒的消耗速度（跟不上，所以不能用 6），
+     12 路 48.8 张/秒 = 2 倍余量，够在 t=16s（A2 开始）之前把 a1+a2 全部热完。 */
+  var WARM_LIST = (function () {
+    var seen = {}, out = [], add = function (p) { if (p && !seen[p]) { seen[p] = 1; out.push(p); } };
+    add('avatars/a1_seed.png');
+    for (var i = 0; i <= 12; i++) add('avatars/a1_params' + pad(i, 2) + '.png');
+    for (var i = 0; i < 24; i++) add('avatars/a1_noise' + pad(i, 2) + '.png');
+    for (var n = 384; n <= 702; n++) add('avatars/a2/' + pad(n, 5) + '.png');
+    for (var n = 703; n <= 1055; n++) add('avatars/a3/' + pad(n, 5) + '.png');
+    add('avatars/complete.png'); add('avatars/left.png'); add('avatars/forged.png');
+    add('avatars/draft.png'); add('avatars/lost.png'); add('avatars/editing.png');
+    return out;
+  })();
+  var WARM_MAX = 12;                 /* 受限并发：不要一次性把 710 个请求全发出去 */
+  var WARM_STEP = 48;                /* 播放头前方 2s 插队：seek 与 ?t= 深链也要立刻命中 */
+  var WARM = { i: 0, busy: 0, done: 0, fail: 0, fired: 0, q: [], taken: {}, seen: {}, timer: 0 };
+  function warmPathAt(t) {
+    if (t < CREATE) return null;
+    if (t < A2_T0) return avatar1(t);                  /* a1_seed / a1_paramsNN / a1_noiseNN */
+    if (t < A3_T0) return avFrame('a2', 384, 702, t);
+    if (t < B_T0) return avFrame('a3', 703, 1055, t);
+    return null;                  /* B 段之后头像要么是常量、要么是 canvas 现生成的 dataURL */
+  }
+  function warmNext() {
+    var p;
+    while (WARM.q.length) { p = WARM.q.shift(); if (!WARM.taken[p]) return p; }
+    while (WARM.i < WARM_LIST.length) { p = WARM_LIST[WARM.i++]; if (!WARM.taken[p]) return p; }
+    return null;
+  }
+  function warmTick() {
+    while (WARM.busy < WARM_MAX) {
+      var p = warmNext();
+      if (!p) break;
+      WARM.taken[p] = 1; WARM.busy++; WARM.fired++;
+      (function (path) {
+        var im = new Image();
+        var fin = function (ok) {
+          WARM.busy--; if (ok) WARM.done++; else WARM.fail++;
+          im.onload = im.onerror = null;      /* 不持有引用：编码后的图交给 HTTP 缓存(600s) */
+          warmTick();                         /* 完成一个补一个，始终保持 12 路在飞 */
+        };
+        im.onload = function () { fin(true); };
+        im.onerror = function () { fin(false); };    /* 404 只计数，绝不影响播放 */
+        im.src = path;
+      })(p);
+    }
+    if (WARM.timer && WARM.busy === 0 && !WARM.q.length && WARM.i >= WARM_LIST.length) {
+      clearInterval(WARM.timer); WARM.timer = 0;    /* 热完了就把定时器关掉 */
+    }
+  }
+  function warmBoost(t) {
+    if (!(t > 0)) return;
+    for (var i = 0; i < WARM_STEP; i++) {
+      var p = warmPathAt(t + i / FPS);
+      if (!p || WARM.taken[p] || WARM.seen[p]) continue;
+      WARM.seen[p] = 1; WARM.q.push(p);
+    }
+  }
+  function warmStart() {
+    if (WARM.timer) return;
+    warmBoost(PV.t || 0);
+    warmTick();
+    WARM.timer = setInterval(function () { warmBoost(PV.t || 0); warmTick(); }, 500);
+  }
+
+  /* ---- ?perf=1：每秒把「整窗重建次数 / 头像换图次数 / 预热进度」报到 console 与 #ver ---- */
+  var PERF = (function () { try { return /(^|[?&])perf=1(&|$)/.test(location.search || ''); } catch (e) { return false; } })();
+  var PF = { t0: 0, rebuild: 0, src: 0, lastPet: '' };
+  function petSrcOf(b) {
+    var m = /<div class="pv-pet[^"]*"[^>]*>\s*<img[^>]*src="([^"]*)"/.exec(b);
+    return m ? m[1] : '';
+  }
+  function perfFrame(b) {
+    if (!PERF) return;
+    PF.rebuild++;
+    var p = petSrcOf(b);
+    if (p !== PF.lastPet) PF.src++;
+    PF.lastPet = p;
+  }
+  if (PERF) setInterval(function () {
+    var now = Date.now(), dt = PF.t0 ? (now - PF.t0) / 1000 : 1; PF.t0 = now;
+    var line = '[pv-perf] t=' + (PV.t ? PV.t.toFixed(2) : '?') + 's'
+      + ' rebuild/s=' + (PF.rebuild / dt).toFixed(1)
+      + ' avatarSrcChg/s=' + (PF.src / dt).toFixed(1)
+      + ' warm=' + WARM.done + '/' + WARM_LIST.length + ' fail=' + WARM.fail + ' inflight=' + WARM.busy;
+    PF.rebuild = 0; PF.src = 0;
+    if (window.console && console.log) console.log(line);
+    var ver = document.getElementById('ver');
+    if (ver) ver.textContent = String(ver.textContent || '').split('  |  ')[0] + '  |  ' + line;
+  }, 1000);
+
 
   /* ================================================================ 行的原子件（build_frame.py 的 1:1 移植） */
   function userRow(text, forged) {
@@ -415,13 +517,13 @@
     var text = t >= BEGIN ? typedAt(t) : '';
     var card = composerCard(text, t >= BEGIN, t, { placeholder: '描述你想要构建的内容，/ 调用指令，@ 文件或对话',
       typing: !!text, model: modelLabel(t) });
-    return homePage(t, '<img src="' + avatar1(t) + '" style="image-rendering:pixelated">', BADGE_PREVIEW,
+    return homePage(t, '<img src="' + avatar1(t) + '" width="72" height="72" style="image-rendering:pixelated">', BADGE_PREVIEW,
       workspace(t), card);
   }
   function chat(t) {
     var rngN = Math.floor(Math.max(0, t - (SEND + 0.15)) * 14), soup = soupOf(rngN);
     if (!soup) soup = '\u200b';
-    var head = '<div class="pv-head"><div class="pv-pet"><img src="' + avatar1(t) + '" style="image-rendering:pixelated"></div>' +
+    var head = '<div class="pv-head"><div class="pv-pet"><img src="' + avatar1(t) + '" width="60" height="60" style="image-rendering:pixelated"></div>' +
       '<div class="pv-who"><div class="pv-name">大肥鱼</div><div class="pv-state"><span class="pv-dot" style="background:#3fb950"></span>运行中 · ' + esc(modelName(t)) + '</div></div></div>';
     var appear = ease((t - SEND) / 0.12);
     var rows = '<div style="opacity:' + appear.toFixed(3) + '">' + userRow('你好') + '</div>' + herRow(soup);
@@ -455,7 +557,7 @@
     return 'avatars/' + dir + '/' + pad(n, 5) + '.png';
   }
   function a2Header(t) {
-    return '<div class="pv-head"><div class="pv-pet"><img src="' + avFrame('a2', 384, 702, t) + '"></div>' +
+    return '<div class="pv-head"><div class="pv-pet"><img src="' + avFrame('a2', 384, 702, t) + '" width="60" height="60"></div>' +
       '<div class="pv-who"><div class="pv-name">大肥鱼</div><div class="pv-state"><span class="pv-dot" style="background:#d29922"></span>预训练中 · ' +
       esc(modelName(t)) + '</div></div></div>';
   }
@@ -536,7 +638,7 @@
       '<span class="Sixlwa_turnErrorMessage">回答被截断，已有输出保留在对话中。发送“继续”可让模型接着输出。</span></div></div>';
   }
   function a3Header(t) {
-    return '<div class="pv-head"><div class="pv-pet"><img src="' + avFrame('a3', 703, 1055, t) + '" style="image-rendering:pixelated"></div>' +
+    return '<div class="pv-head"><div class="pv-pet"><img src="' + avFrame('a3', 703, 1055, t) + '" width="60" height="60" style="image-rendering:pixelated"></div>' +
       '<div class="pv-who"><div class="pv-name">大肥鱼</div><div class="pv-state"><span class="pv-dot" style="background:#d29922"></span>预训练中 · ' +
       esc(modelName(t)) + '</div></div></div>';
   }
@@ -2882,10 +2984,13 @@
     if (boxel) boxel.style.transform = 'translate(27px,65px)';
     applySheets(t);
     var b = PV.paneBody(t);
-    if (b !== lastBody) { app.innerHTML = b; lastBody = b; }
+    if (b !== lastBody) { app.innerHTML = b; lastBody = b; perfFrame(b); }
   };
   /* 页面本身要 <body data-ds-dark-theme="true">：dsh 的 token 块（vendor/index/components）
      全是 body[data-ds-dark-theme] 选择器，原工程 seg.html 就把它写在 body 上。 */
   try { document.body.setAttribute('data-ds-dark-theme', 'true'); } catch (e) {}
+  /* 页面一起步就预热（延后 300ms，先让音频/图标的请求发出去）；暂停/未开播时照样在热，
+     等于白送几秒提前量。 */
+  setTimeout(warmStart, 300);
 })();
 

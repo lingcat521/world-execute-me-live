@@ -841,8 +841,13 @@
     T.box(ctx, 404, 56, 1164, 604, 'checkpoint', 0.45, T.UI, t);
     var enter = whaleK === undefined ? T.clamp01((t - 26.02) / 0.78) : whaleK;   /* 绝对时间：参考里字母从 26.0 就开始聚拢 */
     var glyphs = (whaleK === undefined ? PV.whaleGlyphsEnter(t, u, enter) : (enter > 0.02 ? PV.whaleGlyphs(t, u) : [])), i;
+    /* 与参考对拍（27.5s，gamma 修正后的参考）得到的位置修正：鲸鱼整体右移 6、下移 4。
+       只在镜头自己播的时候加，转场 C11/C12 传了 whaleK，不受影响。 */
+    var _wdx = (whaleK === undefined ? (PV.WHALE_DX === undefined ? -6 : PV.WHALE_DX) : 0);
+    var _wdy = (whaleK === undefined ? (PV.WHALE_DY === undefined ? -4 : PV.WHALE_DY) : 0);
+    if (glyphs.length && (_wdx || _wdy)) for (i = 0; i < glyphs.length; i++) { glyphs[i][0] += _wdx; glyphs[i][1] += _wdy; }
     /* 28.94s 起字母向外飞散并淡出——鱼散成点云的前半段，正好接上 29.236s 的 points 镜头 */
-    var sc = T.clamp01((t - 28.94) / 0.30), sce = T.ease(sc);
+    var sc = T.clamp01((t - (PV.WHALE_SCAT_T === undefined ? 29.12 : PV.WHALE_SCAT_T)) / (PV.WHALE_SCAT_D === undefined ? 0.12 : PV.WHALE_SCAT_D)), sce = T.ease(sc);
     ctx.save();
     if (sc > 0) ctx.globalAlpha = Math.max(0, 1 - sc * 1.15);
     else if (whaleK !== undefined && whaleK < 0.999) ctx.globalAlpha = Math.max(0, whaleK);
@@ -856,7 +861,7 @@
     }
     ctx.restore();
     var cw = 15 * T.MONO_ADV;
-    var x = 588 - u * 148, y0 = 150 + 18 * Math.sin(t * 2.2);
+    var x = 588 - u * 148 + _wdx, y0 = 150 + 18 * Math.sin(t * 2.2) + _wdy;
     if (enter > 0.02) for (i = 0; i < 16; i++) {
       var ph = (t * 0.7 + i * 0.137) % 1;
       var bx = x + cw * COLS * 0.18 + 10 * Math.sin(t * 3 + i) + (i % 4) * 8;
