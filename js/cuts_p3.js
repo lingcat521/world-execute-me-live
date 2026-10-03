@@ -684,8 +684,8 @@
       var oc = mk(), octx = oc.getContext('2d'), nc = mk(), nctx = nc.getContext('2d');
       bg(octx, t); bg(nctx, t);
       drawShot(octx, 'shot_illegal', t, { banner: t < T0 - 0.45 });
-      /* 权威 s_reward.py:536：src_at = SHOT_HOOKS.get('shot_moe_dense',{}).get('src_at', a.start) = 出镜镜头起点（= shot_moe_dense 自己的起点 T0 = 134.466）。原来切点前喂 T0+9.0 = 143.47，已经越过 shot_moe_dense 的终点 138.159，红色扩散按 src_at 评估 → 左边几格永远不红（用户报的「shot_moe_dense 左边有几个块没红掉」）。 */
-      drawShot(nctx, 'shot_moe_dense', t, { src_at: T0 });
+      /* 【已按 FIX2 复核回退】权威 s_reward.py:456 是**条件式** src_at = T if t >= T else T + 9.0（T+9.0 是 pre-roll 哨兵，故意不点亮）；主代理 56db197 一度统一成 T0，与权威相反且只动 pre-roll 12 帧、不可能修好「左边几格不红」，故回退。另一条权威 s_reward.py:536 的 SHOT_HOOKS 默认 a.start 是给别处用的。原注释：src_at = SHOT_HOOKS.get('shot_moe_dense',{}).get('src_at', a.start) = 出镜镜头起点（= shot_moe_dense 自己的起点 T0 = 134.466）。原来切点前喂 T0+9.0 = 143.47，已经越过 shot_moe_dense 的终点 138.159，红色扩散按 src_at 评估 → 左边几格永远不红（用户报的「shot_moe_dense 左边有几个块没红掉」）。 */
+      drawShot(nctx, 'shot_moe_dense', t, { src_at: t >= T0 ? T0 : T0 + 9.0 });
       PV.reveal(ctx, t,
         function (c) { c.drawImage(oc, 0, 0); },
         function (c) { c.drawImage(nc, 0, 0); },
