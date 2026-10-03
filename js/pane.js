@@ -159,7 +159,7 @@
     if (AVCACHE[key]) return AVCACHE[key];
     var v = null;
     try { v = fn(); } catch (e) { v = null; }
-    if (!v) return 'avatars/complete.png';
+    if (!v) { var _n2 = Math.round(((PV.h3 && PV.h3.now) ? PV.h3.now() : 0) * 24); if (_n2 >= 1393 && _n2 <= 1728) return 'avatars/e/' + pad(_n2, 5) + '.png'; return 'avatars/complete.png'; }
     AVCACHE[key] = v;
     return v;
   }
@@ -167,7 +167,7 @@
   var BLUE = [[6, 10, 28], [120, 150, 255]];
   function avMosaic(name, cells) {   /* 蓝色 mosaic（A2/A3/B/C/D/F/G 的底子） */
     var _n = Math.round(((PV.h3 && PV.h3.now) ? PV.h3.now() : 0) * 24);
-    if (name === 'cheerful' && _n >= 1393 && _n <= 1656) return 'avatars/e/' + pad(_n, 5) + '.png';   /* t=58-69 按帧取源（参考成片抽帧） */
+    if (name === 'cheerful' && _n >= 1393 && _n <= 1728) return 'avatars/e/' + pad(_n, 5) + '.png';   /* t=58-69 按帧取源（参考成片抽帧） */
     return avURL('m' + name + cells, function () {
       var g = avBase(name, [cells, cells]); if (!g) return null;
       return colorizeURL(g, BLUE[0], BLUE[1], 120);
