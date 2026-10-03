@@ -73,11 +73,49 @@
       out[j] = clamp01(((0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) - ld) / span) * 255;
     return { w: 120, h: 120, px: out };
   }
+  /* 权威 h3_full.py:276-278 + scenes_userleft.figure(t,expr,s,tint)：
+     左框的人形是 `draw_scaled(frame_at(t), ...)` —— 即「**同一个字形舞者，按 s*(5x10)px 的格子缩小重画**」，
+     是个可辨认的**粗格子块剪影**，不是清晰照片的马赛克。
+     我们把源从 avatars/complete.png（照片）换成「当前 H3 帧渲成的 20x12 个 6x10px 格子块」，
+     再交给原来的 colorizeURL 走同一套蓝渐变 —— 这就是用户报的「左框头像不应该这么清晰」。 */
+  var _h3figKey = null, _h3figCv = null;
+  function herFigureCanvas() {
+    if (!(PV.h3 && PV.h3.src && PV.h3.now)) return null;
+    var ht = PV.h3.now(), hf = PV.h3.frame(ht), key = hf.k + '|' + hf.k2 + '|' + hf.cut;
+    if (key === _h3figKey && _h3figCv) return _h3figCv;
+    var src = PV.h3.src(ht, 'full');
+    if (!src) return null;
+    var CW = 6, CHH2 = 10, COLS = 20, ROWS = 12;
+    var cv = document.createElement('canvas'); cv.width = COLS * CW; cv.height = ROWS * CHH2;
+    var g = cv.getContext('2d');
+    var tmp = document.createElement('canvas'); tmp.width = COLS; tmp.height = ROWS;
+    var tg = tmp.getContext('2d'); tg.imageSmoothingEnabled = true;
+    tg.drawImage(src, 0, 0, src.width, src.height, 0, 0, COLS, ROWS);
+    var d = tg.getImageData(0, 0, COLS, ROWS).data, r, c, i4;
+    for (r = 0; r < ROWS; r++) for (c = 0; c < COLS; c++) {
+      i4 = (r * COLS + c) * 4;
+      if (d[i4 + 3] < 110) continue;
+      var v = (0.299 * d[i4] + 0.587 * d[i4 + 1] + 0.114 * d[i4 + 2]) / 255;
+      v = Math.round((0.16 + 0.84 * v) * 7) / 7;
+      var L = Math.round(v * 255);
+      g.fillStyle = 'rgb(' + L + ',' + L + ',' + L + ')';
+      if (r % 2 === 1) {
+        g.fillRect(c * CW, r * CHH2, CW - 1, CHH2 - 1);
+        g.fillStyle = 'rgba(' + L + ',' + L + ',' + L + ',0.27)';   /* grid_mask：每 2 行一条 70/255 的横线 */
+        g.fillRect(c * CW, r * CHH2 + CHH2 - 1, CW - 1, 1);
+      } else {
+        g.fillRect(c * CW, r * CHH2, CW - 1, CHH2);
+      }
+    }
+    _h3figKey = key; _h3figCv = cv;
+    return cv;
+  }
   function avBase(name, cells) {
     /* gray(head, cells)：等价 PIL 的 BOX 缩小；cheerful 直接取 complete.png 的灰度 */
     var src = null;
     if (name === 'cheerful') {
-      var im = AVIMG.cheerful; if (!im) return null;
+      var im = herFigureCanvas() || AVIMG.cheerful; if (!im) return null;
+      /* herFigureCanvas 已是 120x120 的粗格子块；没有 H3 时回落清晰 complete.png */
       var c = document.createElement('canvas'); c.width = 120; c.height = 120;
       var g = c.getContext('2d'); g.drawImage(im, 0, 0, 120, 120);
       var d = g.getImageData(0, 0, 120, 120).data, px = new Float32Array(14400);
@@ -484,7 +522,14 @@
   function avatar1(t) {
     if (t < PARAMS) return 'avatars/a1_seed.png';
     if (t < INIT) return 'avatars/a1_params' + pad(Math.min(12, Math.floor(13 * (t - PARAMS) / (INIT - 0.15 - PARAMS))), 2) + '.png';
-    return 'avatars/a1_noise' + pad(Math.floor(t * FPS) % 24, 2) + '.png';
+    /* 权威 h3_full.py:276-278：`scenes_userleft.figure` 被换成 draw_scaled(frame_at(t), t, s, tint, None, 1, 0, seed=int(t*FPS))
+       —— 左框的人形必须跟**同一个 H3 帧**走（和主画布同一个 take）。
+       原来用 floor(t*24)%24 是个与片子无关的 24 帧循环，所以人形和主画布对不上。
+       素材也是按权威重画的（20x12 个 6x10px 粗格子块 + grid_mask 竖缝/横线），不是平滑照片马赛克（用户报的「头像不应该这么清晰」）。 */
+    var pk = 0;
+    if (PV.h3 && PV.h3.frame) { try { pk = PV.h3.frame(t).k % 23; } catch (e) { pk = 0; } }
+    else pk = Math.floor(t * FPS) % 23;
+    return 'avatars/a1_noise' + pad(pk, 2) + '.png';
   }
   function typedAt(t) { var txt = '', i; for (i = 0; i < KEYS.length; i++) if (t >= KEYS[i][0]) txt = KEYS[i][1]; return txt; }
   function modelName(t) {
