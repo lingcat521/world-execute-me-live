@@ -27,8 +27,19 @@
   PV.placeAt = function (t) { return inWF(t); };
   PV.paneDx = function (t) { return (inWF(t) && t >= WF_T0) ? PV.whaleFallDx(t) : 0; };
   PV.paneDy = function (t) { return (inWF(t) && t >= WF_T0) ? PV.whaleFallDy(t) : 0; };
+  /* 这两段里画布已经在画"她"了，HTML 聊天窗必须**不画**，否则两层叠在一起：
+       - shot_if_i_can（58.543-60.620）是 fullbleed 镜头，画布铺满全屏；参考里那个位置是
+         dancer.js 画的 ASCII 字符舞者，不是聊天框（用户："字符舞与半调立绘重叠图层了"）
+       - shot_happy（66.159-68.005）画布在画她的半调立绘（用户："半调立绘出来的时候，怎么聊天框也在啊"） */
+  var HIDE_VIS = [[58.543, 60.620], [66.159, 68.005]];
+  function hidePaneAt(t) {
+    for (var i = 0; i < HIDE_VIS.length; i++) if (t >= HIDE_VIS[i][0] && t < HIDE_VIS[i][1]) return true;
+    return false;
+  }
+
   var baseVis = PV.paneVisible;
   PV.paneVisible = function (t) {
+    if (hidePaneAt(t)) return false;                      /* 画布在画她，HTML 窗格不画 */
     if (inWF(t) && t >= WF_T0 && t < WF_END) return true;
     return baseVis ? baseVis(t) : true;
   };
