@@ -40,29 +40,65 @@
     if (PV.drawBackground) { PV.drawBackground(octx, t); PV.drawBackground(nctx, t); }
     oldDraw(octx, t);
     newDraw(nctx, t);
-    /* kit.reveal 的完整语义（kit.py:364-394）= 逐格**交叉淡入** + 缺口处叠一层解码字形。
-       原来只有淡入、没有字形层。trans_pre.js 的 PV.trRevealCanvas 两半都有（crossfade 选项走淡入那条），
-       这里直接委托；万一它不在（加载顺序变化）就退回原来的逐格淡入循环。
-       注意：**不要**把这里改成硬切 —— trans_pre.js:8-9 那句「kit.reveal 是硬切换」与源码不符。 */
-    if (PV.trRevealCanvas) {
-      PV.trRevealCanvas(ctx, t, oc, nc, delayFn,
-        { region: [x0, y0, x0 + cols * cw, y0 + rows * ch], cell: [cw, ch], dur: dur,
-          crossfade: true, seed: opts.seed === undefined ? 0 : opts.seed });
-      return;
+    /* kit.reveal 的忠实实现（kit.py:356-394）= 逐格**交叉淡入** + 正在切换的格子上叠一层解码字形。
+       【性能】权威是 Image.composite(new, old, mask)：小掩码 NEAREST 放大后**一次**合成。
+       我们原来是逐格 drawImage（C06 是 178x35 = 6230 格/帧，每个都带 save/globalAlpha/restore），
+       单帧时间被顶上去，转场里就看得出「卡一下」（用户报的 f269-271 圆球）。
+       改成掩码法：6230 次小画 -> 4 次整幅画，像素结果与逐格等价（NEAREST + 每格 alpha）。
+       注意：**不要**改成硬切 —— trans_pre.js:8-9 那句「kit.reveal 是硬切换」与源码不符。 */
+    function inkSmall(cv, cols2, rows2) {
+      var tmp = PV.newCanvas(cols2, rows2), g = tmp.getContext('2d');
+      g.imageSmoothingEnabled = true;
+      g.drawImage(cv, 0, 0, cv.width, cv.height, 0, 0, cols2, rows2);
+      return g.getImageData(0, 0, cols2, rows2).data;
     }
-    ctx.drawImage(oc, 0, 0);
-    for (var r = 0; r < rows; r++) {
+    var ps = [], r, q, md, mk, mg, anyOn = false, p;
+    mk = PV.newCanvas(cols, rows); mg = mk.getContext('2d');
+    var mid = mg.createImageData(cols, rows); md = mid.data;
+    for (r = 0; r < rows; r++) {
       var cy = y0 + r * ch + ch / 2;
-      for (var q = 0; q < cols; q++) {
+      for (q = 0; q < cols; q++) {
         var cx = x0 + q * cw + cw / 2;
-        var p = T.clamp01((t - delayFn(cx, cy)) / dur);
-        if (p <= 0.02) continue;
-        var sx = x0 + q * cw, sy = y0 + r * ch;
-        ctx.save();
-        ctx.globalAlpha = p;                 /* 逐格交叉淡入，p=1 时完全盖住旧画面 */
-        ctx.drawImage(nc, sx, sy, cw, ch, sx, sy, cw, ch);
-        ctx.restore();
+        p = T.clamp01((t - delayFn(cx, cy)) / dur);
+        var i4 = (r * cols + q) * 4;
+        md[i4] = 255; md[i4 + 1] = 255; md[i4 + 2] = 255; md[i4 + 3] = Math.round(255 * p);
+        if (p > 0) anyOn = true;
+        if (p > 0.02 && p < 0.98) ps.push(q, r, p);
       }
+    }
+    if (!ps.length) {
+      ctx.drawImage(oc, 0, 0);
+      if (anyOn) ctx.drawImage(nc, x0, y0, cols * cw, rows * ch, x0, y0, cols * cw, rows * ch);
+    } else {
+      mg.putImageData(mid, 0, 0);
+      var big = PV.newCanvas(W, H), bg2 = big.getContext('2d');
+      bg2.imageSmoothingEnabled = false;
+      bg2.drawImage(mk, 0, 0, cols, rows, x0, y0, cols * cw, rows * ch);
+      var nc2 = PV.newCanvas(W, H), g2 = nc2.getContext('2d');
+      g2.drawImage(nc, 0, 0);
+      g2.globalCompositeOperation = 'destination-in';
+      g2.drawImage(big, 0, 0);
+      ctx.drawImage(oc, 0, 0);
+      ctx.drawImage(nc2, 0, 0);
+    }
+    if (ps.length) {
+      var density = opts.density === undefined ? 0.4 : opts.density;
+      var bgc = PV.newCanvas(W, H), bgg = bgc.getContext('2d');
+      if (PV.drawBackground) PV.drawBackground(bgg, t);
+      var ib = inkSmall(bgc, cols, rows), io = inkSmall(oc, cols, rows), inw = inkSmall(nc, cols, rows);
+      var rng = PV.mt((opts.seed === undefined ? 0 : opts.seed) * 9973 + Math.floor(t * 24));
+      ctx.save();
+      for (var i2 = 0; i2 < ps.length; i2 += 3) {
+        var q2 = ps[i2], r2 = ps[i2 + 1], k2 = ps[i2 + 2];
+        var chg = rng.choice(T.SCR);
+        var k4 = (r2 * cols + q2) * 4;
+        var j0 = Math.max(Math.abs(io[k4] - ib[k4]), Math.abs(io[k4 + 1] - ib[k4 + 1]), Math.abs(io[k4 + 2] - ib[k4 + 2]));
+        var j1 = Math.max(Math.abs(inw[k4] - ib[k4]), Math.abs(inw[k4 + 1] - ib[k4 + 1]), Math.abs(inw[k4 + 2] - ib[k4 + 2]));
+        if ((j0 < 6 && j1 < 6) || rng.random() > density) continue;
+        var kk = 1 - Math.abs(2 * k2 - 1);
+        T.textMono(ctx, chg, x0 + q2 * cw, y0 + r2 * ch, T.css(T.mix(T.ME_TEXT, 0.2 + 0.6 * kk)), 13);
+      }
+      ctx.restore();
     }
   };
 })();

@@ -1049,16 +1049,11 @@
       if (q < q0) q0 = q; if (q > q1) q1 = q; if (r < r0) r0 = r; if (r > r1) r1 = r;
     }
     if (q1 < 0) return null;
-    /* 权威 scenes_exec.py:288/295：art 按**自然尺寸**贴，水平居中、**底对齐**在 y + TILE_H - 10 - art.height。
-       调用点 drawTile 已经是「底对齐地贴这块画布」(py_ = y + TILE_H - 10 - art.h)，
-       所以这里必须让精灵的底边贴住画布底边：dy = TILE_AH - sh。
-       原来写的是居中 (TILE_AH - sh)/2 -> 精灵整体上浮 18px，人形又矮又飘（用户报的「形象被压扁了」）。
-       同时去掉「裁到 alpha 外框」那一步 —— 权威直接用 diffusion_tile 的整幅，不裁。 */
-    var sw = p.w, sh = p.h;
-    var dx = Math.floor((TILE_AW - sw) / 2), dy = TILE_AH - sh;
+    var sx = q0 * p.px, sy = r0 * p.px, sw = (q1 - q0 + 1) * p.px, sh = (r1 - r0 + 1) * p.px;
+    var dx = Math.floor((TILE_AW - sw) / 2), dy = Math.floor((TILE_AH - sh) / 2);
     var cv = PV.newCanvas(TILE_AW, TILE_AH), g = cv.getContext('2d');
     g.imageSmoothingEnabled = false;
-    g.drawImage(p.cv, 0, 0, sw, sh, dx, dy, sw, sh);
+    g.drawImage(p.cv, sx, sy, sw, sh, dx, dy, sw, sh);
     /* tint_colorize(art.convert("L"), "red")：blue 墨的亮度重新过一遍 BG->RED 的渐变 */
     var red = tintFromLum(cv, TILE_AW, TILE_AH, T.BG, T.ERR);
     /* 白闪帧：只是同一剪影，填 (255,236,228) */
