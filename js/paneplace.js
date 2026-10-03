@@ -12,7 +12,17 @@
   var PV = window.PV;
   if (!PV || PV.PANEPLACE_OFF) return;
   var T = PV.tui;
-  var PLACE = { shot_hoard: 750 };   /* 精测：参考里她的窗格 x ≈ 764..1148（32px 带），我们内容 354 宽、左边缘 27 -> 中心对齐 = 750 */
+  /* shot_hoard（141.389-144.159）：参考里她的窗格整段在画面**右侧**（mirror 位），
+     而且不是瞬间跳过去的 —— 逐帧量（24fps）140.7-141.8：
+       140.70-140.91  旧画面（窗格在左），右侧 x700-940 有内容 50/51/40/35/24
+       140.95-141.08  内容快速衰减（40 -> 17 -> 5）
+       141.12-141.45  全屏几乎全黑（0-2）  ← 中间有一段黑场
+       141.53-141.66  新画面出现，窗格左边框 x=786 -> 817 -> 826 滑到位，之后稳定在 826
+     我们的 #chatbox 内容左边缘在设计 x=27，所以位移 = 826-27 ≈ 799（取 790，让框落在 ~814）。
+     141.02-141.47 这一段要**隐藏**窗格（参考是黑场）。 */
+  var HOARD0 = 141.02, HOARD_HIDE1 = 141.47, HOARD_T = 141.389, HOARD_END = 144.159 + 0.35;
+  var HOARD_DX = 790;
+  function inHoard(t) { return t >= HOARD0 && t < HOARD_END; }
   var WF_T0 = 193.5433, WF_T1 = 203.5433, WF_DX = 374, WF_RISE = 24, WF_SINK = 262, WF_SINK0 = 194.0433, WF_SINKSPAN = 9.5;
   var WF_END = 205.5433;
   function easeIo(u) { u = T.clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
@@ -24,14 +34,17 @@
     return rise + WF_SINK * u * u * (1.6 - 0.6 * u);
   };
   PV.placeAt = function (t) {
+    if (inHoard(t)) return true;
     var n = PV.shotName;
     if (n && n.indexOf('shot_whale_fall') === 0) return true;
-    return !!(n && PLACE[n]);
+    return false;
   };
+  PV.hoardHidden = function (t) { return t >= HOARD0 && t < HOARD_HIDE1; };
   PV.paneDx = function (t) {
+    if (inHoard(t)) return HOARD_DX;
     var n = PV.shotName;
     if (n && n.indexOf('shot_whale_fall') === 0) return t < WF_T0 ? 0 : PV.whaleFallDx(t);
-    return (n && PLACE[n]) ? PLACE[n] : 0;
+    return 0;
   };
   PV.paneDy = function (t) {
     var n = PV.shotName;
@@ -39,8 +52,10 @@
   };
   var baseVis = PV.paneVisible;
   PV.paneVisible = function (t) {
+    if (PV.hoardHidden(t)) return false;                 /* hoard 入场前的黑场 */
+    if (inHoard(t)) return true;                          /* hoard 期间她在画面右侧 */
     var n = PV.shotName;
-    if (n && n.indexOf('shot_whale_fall') === 0 && t >= WF_T0 && t < WF_END) return true;   /* 离场过程中她还在画面里 */
+    if (n && n.indexOf('shot_whale_fall') === 0 && t >= WF_T0 && t < WF_END) return true;
     return baseVis ? baseVis(t) : true;
   };
   var basePanes = PV.drawPanes;
