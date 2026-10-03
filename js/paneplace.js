@@ -73,6 +73,12 @@
     var dx = PV.paneDx(t), dy = PV.paneDy(t);
     chat.style.transform = (dx > 0.001 || Math.abs(dy) > 0.001)
       ? 'translate(' + dx.toFixed(2) + 'px,' + dy.toFixed(2) + 'px)' : '';
+    /* 现场诊断：把本帧的窗格状态写进页面底部的版本行，用户一眼能看到实际生效没有 */
+    try {
+      var ve = document.getElementById('ver');
+      if (ve) ve.textContent = 'v' + (PV.VER || '?') + '  pane dx=' + dx.toFixed(0) + ' dy=' + dy.toFixed(0) +
+        ' vis=' + (PV.paneVisible(t) ? 1 : 0) + ' t=' + t.toFixed(2);
+    } catch (e) {}
   };
 })();
 
