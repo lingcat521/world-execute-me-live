@@ -217,6 +217,7 @@
      于是半调网点（happy）、3x3 卷积特征图（then_i_can）、扩散采样格（simulations）三处的形状/大小全不对。
      素材已复制到 pv-live/avatars/whale/。加载失败时下面所有 w* 函数返回 null，调用点回落到旧的立绘实现。 */
   var WHALE = {}, _wcell = {}, _wbox = {};
+  var _wcellH3 = {}, _wcellH3N = 0;   /* H3 取源按帧变化，缓存要有上限（纯数据，可丢弃重算） */
   var WEXP = ['cheerful', 'starry', 'shy', 'serious', 'confused', 'frightened', 'angry', 'exasperated'];
   (function () {
     for (var i = 0; i < WEXP.length; i++) (function (e) {
@@ -258,14 +259,30 @@
     return [Math.floor(w * c[0]), Math.floor(h * c[1]), Math.floor(w * c[2]), Math.floor(h * c[3])];
   }
   function whaleAspect(expr, crop) {
+    /* H3 模式：取景比例 = h3_full.sprite_src 的固定框（不再用 whale 立绘的 alpha 包围盒）。 */
+    if (PV.h3 && PV.h3.aspect) return PV.h3.aspect(crop);
     var im = WHALE[expr]; if (!im) return null;
     var rc = whaleRect(im, crop);
     return (rc[3] - rc[1]) / Math.max(1, rc[2] - rc[0]);
   }
   /* src.resize((cols,rows), LANCZOS) 的等价物：亮度（未预乘，和 PIL convert("L") 一致）+ alpha */
   function whaleCells(expr, crop, cols, rows, padX, padY) {
+    if (cols < 1 || rows < 1) return null;
+    /* H3 模式：源图 = 当前时刻的 H3 帧（h3_full.sprite_src），表达式名只作元数据。
+       缓存键带池帧号，否则同一格在整段里会冻在第一帧。padX/padY 在 H3 下无意义（框已经是权威框）。 */
+    if (PV.h3 && PV.h3.cells) {
+      var ht = PV.h3.now(), hf = PV.h3.frame(ht);
+      var hk = 'h3|' + hf.k + '|' + hf.k2 + '|' + hf.cut + '|' + crop + '|' + cols + 'x' + rows;
+      if (_wcellH3[hk]) return _wcellH3[hk];
+      var hc = PV.h3.cells(ht, crop, cols, rows);
+      if (hc) {
+        if (_wcellH3N > 48) { _wcellH3 = {}; _wcellH3N = 0; }
+        _wcellH3[hk] = hc; _wcellH3N++;
+        return hc;
+      }
+    }
     var im = WHALE[expr];
-    if (!im || cols < 1 || rows < 1) return null;
+    if (!im) return null;
     var key = expr + '|' + crop + '|' + cols + 'x' + rows + '|' + (padX || 1) + '|' + (padY || 1);
     if (_wcell[key]) return _wcell[key];
     var rc = whaleRect(im, crop);
@@ -411,6 +428,7 @@
     return [cols * px, rows * px];
   }
   var GRAMP = ' .:-=+*#%@';
+  var STROKE = '|/\\-';                    /* 方向笔画族：抖动只在同族内换，保住内容可读性 */
   function glyphLines(cols, rows, crop, thr) {
     if (thr === undefined) thr = 0.20;
     var d = herCells(cols, rows, crop);
@@ -532,7 +550,26 @@
     }
     /* Python: glyph_grid("starry","upper", g_cols_n=68, rows)：她那张立绘在 68 列里只占中间一条。
        我们的素材是方构图，所以直接按图幅比例取一条窄列，让她占中间约 29 列（外观等价）。 */
-    var gCols2 = Math.round(rows * ch / cw * 0.34), glines = glyphLines(gCols2, rows, 'fig', 0.30);
+    /* 0.34→0.52：实测 60.4167 我们的字形画只占 176px 宽、参考 268px（ink% 3.4 vs 3.6 已接近），
+       按 268/176 反推宽度系数；gx0 是居中放置，改完中心仍对齐（实测中心 586 vs 参考 596）。 */
+    /* H3 逐帧立绘（源码 continuity_full_v2/h3_full.py：sprite_src 换成 H3 帧、glyph_grid 按帧重算，
+       所以参考里这幅画每帧重排而轮廓不变）。68 列 = Python 的 g_cols_n = int(33*16/cw)。无 H3 时回落旧静态立绘。 */
+    /* 取源统一走 PV.h3.rows()（= h3_full.sprite_src + glyph_grid，按当前帧重算）；
+       H3IF 那份预生成数据只作回落，最后才回到旧静态立绘。 */
+    var H3 = window.H3IF, gCols2, glines;
+    if (PV.h3 && PV.h3.rows) {
+      gCols2 = Math.floor(rows * ch / cw);   /* 权威 g_cols_n = int(rows*CH/CW)；实测 66，原来写死 68 */
+      glines = PV.h3.rows(t, gCols2, rows, 'upper');
+    }
+    if (!glines && H3 && H3.frames && H3.frames.length) {
+      gCols2 = H3.cols;
+      var fi = Math.round((t - H3.t0) / H3.step);
+      fi = fi < 0 ? 0 : (fi >= H3.frames.length ? H3.frames.length - 1 : fi);
+      glines = H3.frames[fi];
+    } else if (!glines) {
+      gCols2 = Math.round(rows * ch / cw * 0.52);
+      glines = glyphLines(gCols2, rows, 'fig', 0.30);
+    }
     var gx0 = Math.floor((cols - gCols2) / 2);
     function bRows(q, r) {
       var qq = q - gx0;
@@ -564,7 +601,7 @@
           if (ageB < settleB[r][q]) {
             if (onA) aCh = (rng.random() < ageB * 3) ? rng.choice(T.SCR) : onA;
             else if (inRain && rng.random() < 0.5) nCh = rng.choice(T.SCR);
-          } else if (chB !== ' ') bCh = chB;
+          } else if (chB !== ' ') bCh = chB;   /* H3 逐帧立绘本身每帧在动，这里不再额外抖 */
         }
         nr += nCh; ar += aCh; br += bCh;
       }

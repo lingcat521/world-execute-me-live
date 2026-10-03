@@ -588,22 +588,27 @@
     if (DOTS) return DOTS;
     var S = PV.shieldCells(), raw = S.dots || [];
     var order = raw.slice().sort(function (a, b) { return (a[3] - b[3]) || (a[2] - b[2]); });
-    var n = order.length, N = (PV.GRID && PV.GRID.n) || 161, k;
     DOTS = [];
-    /* 盾牌上的点只有 ~70 个、网格有 161 格 —— 原来一个点对一格，所以亮到 67 格就没点可飞了
-       （帧106-108 卡在 67 就是这个）。改为在盾牌点列上按比例插值出 161 个落点，一格一个。 */
-    for (k = 0; k < N; k++) {
-      var i0 = n > 1 ? Math.round(k * (n - 1) / (N - 1)) : 0;   /* 用盾牌上原有的点，不插值出新坐标 */
-      var src = n ? [order[i0][0], order[i0][1]] : [0, 0];
-      var tl = landAt(k);
-      /* 飞行时长跟着本地落地节拍：慢速段 0.24s（与原实现一致），爆发段收到 ~10ms，
-         否则几十个点在飞、把还没点亮的格子也照亮（帧107 实测多算了 26 格）。 */
-      var iv = landAt(k + 1) - tl;
-      var fl = (iv > 0 && iv < 0.005) ? Math.max(0.010, iv * 4) : FLY;
-      DOTS.push({ src: src, cell: k, td: tl - fl, tl: tl, fl: fl, bend: (k % 2) ? 0.16 : 0.1 });
+    /* 权威：s_boot.py:182-194（C02.dots）—— **一个盾牌点对一个落点**，cell = 盾牌点序号 k，
+       线性节拍 td = T-0.22+0.010k、tl = td+FLY。
+       旧实现把 161 格按 (n-1)/(N-1) 比例映射到 ~70 个点上，一个源点被 2.3 个格子共用 →
+       某个格子对应的点起飞后，共用同一源点的其它点还留在盾牌表面（用户看到的"粒子残留"）。
+       剩下 161-67=94 格由 shotPieces 的**顺序加载**点亮（scenes_boot.py:171-183 pieces_lit）。 */
+    for (var k = 0; k < order.length; k++) {
+      var td = T0 - 0.22 + k * 0.010;
+      DOTS.push({ src: [order[k][0], order[k][1]], cell: k, td: td, tl: td + FLY, fl: FLY,
+                  bend: (k % 2) ? 0.16 : 0.1 });
     }
     return DOTS;
   }
+  /* 顺序加载的时间窗（Python pieces_lit 的 seq_t0 / seq_end）：
+     seq_t0 = 最后一个点落地 + 0.05；seq_end = shot_creation.start - C03.pre - 0.04 - T0（s_boot.py:607）。 */
+  function seqT0() {
+    var D = dots(), mx = 0;
+    for (var i = 0; i < D.length; i++) if (D[i].tl > mx) mx = D[i].tl;
+    return mx - T0 + 0.05;
+  }
+  var SEQ_END = 5.236 - 0.6 - 0.04 - T0;
   /* 把盾牌边缘重采样成 260 个点，再与边框矩形同参数对齐 —— 轮廓就能连续拉伸过去 */
   function resample(pts, m) {
     var P = pts.concat([pts[0]]), seg = [], i;
@@ -659,7 +664,8 @@
     var land = T0 + LAND;
     PV.reveal(ctx, t,
       function (c) { PV.protectionScene(c, t, [48, 70], t - 1.312, true); },
-      function (c) { PV.shotPieces(c, t, Math.max(0, t - T0), 5.236 - T0, { landed: landedMap() }); },
+      function (c) { PV.shotPieces(c, t, Math.max(0, t - T0), 5.236 - T0,
+                                   { landed: landedMap(), seq_t0: seqT0(), seq_end: SEQ_END }); },
       function (x, y) { return T0 - 0.32 + (x - 24) / 2400; },
       { region: FULLR, cell: [8, 16], dur: 0.09 });
     var lift = T.clamp01((t - (T0 - PRE)) / 0.12);

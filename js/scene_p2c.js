@@ -382,7 +382,7 @@
 (function () {
   'use strict';
   var PV = window.PV, T = PV.tui, P = PV.p2c;
-  var IMGS = {}, CACHE = {}, READY = false, PENDING = 0;
+  var IMGS = {}, CACHE = {}, CACHE_N = 0, READY = false, PENDING = 0;
   PV.p2cImages = IMGS;
   /* 表情名 -> 素材（沿用原工程的 EXPRS 命名，方便逐句对照 Python） */
   var MAP = {
@@ -407,6 +407,16 @@
   PV.p2cImagesReady = function () { return PENDING === 0 && READY; };
   preload();
   PV.p2cPortraitInfo = function (name, crop, maxW, maxH, px) {
+    /* H3 模式：源图 = 当前时刻的 H3 帧按 h3_full 的固定框裁切（表达式名只作元数据）。 */
+    if (PV.h3 && PV.h3.src) {
+      var hs = PV.h3.src(PV.h3.now(), crop);
+      if (hs) {
+        var asp = hs.height / hs.width;
+        var c0 = Math.max(2, Math.floor(Math.min(maxW / px, (maxH / px) / asp)));
+        var r0 = Math.max(2, Math.round(c0 * asp)); r0 -= r0 % 2;
+        return { im: hs, x: 0, y: 0, w: hs.width, h: hs.height, cols: c0, rows: r0, px: px, h3: true };
+      }
+    }
     var im = load(name), c = CROPS[crop] || CROPS.full;
     var sw = im ? im.width : 120, sh = im ? im.height : 120;
     var cw = (c[2] - c[0]) * sw, ch = (c[3] - c[1]) * sh, aspect = ch / cw;
@@ -426,7 +436,9 @@
   /* 生成半调贴图（一次），返回 {cv, alpha} */
   PV.p2cPortraitBuild = function (name, crop, maxW, maxH, px, tint) {
     var key = name + '|' + crop + '|' + maxW + '|' + maxH + '|' + px + '|' + (typeof tint === 'string' ? tint : tint.join(','));
+    if (PV.h3 && PV.h3.frame) { var _hf = PV.h3.frame(PV.h3.now()); key += '|h3' + _hf.k + '-' + _hf.k2 + '-' + _hf.cut; }
     if (CACHE[key] !== undefined) return CACHE[key];
+    if (CACHE_N > 120) { CACHE = {}; CACHE_N = 0; }
     var o = PV.p2cPortraitInfo(name, crop, maxW, maxH, px);
     if (!o.im) { return null; }
     var tmp = PV.newCanvas(o.cols, o.rows), g = tmp.getContext('2d');
@@ -464,7 +476,7 @@
     c2.drawImage(mcv, 0, 0);
     c2.globalCompositeOperation = 'source-over';
     var out = { cv: cv, alpha: alpha, cols: o.cols, rows: o.rows, px: px, w: o.cols * px, h: o.rows * px };
-    CACHE[key] = out;
+    CACHE[key] = out; CACHE_N++;
     return out;
   };
   PV.p2cPortrait = function (ctx, name, crop, maxW, maxH, px, x, y, tint, alpha) {
@@ -777,9 +789,23 @@
   var CROPS = { full: [0, 0, 1, 1], upper: [0.05, 0.0, 0.95, 0.62], face: [0.15, 0.02, 0.85, 0.45],
                 bust: [0.08, 0.0, 0.92, 0.72] };
   var LUMC = {}, GRIDC = {}, CONVC = {};
+  var LUMC_N = 0;                     /* H3 取源按帧变化，缓存要有上限 */
   function srcOf(name) { return PV.p2cImages[PV.p2cAvatarPath(name)] || null; }
   /* 亮度 + alpha 网格（cols x rows） */
   P.lumGrid = function (name, crop, cols, rows) {
+    /* H3 模式：取源 = 当前时刻的 H3 帧（h3_full.install() 会把 tk.glyph_grid 整个换成按帧重算的版本，
+       所以这里也必须按帧取源，否则 2:42-2:46 那两处字形画就是静止的）。 */
+    if (PV.h3 && PV.h3.cells) {
+      var ht = PV.h3.now(), hf = PV.h3.frame(ht);
+      var hk = 'h3|' + hf.k + '|' + hf.k2 + '|' + hf.cut + '|' + crop + '|' + cols + 'x' + rows;
+      if (LUMC[hk]) return LUMC[hk];
+      var hc = PV.h3.cells(ht, crop, cols, rows);
+      if (hc) {
+        if (LUMC_N > 48) { LUMC = {}; LUMC_N = 0; }
+        LUMC[hk] = hc; LUMC_N++;
+        return hc;
+      }
+    }
     var key = name + '|' + crop + '|' + cols + '|' + rows;
     if (LUMC[key]) return LUMC[key];
     var im = srcOf(name);
@@ -1931,7 +1957,7 @@
   reg('shot_me_trapped', 189.1587, 190.3125, function (c, t, lt, u, dur, o) { PV.shotMeTrapped(c, t, lt, u, dur, o); });
   reg('shot_love_loop', 190.3125, 193.5433, function (c, t, lt, u, dur, o) { PV.shotLoveLoop(c, t, lt, u, dur, o); });
   reg('shot_whale_fall', 193.5433, 205.5433, function (c, t, lt, u, dur, o) { PV.shotWhaleFall(c, t, lt, u, dur, o); });
-  reg('shot_last_execution', 205.5433, 207.58, function (c, t, lt, u, dur, o) { PV.shotLastExecution(c, t, lt, u, dur, o); });
-  reg('shot_black', 207.58, 211.0, function (c, t, lt, u, dur, o) { PV.shotBlack(c, t, lt, u, dur, o); });
+  reg('shot_last_execution', 205.5433, 207.0833, function (c, t, lt, u, dur, o) { PV.shotLastExecution(c, t, lt, u, dur, o); });
+  reg('shot_black', 207.0833, 211.0, function (c, t, lt, u, dur, o) { PV.shotBlack(c, t, lt, u, dur, o); });
 })();
 

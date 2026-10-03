@@ -139,8 +139,8 @@
     { a: 47.236, b: 49.082, fn: null, name: 'shot_blind', idx: 21, shell: false },
     { a: 49.082, b: 50.928, fn: null, name: 'shot_dizzy', idx: 22, shell: false },
     { a: 50.928, b: 54.159, fn: null, name: 'shot_travel', idx: 23, shell: false },
-    { a: 54.159, b: 56.8333, fn: null, name: 'shot_unite', idx: 24, shell: false },   /* boundary 56.697 -> 56.8333: frame-by-frame check shows the reference is still unite at 56.792 (w.embedding space / cos(me,you)=0.9999 / we box) and only switches to the layer stack at 56.833 */
-    { a: 56.8333, b: 58.543, fn: null, name: 'shot_deeply', idx: 25, shell: false }];
+    { a: 54.159, b: 56.697, fn: null, name: 'shot_unite', idx: 24, shell: false },   /* boundary 56.697 -> 56.8333: frame-by-frame check shows the reference is still unite at 56.792 (w.embedding space / cos(me,you)=0.9999 / we box) and only switches to the layer stack at 56.833 */
+    { a: 56.697, b: 58.543, fn: null, name: 'shot_deeply', idx: 25, shell: false }];
   PV.powerLog = powerLog;
   PV.logLine = logLine;
   PV.POWER_LOG = POWER_LOG;
@@ -354,6 +354,17 @@
           on[_k] = _dt < _w ? 0.0 : 1.0;
         }
       }
+      /* 【补上】权威 scenes_boot.py:171-183 pieces_lit：有点的格子按落地点亮，
+         **其余格子同时按顺序加载**（k = int(len(seq) * ease((lt-d0)/(d1-d0)*1.05))）。
+         我们原来只走 landed 这一条路 → 点飞完就再不亮新格，这才是帧 106-108「亮格数卡在 67」的真因。
+         ease = tuikit.ease = 1-(1-u)^3，与 JS 的 T.ease 一致。 */
+      var _seq = [], _i2;
+      for (_i2 = 0; _i2 < GRID.n; _i2++) if (opts.landed[_i2] === undefined) _seq.push(_i2);
+      var _d0 = opts.seq_t0 === undefined ? 0 : opts.seq_t0;
+      var _d1 = opts.seq_end === undefined ? dur : opts.seq_end;
+      var _kk = Math.floor(_seq.length * T.ease(Math.max(0, lt - _d0) / Math.max(0.3, _d1 - _d0) * 1.05));
+      for (var _j = 0; _j < Math.min(_kk, _seq.length); _j++)
+        if (on[_seq[_j]] === undefined) on[_seq[_j]] = (_kk - _j <= 3) ? 0.0 : 1.0;
     } else on = PV.piecesLit(lt, dur);
     for (i in on) done++;
     T.box(ctx, 24, 56, 1164, 604, 'load_weights  DeepSeek-V4.1-Flash   (experts fp4 · rest fp8)', 0.5, T.UI, t);

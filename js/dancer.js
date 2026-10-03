@@ -1306,7 +1306,11 @@
      scene_p2a.js 归别的代理，这里只在它画完之后重画人像区（框、标题、attribution、右侧面板都不动）。 */
   var HAPPY_WIN = [66.159, 68.005];
   PV.HAPPY_GEOM = PV.HAPPY_GEOM || { maxW: 520, maxH: 350, sy: 153, px: 5 };
-  if (PV.HAPPY_PORTRAIT_FIX === undefined) PV.HAPPY_PORTRAIT_FIX = true;
+  /* 【2026-10-03 主代理】H3 取源接上之后，shot_happy 的人像由 scene_p2a.js 的 wHalfblock 按**权威几何**画：
+     Python scenes_chorus1 的 halfblock(expr,"face",650,520,5)，H3 的 face 框是 255x170（aspect 0.6667）
+     -> cols=130 rows=86 -> 650x430 @ (37,70)。原来那套「whale 静态立绘 + 墨量校正（520x345 @ sy=153）」
+     是给**错误取源**打的补丁，取源修正后必须关掉，否则会盖住正确的画。 */
+  if (PV.HAPPY_PORTRAIT_FIX === undefined) PV.HAPPY_PORTRAIT_FIX = false;
 
   function whaleAspect(expr, crop) {
     var im = WHALE[expr]; if (!im) return null;

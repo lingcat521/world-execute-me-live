@@ -123,7 +123,10 @@
   /* ---------------------------------------------------------------- C12  whale -> points
      cuts.py: class C12, pre/post = 0.22/0.50 */
   var C12_T = 29.236, C12_A = 26.466, C12_B = 30.851;
-  function c12U(tt) { return T.clamp01((tt - C12_A) / (C12_B - C12_A)); }
+  /* cuts.py:313-319: ua(tt) = (tt - a.start)/(a.end - a.start), a = the OUTGOING shot_whale(26.466..29.236)
+     -> denominator 2.77 (u=1.0 at T). We used the incoming end C12_B=30.851 -> u=0.632 at T,
+     so whale_glyphs x = 588-u*148 started the point cloud ~54.5px too far right (C12 src = its start). */
+  function c12U(tt) { return T.clamp01((tt - C12_A) / (C12_T - C12_A)); }
 
   /* ---------------------------------------------------------------- C13  points -> dimension
      cuts.py: class C13,  pre/post = 0.35/0.75
