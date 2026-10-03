@@ -2919,12 +2919,32 @@
     }
     return 603;
   };
+  /* exec_hit 的分层（layout/direction.py EXEC_HIT）：只有 k=1/5/9/11（#2/#6/#10/#12）画面里留着聊天窗；
+     lay 0/2 是 fullbleed（scene_p2c 的 p2cInFullbleed 已挡）、**lay 3（hit_03/hit_07）左侧画的是她的立绘**。
+     lay 3 这一类原来会一路 return true，于是画布在画 split 版面、HTML 聊天窗又整个盖上去 ——
+     就是用户报了两次的「2:30-2:40 图层重叠」。
+     判时间区间而不是 PV.shotName：PV.sync 比画图早一帧，shotName 会滞后一帧。
+     video1.mp4 同刻实测：151.0 / 154.75（lay3）左窗格区亮且无卡片；153.0 / 157.0（lay1）才带卡片。 */
+  function execHitPaneOff(t) {
+    var M = PV.p2cMine;
+    if (!M) return false;
+    for (var key in M) {
+      if (key.indexOf('shot_exec_hit_') !== 0) continue;
+      var m = M[key];
+      if (m && t >= m.a && t < m.b) {
+        var k = +key.slice(14);
+        return !(k === 11 || k % 4 === 1);
+      }
+    }
+    return false;
+  }
   PV.paneVisible = function (t) {
     if (t < PANE_T0) return false;
     if (t >= D_GONE && t < D_BACK) return false;              /* 115.42-121.77：她只剩一个光标，画在 canvas 上 */
     if (t >= 134.74 && t < 138.1587) return false;            /* shot_moe_dense：C60 塌掉（见 paneEraseY）*/
     if (t >= 144.44 && t < 147.6202) return false;            /* shot_flood：她被洪水吃掉 */
     if (t >= 193.543 && t < 207.7738) return false;           /* 鲸落 + last_execution：窗格滑出画面 */
+    if (execHitPaneOff(t)) return false;              /* lay 0/2/3 的 exec_hit：参考里这一段没有聊天窗 */
     var n = PV.shotName;
     if (n) {
       if (n.indexOf('shot_exec_hit') === 0) return true;      /* layout 1/4 的四次（#2/#6/#10/#12）窗格还在 */

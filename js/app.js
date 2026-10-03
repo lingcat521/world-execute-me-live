@@ -3,6 +3,11 @@
 (function () {
   'use strict';
   var W = 1280, H = 720, FPS = 24;
+  /* 参考成片（/storage/emulated/0/video1.mp4）的总长 = 211.872 s。
+     手机浏览器对 audio/bgm.mp3（其实是 DASH fMP4 容器）报出来的 duration 可能缺失或偏短，
+     全片长度一律以成片为准，否则进度条只能拖到音频给的时长、末尾几秒永远播不到、
+     音频一结束画面还会跳回开头。 */
+  var FILM_LEN = 211.872;
   var wrapEl = document.getElementById('wrap');
   var screenEl = document.getElementById('screen');
   var canvas = document.getElementById('stage');
@@ -28,11 +33,12 @@
     scale: 1, audioReady: false, hold: false, layers: [], bootQueue: []
   };
   PV.audio = audioEl; PV.chat = chatEl; PV.screen = screenEl;
+  PV.FILM_LEN = FILM_LEN;
   PV.audioDur = 0;
   audioEl.addEventListener('loadedmetadata', function () {
     if (isFinite(audioEl.duration) && audioEl.duration > 1) PV.audioDur = audioEl.duration;
   });
-  PV.VER = '202610042500';
+  PV.VER = '202610042600';
   var errEl = document.getElementById('err');
   PV.showErr = function (msg) {
     if (!errEl) return;
@@ -109,8 +115,11 @@
   var lastTs = 0, clock = 0;
   /* 进度条与循环共用的总时长：音频元数据优先，其次音频时长缓存，最后退回片长 */
   function songDur() {
-    return (PV.audioReady && isFinite(audioEl.duration) && audioEl.duration > 1)
-      ? audioEl.duration : (PV.audioDur || PV.loopEnd || 211.9);
+    var ad = (PV.audioReady && isFinite(audioEl.duration) && audioEl.duration > 1)
+      ? audioEl.duration : (PV.audioDur || 0);
+    if (!isFinite(ad) || ad < 1) ad = 0;
+    /* 音频元数据缺失或比成片短时，不能让整片跟着缩水（用户报「全片只有 3:27.6」）。 */
+    return Math.max(ad, FILM_LEN);
   }
   /* clock 永远等于「当前画面时间 + offset」。音频播放时它每一帧都被同步成 audioEl.currentTime，
      所以暂停、拖动、恢复都不会丢位置——旧版这里读的是播放中的音频、暂停后切回没被推进过的 clock，
@@ -141,8 +150,11 @@
       }
     } else if (!paused && PV.started) {   /* 用户点过开始之前，画面停在第 0 帧——音画必须一起动 */
       clock += dt;
+      /* le 现在是 max(音频时长, 成片长度)：音频比成片短（或压根没解码出来）时，
+         画面照样走完整片，只在 le 处回卷——修「进度条跳回开头」。 */
       if (clock >= le) {
         clock = 0;
+        lastTs = ts;                        /* 回卷这一帧不累加，免得下一帧多走一整帧 */
         if (PV.audioReady) { try { audioEl.currentTime = 0; var pr2 = audioEl.play(); if (pr2 && pr2.catch) pr2.catch(function () {}); } catch (e2) {} }
       }
     }
