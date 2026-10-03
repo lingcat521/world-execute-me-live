@@ -75,13 +75,31 @@
     g.imageSmoothingEnabled = true;
     g.drawImage(src, 0, 0, src.width, src.height, 0, 0, cols, rows);
     var d = g.getImageData(0, 0, cols, rows).data, out = [], r, c;
+    /* 权威 tuikit.glyph_grid（tuikit.py:240-270）：亮度 + **Sobel 方向梯度**。
+       mag > 1.1 的格子画方向笔画 | \ - /（按 atan2 角度分档），其余画密度 ramp。
+       原来只做了密度 ramp 那一半 -> 1:00-1:01 的字形画是"填出来的暗块"，
+       而参考是方向笔画勾出的**轮廓**（2026-10-03 同刻并排图确认）。 */
+    function LM(q, rr) {
+      q = q < 0 ? 0 : (q > cols - 1 ? cols - 1 : q);
+      rr = rr < 0 ? 0 : (rr > rows - 1 ? rows - 1 : rr);
+      var i4 = (rr * cols + q) * 4;
+      return 0.299 * d[i4] + 0.587 * d[i4 + 1] + 0.114 * d[i4 + 2];
+    }
     for (r = 0; r < rows; r++) {
       var s = "";
       for (c = 0; c < cols; c++) {
         var i4 = (r * cols + c) * 4;
         if (d[i4 + 3] < 110) { s += " "; continue; }
-        var v = (0.299 * d[i4] + 0.587 * d[i4 + 1] + 0.114 * d[i4 + 2]) / 255;
-        s += RAMP[Math.min(RAMP.length - 1, 1 + Math.floor(v * (RAMP.length - 1)))];
+        var v = LM(c, r) / 255;
+        var gx = (-LM(c - 1, r - 1) + LM(c + 1, r - 1) - 2 * LM(c - 1, r) + 2 * LM(c + 1, r) - LM(c - 1, r + 1) + LM(c + 1, r + 1)) / 4 + 128;
+        var gy = (-LM(c - 1, r - 1) - 2 * LM(c, r - 1) - LM(c + 1, r - 1) + LM(c - 1, r + 1) + 2 * LM(c, r + 1) + LM(c + 1, r + 1)) / 4 + 128;
+        var ex = (gx - 128) / 32, ey = (gy - 128) / 32;
+        if (Math.hypot(ex, ey) > 1.1) {
+          var ang = (Math.atan2(ey, ex) * 180 / Math.PI + 180) % 180;
+          s += (ang < 22.5 || ang >= 157.5) ? "|" : (ang < 67.5 ? "\\" : (ang < 112.5 ? "-" : "/"));
+        } else {
+          s += RAMP[Math.min(RAMP.length - 1, 1 + Math.floor(v * (RAMP.length - 1)))];
+        }
       }
       out.push(s);
     }
