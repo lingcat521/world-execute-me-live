@@ -1353,7 +1353,7 @@
   }
   var D_AV = null;
   function dAvatarAt(t) {
-    if (!D_AV) D_AV = { draft: 'avatars/draft.png', complete: 'avatars/complete.png', left: 'avatars/left.png',
+    if (!D_AV) D_AV = { draft: 'avatars/draft.png', complete: avMosaic('cheerful', 12), left: 'avatars/left.png',
                         lost: 'avatars/lost.png', editing: 'avatars/editing.png', forged: 'avatars/forged.png' };
     var a = D_AV, reveal = function (t0, dur) { return ease((t - t0) / (dur || 0.28)); };
     if (t < D_DONE) return [a.draft, null, 0];
