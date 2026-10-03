@@ -139,8 +139,8 @@
     { a: 47.236, b: 49.082, fn: null, name: 'shot_blind', idx: 21, shell: false },
     { a: 49.082, b: 50.928, fn: null, name: 'shot_dizzy', idx: 22, shell: false },
     { a: 50.928, b: 54.159, fn: null, name: 'shot_travel', idx: 23, shell: false },
-    { a: 54.159, b: 56.697, fn: null, name: 'shot_unite', idx: 24, shell: false },
-    { a: 56.697, b: 58.543, fn: null, name: 'shot_deeply', idx: 25, shell: false }];
+    { a: 54.159, b: 56.8333, fn: null, name: 'shot_unite', idx: 24, shell: false },   /* boundary 56.697 -> 56.8333: frame-by-frame check shows the reference is still unite at 56.792 (w.embedding space / cos(me,you)=0.9999 / we box) and only switches to the layer stack at 56.833 */
+    { a: 56.8333, b: 58.543, fn: null, name: 'shot_deeply', idx: 25, shell: false }];
   PV.powerLog = powerLog;
   PV.logLine = logLine;
   PV.POWER_LOG = POWER_LOG;
