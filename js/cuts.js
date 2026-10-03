@@ -914,7 +914,11 @@
       }
     }
     if (t >= ms - 0.06 && t < T0 + TB + 0.02) {
-      var pts = PV.globePoints(t, GR);
+      /* 【性能 · 用户报的 f269-271 圆球卡顿】球面 1 万+ 点，逐点 T.fill = 每点一次 fillStyle 赋值
+         （含拼颜色字符串）+ 一次 fillRect：单帧 fillRect 16269 次、比常态多 11000 次，帧时间 3 倍。
+         权威是离线 PIL，怎么写都行；浏览器版必须合批 —— 同一轮里按 (颜色档, 透明度档) 分桶，
+         每桶一次 beginPath + N 次 rect + 一次 fill。像素与逐点 fill 等价（rect 坐标同样 Math.round）。 */
+      var pts = PV.globePoints(t, GR), buckets = {}, nb = 0;
       for (i = 0; i < pts.length; i++) {
         var gx = pts[i][0], gy = pts[i][1], z = pts[i][2];
         var fx = T.clamp01((gx - (GX - GR)) / (2 * GR)), fy = T.clamp01((gy - (GY - GR)) / (2 * GR));
@@ -922,8 +926,23 @@
         var sx = b[0] + 4.5, sy = BASE - b[1] * (1 - fy);
         var u = eIo(T.clamp01((t - (ms + 0.1 * Math.abs(fx - 0.5) * 2)) / (span - 0.1)));
         var x = sx + (gx - sx) * u, y = sy + (gy - sy) * u;
-        if (u < 0.6) T.fill(ctx, x - 4, y - 1, x + 4, y + 1, T.mix(T.ANOM, 0.35 + 0.6 * b[2]), 1 - u * 0.5);
-        else T.textPIL(ctx, glyph(z), x - 4, y - 8, T.ui(0.35 + 0.65 * z), 15);
+        if (u < 0.6) {
+          var lv = T.shade(0.35 + 0.6 * b[2]), av = Math.round((1 - u * 0.5) * 16) / 16;
+          var key = Math.round(lv * 24) + ':' + Math.round(av * 16);
+          var bk = buckets[key];
+          if (!bk) { bk = buckets[key] = { lv: lv, av: av, xy: [] }; nb++; }
+          bk.xy.push(Math.round(x - 4), Math.round(y - 1));
+        }
+        /* 后段：逐点 textPIL -> 精灵 + drawImage（scene_boot 的球面同一处理） */
+        else T.spriteAt(ctx, glyph(z), x - 4, y - 8, T.css(T.ui(T.shade(0.35 + 0.65 * z))), 15, true);
+      }
+      var kk;
+      for (kk in buckets) {
+        var bu = buckets[kk], arr = bu.xy, m2;
+        ctx.fillStyle = T.css(T.mix(T.ANOM, bu.lv), bu.av);
+        ctx.beginPath();
+        for (m2 = 0; m2 < arr.length; m2 += 2) ctx.rect(arr[m2], arr[m2 + 1], 9, 3);
+        ctx.fill();
       }
     }
   });
@@ -970,8 +989,9 @@
         var cc = C[Math.floor(i * C.length / pts.length)];
         var u = eIo(T.clamp01((t - (T0 - 0.16 + 0.06 * (i / pts.length))) / (land - (T0 - 0.16 + 0.06 * (i / pts.length)))));
         var x = (gx - 4) + (cc[0] - (gx - 4)) * u, y = (gy - 8) + (cc[1] - (gy - 8)) * u;
-        if (u < 0.7) T.textPIL(ctx, glyph(z), x, y, T.mix(T.ANOM, 0.35 + 0.65 * z), 15);
-        else T.textPIL(ctx, '3', x, y, T.mix(T.ANOM, 0.95), 16);
+        /* 倒计时的点阵/数字同样合批（这里点数少，主要是保持一致） */
+        if (u < 0.7) T.spriteAt(ctx, glyph(z), x, y, T.css(T.mix(T.ANOM, T.shade(0.35 + 0.65 * z))), 15, true);
+        else T.spriteAt(ctx, '3', x, y, T.css(T.mix(T.ANOM, 0.95)), 16, true);
       }
       var adv = 18 * T.MONO_ADV, words = [['me', 18, T.ME_TEXT], ['you', 23, T.UI]];
       for (var k = 0; k < 2; k++) {

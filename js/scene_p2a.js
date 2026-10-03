@@ -819,7 +819,10 @@
     var d = ctx;
     var expr = u < 0.5 ? 'cheerful' : 'starry';
     FACE_CROP_NOW = faceCropAt(u);          /* 裁切窗口跟随参考里她头部的漂移 */
-    box(d, 24, 56, 700, 604, 'dsh web  grad-cam  L61  class=happy(you)', 0.55 + 0.3 * pulse(t), T.UI, t);
+    /* 权威 v2 对 approved 段的补丁：scenes_chorus1.py:370
+       kit.patch_code(section.shot_happy, [("grad-cam  L61", "grad-cam  L43")])；标题也从 dsh web 变
+       /dev/me（同刻参考帧实测：/dev/me  grad-cam  L43  class=happy(you)）。 */
+    box(d, 24, 56, 700, 604, '/dev/me  grad-cam  L43  class=happy(you)', 0.55 + 0.3 * pulse(t), T.UI, t);
     /* Python: sp = halfblock(expr,"face",650,520,5); sx,sy = 24+(676-sp.width)//2, 70（tint=blue） */
     var px = 5, sz = halfblockSize(expr, 'face', 650, 520, px), cols, rows;
     if (sz) { cols = sz[0]; rows = sz[1]; } else { var szb = herSize(360, 238, px, 'bust'); cols = szb[0]; rows = szb[1]; }

@@ -106,7 +106,36 @@
   T.ADV = 0.612;
   T.ascent = function (size) { return Math.floor(T.ASC * size); };
   T.adv = function (size) { return size * T.ADV; };
-  T.tw = function (s, size) { return s.length * T.adv(size); };
+  /* 宽度必须用「真正画字的那套字体」量。原来是 s.length * 0.612em 的固定近似：遇到 CJK（≈1em）
+     或空白（≈0.28em）就差很多 —— 底栏 credit 因此右端溢出画面（实测画到 1278 > W-24）、顶栏右侧
+     的 chapter/时钟也跟着偏。权威一律用 PIL 的 d.textlength(s, font) = 真字体度量。 */
+  var _mctx;
+  T.measure = function (s, size, bold) {
+    if (_mctx === undefined) {
+      _mctx = null;
+      try { if (PV.newCanvas) _mctx = PV.newCanvas(8, 8).getContext('2d'); } catch (e1) {}
+      if (!_mctx) { try { if (typeof document !== 'undefined' && document.createElement) _mctx = document.createElement('canvas').getContext('2d'); } catch (e2) {} }
+      if (_mctx === undefined) _mctx = null;
+    }
+    if (!_mctx) return String(s).length * T.adv(size);
+    _mctx.font = T.font(size, bold);
+    return _mctx.measureText(String(s)).width;
+  };
+  T.tw = function (s, size, bold) { return T.measure(s, size, bold); };
+  /* 把字符串横向缩放到目标总宽（用来把「权威字体我们装不出来」的固定文案对齐到参考实测宽度）：
+     与 textPIL 同锚点（y 为 ascender 顶），左端落在 x。 */
+  T.textScaled = function (ctx, s, x, y, col, size, targetW, bold) {
+    var w0 = T.measure(s, size, bold), sc = w0 > 0.5 ? (targetW / w0) : 1;
+    ctx.save();
+    ctx.translate(x, y + T.ascent(size));
+    ctx.scale(sc, 1);
+    ctx.font = T.font(size, bold);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = typeof col === 'string' ? col : T.css(col);
+    ctx.fillText(s, 0, 0);
+    ctx.restore();
+  };
   T.textPIL = function (ctx, s, x, y, col, size, align, bold) {
     ctx.font = T.font(size, bold);
     ctx.textAlign = align || 'left';
@@ -197,6 +226,31 @@
     return _mk[key];
   };
   T.twMono = function (s, size) { return s.length * size * T.MONO_ADV; };
+  /* 【性能】球面/点阵这类「上万个同款字符」的场景，逐点 textMono 的代价是每个点一次
+     save/translate/scale/font=字符串/fillText/restore（浏览器里 font 赋值要解析字符串）。
+     参考成片是离线 PIL，怎么写都行；浏览器版必须合批。这里把单字符渲染进小画布缓存，
+     之后每点只 drawImage 一次 —— 像素与 textMono 完全一致（就是用 textMono 画进缓存的）。
+     用户报的「f269-271 圆球卡顿」就是这条路径。 */
+  var _sprCache = {};
+  T.sprite = function (ch, size, colStr, pil) {
+    var key = ch + '|' + size + '|' + colStr + (pil ? '|p' : ''), cv = _sprCache[key];
+    if (cv) return cv;
+    var pad = Math.ceil(size * 1.8), w = pad * 2, h = pad * 2;
+    cv = PV.newCanvas(w, h);
+    var g = cv.getContext('2d');
+    if (pil) T.textPIL(g, ch, pad, pad, colStr, size);
+    else T.textMono(g, ch, pad, pad, colStr, size);
+    cv._dx = -pad; cv._dy = -pad;
+    _sprCache[key] = cv;
+    return cv;
+  };
+  T.spriteAt = function (ctx, ch, x, y, colStr, size, pil) {
+    var sp = T.sprite(ch, size, colStr, pil);
+    ctx.drawImage(sp, Math.round(x) + sp._dx, Math.round(y) + sp._dy);
+  };
+  /* 颜色量化：球面每点一个 z（连续）会让精灵缓存每点新建一张 -> 反而更慢。
+     分 24 档亮度（≈4% 步进，像素上看不出来），最多 3 字形 x 24 档 = 72 张。 */
+  T.shade = function (lv) { return Math.round(T.clamp01(lv) * 24) / 24; };
   T.textMono = function (ctx, s, x, y, col, size, align) {
     var k = T.monoScale(ctx, size);
     var w = s.length * size * T.MONO_ADV;

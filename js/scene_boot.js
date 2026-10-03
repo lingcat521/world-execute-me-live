@@ -552,7 +552,10 @@
     for (var i = 0; i < pts.length; i++) {
       var p = pts[i], z = p[2];
       /* 参考的球面字符是等宽体的窄椭圆（实测 8.8x12），textPIL(SpaceMono) 画出来是 10.4x11.2 的圆 -> 改等宽 */
-      T.textMono(ctx, z < 0.35 ? '·' : (z < 0.75 ? 'o' : 'O'), p[0] - 4, p[1] - 3, T.ui(0.35 + 0.65 * z), 15);
+      /* 【性能】逐点 textMono -> 字形精灵 + drawImage（用户报的 f269-271 圆球卡顿）。
+         量级：球面上万个点、每帧一次 font 字符串赋值+fillText，单帧 400-600ms。 */
+      T.spriteAt(ctx, z < 0.35 ? '·' : (z < 0.75 ? 'o' : 'O'), p[0] - 4, p[1] - 3,
+                 T.css(T.ui(T.shade(0.35 + 0.65 * z))), 15);
     }
     for (var k = 0; opts.markers !== false && k < 2; k++) {   /* C07：标记由转场层接管 */
       var mp = PV.markerPos(t, k, R);
@@ -566,7 +569,14 @@
 (function () {
   'use strict';
   var PV = window.PV, T = PV.tui;
+  /* 【性能 · 用户报的 f269-271 圆球卡顿】bannerBits 每次调用都把文字渲进 220px 画布，然后
+     getImageData 整面回读 + JS 逐像素扫 20 万次找包围盒。转场里它每帧被调若干次（shot_init
+     的倒计时、EXECUTE 横幅等），CPU profile 里占 21.6%（约 347ms/帧）；浏览器里 getImageData
+     还会强制一次 GPU->CPU 同步，直接表现为卡帧。结果只取决于 (text, rows, aspect)，记忆化即可。 */
+  var _bitsCache = {};
   PV.bannerBits = function (text, rows, aspect) {
+    var _key = text + '|' + rows + '|' + aspect, _hit = _bitsCache[_key];
+    if (_hit) return _hit;
     var FS = 220, H = 300;
     var probe = PV.newCanvas(64, 64).getContext('2d');
     probe.font = FS + 'px Anton';
@@ -596,7 +606,9 @@
         bits[r].push(d[(sy * c.width + sx) * 4 + 3] > 110);
       }
     }
-    return { width: cols, height: rows, get: function (q, r) { return bits[r][q]; } };
+    var _out = { width: cols, height: rows, get: function (q, r) { return bits[r][q]; } };
+    _bitsCache[_key] = _out;
+    return _out;
   };
   PV.shotBeginSim = function (ctx, t, lt, u, dur, noRun, noBudget, noCount) {   /* noCount: C07 倒计时由转场层拼出来 */
     PV.ops = ['SIM.START', 'EPOCH 0', 'STEP 0', 'FORWARD', 'BACKWARD', 'UPDATE'];

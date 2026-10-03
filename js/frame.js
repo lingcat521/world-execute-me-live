@@ -12,7 +12,20 @@
   var WIN = [LEFT[0] + 3, LEFT[1] + 9, LEFT[2] - 3, LEFT[3] - 3];
   PV.GEOM = { LEFT: LEFT, CENTER: CENTER, TICK: TICK, WIN: WIN };
   var TITLES = { left: 'dsh web', center: 'world', tick: 'ops' };
-  function box3(ctx, r, title, level) { T.box(ctx, r[0], r[1], r[2], r[3], title, level); }
+  function box3(ctx, r, title, level, color, spinner) { T.box(ctx, r[0], r[1], r[2], r[3], title, level, color, spinner); }
+  /* dsh_her.py:237 make_pane() —— COVER 段（5.0-125.0）里 shot 能把 me_pane 的 rect 交上来：窗框就画在
+     那个 rect 上（标题仍是 "dsh web"，颜色随 shot），窗口内容按 min(w/iw,h/ih) 缩放、水平居中、顶部
+     对齐贴到 (x0+INNER[0], y0+INNER[1])，INNER=(3,9,3,3)。Chorus 1 的 shot_trapped
+     （full/sec_chorus1.py:556）每拍把 rect 收一圈：inset=[0,24,48,70][min(3,int(u*4))]，k>=2 起框变 RED。 */
+  PV.paneRect = function (t) {
+    var i, s = null;
+    for (i = 0; i < (PV.SHOTS ? PV.SHOTS.length : 0); i++)
+      if (PV.SHOTS[i].name === 'shot_trapped') s = PV.SHOTS[i];
+    if (!s || t < s.a || t >= s.b) return null;
+    var u = (t - s.a) / (s.b - s.a);
+    var k = Math.min(3, Math.floor(u * 4)), i2 = [0, 24, 48, 70][k];
+    return { rect: [24 + i2, 56 + i2, 384 - i2, 604 - Math.floor(i2 / 2)], color: k >= 2 ? T.ERR : null };
+  };
   /* 焦点压暗：原始工程 dsh_her.py 的 LEAD 表。谁"主导"时另一方降到 support 亮度，
      每次切换以 0.25s 缓入。RIGHT = 可视化窗格 + ops 列；她的窗格用她的窗口 alpha。 */
   var LEAD = [[0.0, 'both'], [5.24, 'left'], [7.08, 'right'], [12.47, 'both'], [16.0, 'both'], [41.21, 'left'],
@@ -29,7 +42,18 @@
     return [prev[0] + (cur[0] - prev[0]) * p, prev[1] + (cur[1] - prev[1]) * p];
   };
   PV.drawPanes = function (ctx, t) {
-    box3(ctx, LEFT, TITLES.left, 0.45);
+    var p = PV.paneRect ? PV.paneRect(t) : null;
+    /* engine.py:265 me_pane() / dsh_her.py:256 make_pane(): box(d, x0, y0, x1, y1, title,
+       0.45 + 0.35 * pulse(c.t), color=..., spinner=c.t)。
+       spinner（标题前的 |/-\ 逐帧转，tuikit.box:333 "|/-\\"[int(t*8)%4]）已按权威补上，
+       少了它标题整体左移一格，实测 two frame 都变好。
+       亮度脉冲【暂不上线】：参考帧框边像素确实逐拍跳（86 -> 128，相位落在拍点上），但
+       ① pulse 的 FIRST_BEAT 存在分歧：chrome.js 用 0.1587、pane.js 的 beat() 用 0.1807，
+          按实测相位反解更支持 0.1807；② 现状 0.1587 在拍前 dt<0 会让 pulse>1（框比任何实测
+          值都亮）。带着这个相位试过 0.45+0.35*pulse，两个同刻帧都比常量 0.45 差
+          （70.4583: left 25.61->25.73；70.8333: 21.54->21.71）。先把 0.45 留着，
+          等 FB 统一后单独验。 */
+    box3(ctx, p ? p.rect : LEFT, TITLES.left, 0.45, p ? p.color : null, t);
   };
   PV.drawBackground = function (ctx, t) {
     T.fill(ctx, 0, 0, W, H, T.BG, 1);

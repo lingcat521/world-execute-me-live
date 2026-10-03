@@ -213,7 +213,7 @@
   var REGION = [20, 36, 1172, 612];
   var FACE = [30, 60, 696, 600];          /* grad-cam 的脸与热图所在矩形 */
   var S0 = T0 - 2 / FPS, S1 = T0 + BEAT;  /* 68.4667：脸又变回她的头 */
-  var HAPPY_TITLE = 'dsh web  grad-cam  L61  class=happy(you)';
+  var HAPPY_TITLE = '/dev/me  grad-cam  L43  class=happy(you)';   /* v2 补丁（scenes_chorus1.py:370） */
   /* 落点：她的头 = 窗格里她头像的位置（参考帧实测 AVATAR_C = (69,105)），尺寸照 Python 的 150 x 119.5 */
   var HEAD = { cx: 69, cy: 105, w: 150, h: 119.5 };
 
@@ -252,7 +252,7 @@
     var x1 = Math.round(T.lerp(700, 384, e));
     var lvl = T.lerp(0.55 + 0.3 * PV.pulse(t), 0.45 + 0.35 * PV.pulse(t), e);
     var tTitle = S0 + 0.45 * (S1 - S0);
-    var title = t < tTitle ? HAPPY_TITLE : (T.decode('dsh web  pid 4471', t - tTitle, rng, 40.0, 0.1, 0) || '/');
+    var title = t < tTitle ? HAPPY_TITLE : (T.decode('/dev/me  pid 4471', t - tTitle, rng, 40.0, 0.1, 0) || '/');
     T.box(a, 24, 56, x1, 604, title, lvl, T.UI, t);
     /* 脸缩回她的头：中心走到她的脸上 */
     var sc = T.lerp(1.0, HEAD.w / 640, e);

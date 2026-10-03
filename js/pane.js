@@ -2952,6 +2952,16 @@
     if (t >= 144.44 && t < 147.6202) return false;            /* shot_flood：她被洪水吃掉 */
     if (t >= 193.543 && t < 207.7738) return false;           /* 鲸落 + last_execution：窗格滑出画面 */
     if (execHitPaneOff(t)) return false;              /* lay 0/2/3 的 exec_hit：参考里这一段没有聊天窗 */
+    /* shot_happy（66.159-68.005）：权威 v2.py:267 的 OWN 分支让 approved renderer 直接返回整帧，
+       her layer（聊天窗）根本不合成；这一镜自己把 grad-cam 面板（24..700）画在窗格上，所以参考里
+       看不到聊天窗（1920 同刻实测：66.00 有、66.50/67.00/67.50 没有 ✓）。
+       但 cut 生效时 v2.py:263-266 会继续往下走并把 her 合成回来（C31 在 68.0-68.8 让聊天窗回来 ✓）。 */
+    if (t >= 66.159 && t < 68.005 && !(PV.activeCut && PV.activeCut(t))) return false;
+    /* shot_if_i_can 的 decode 段（≈58.90-60.62）：参考同刻帧实测这一段左框是场景自己画的
+       'decode · render · graph' + while can(): give( 面板（59.50/60.00/60.50 ✓），58.75 还是聊天窗、
+       61.00 已经回到聊天窗 ✓（边界正落在 shot_if_i_can 的 60.620 结束点）。同一类问题：DOM 窗格
+       盖在 canvas 之上，只有真浏览器能看出来。 */
+    if (t >= 58.90 && t < 60.62) return false;
     var n = PV.shotName;
     if (n) {
       if (n.indexOf('shot_exec_hit') === 0) return true;      /* layout 1/4 的四次（#2/#6/#10/#12）窗格还在 */
@@ -3013,6 +3023,18 @@
       styleEl('pane-cordis').textContent = CORDIS_CSS;
     }
   }
+  /* dsh_her.py:237 make_pane() 的窗口贴法：#chatbox 的自然尺寸是 354x536（= INNER 3/9/3/3 之内的面积，
+     kit.inner_size(kit.LEFT)），窗口跟 shot 给的 rect 走：s=min(w/354,h/536)，水平居中、顶部对齐到
+     (x0+3, y0+9)。没有 shot rect 时 rect=LEFT -> s=1、translate(27,65)，与改动前完全等价。 */
+  function paneBoxTransform(t) {
+    var p = PV.paneRect ? PV.paneRect(t) : null;
+    var r = p ? p.rect : [24, 56, 384, 604];
+    var w = r[2] - r[0] - 6, h = r[3] - r[1] - 12, iw = 354, ih = 536;
+    var sc = Math.min(w / iw, h / ih);
+    return 'translate(' + (r[0] + 3 + (w - iw * sc) / 2).toFixed(2) + 'px,' + (r[1] + 9) + 'px) scale(' +
+           sc.toFixed(6) + ')';
+  }
+  PV.paneBoxTransform = paneBoxTransform;   /* cuts_p3.js 的 PV.sync 包装要复用它（不能整个覆盖） */
   PV.sync = function (t) {
     if (!chatEl) chatEl = document.getElementById('chat');
     if (!app) app = document.getElementById('app');
@@ -3023,7 +3045,7 @@
     chatEl.style.clipPath = (wipe !== null) ? 'inset(' + wipe.toFixed(1) + 'px 0 0 0)' : '';
     if (!vis) return;
     var boxel = document.getElementById('chatbox');
-    if (boxel) boxel.style.transform = 'translate(27px,65px)';
+    if (boxel) boxel.style.transform = paneBoxTransform(t);
     applySheets(t);
     var b = PV.paneBody(t);
     if (b !== lastBody) { app.innerHTML = b; lastBody = b; perfFrame(b); }

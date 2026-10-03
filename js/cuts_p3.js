@@ -396,7 +396,15 @@
       var st = paneStateAt(t);
       if (st.hide) { el.style.visibility = 'hidden'; return; }
       el.style.visibility = 'visible';
-      el.style.transform = 'translate(' + st.x.toFixed(1) + 'px,' + st.y.toFixed(1) + 'px) scale(' + st.sx.toFixed(4) + ',' + st.sy.toFixed(4) + ')';
+      /* 与画布侧同一个仿射：先按 shot 给的 rect 把窗格摆好（pane.js 的 paneBoxTransform，
+         没给 rect 时它就是 translate(27,65) scale(1) 恒等），再整体吃 paneStateAt 的走位。
+         注意：这里以前是直接覆盖成 translate(st)+scale(st)，会把 shot_trapped 的收窄整个抹掉
+         （浏览器实测 #chatbox 一直是 matrix(1,0,0,1,27,65)）。 */
+      var boxT = (PV.paneBoxTransform && st.x === PANE_X && st.y === PANE_Y && Math.abs(st.sx - 1) < 1e-9 && Math.abs(st.sy - 1) < 1e-9)
+        ? PV.paneBoxTransform(t)
+        : 'translate(' + st.x.toFixed(1) + 'px,' + st.y.toFixed(1) + 'px) scale(' + st.sx.toFixed(4) + ',' + st.sy.toFixed(4) + ')' +
+          ' translate(' + (-PANE_X) + 'px,' + (-PANE_Y) + 'px) ' + (PV.paneBoxTransform ? PV.paneBoxTransform(t) : '');
+      el.style.transform = boxT;
       el.style.clipPath = st.clip || '';
       el.style.filter = st.filter || '';
     };

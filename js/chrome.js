@@ -138,10 +138,17 @@
     drawWave(ctx, t, 1256 - rw - 30, amb);
     T.textPIL(ctx, right, 1256 - rw, 14, amb(0.85), fh, 'left', true);
     T.fill(ctx, 24, 38, 1256, 39, col, 0.35);
-    var fsz = 12, n = 60, k = Math.floor(n * t / SONG_LEN);
+    /* dsh_wave.py:104-110（frontend 的 header 权威）：n=52 —— 注释原文「the progress bar is shorter
+       than engine's 60 so the whole credit fits the frame」；credit 是右对齐到 W-24。
+       参考同刻帧 1920 原生逐字符实测：条 = 54 个字符（= n+2）✓ 我们的 60 会多出 8 格；
+       credit 右端 1254.7（= W-24）✓ 我们写死 x=500 时右端冲到 1278、被画面裁掉。 */
+    var fsz = 12, n = 52, k = Math.floor(n * t / SONG_LEN);
     var bar = '[' + new Array(k + 1).join('|') + new Array(n - k + 1).join(':') + ']';
-    T.textPIL(ctx, bar, 24, 690, amb(0.4), fsz);
-    T.textPIL(ctx, CREDIT, 500, 689, amb(0.38), 11);
+    /* 两个都是**定宽**元素（条永远 54 格、credit 永远是同一串），所以按参考同刻帧 1920 原生
+       逐字符实测的总宽做横向标定：条 24..396.7（373px）、credit 421..1254.7（835px）。
+       原因：权威的 F_MONO=consola.ttf、F_CJK=msyh.ttc 我们都没有，回退字体的步进偏宽（条 +5%）。 */
+    T.textScaled(ctx, bar, 24, 690, amb(0.4), fsz, 373.0);
+    T.textScaled(ctx, CREDIT, 1256 - 835, 689, amb(0.38), 11, 835.0);
   }
 
   /* ---------- 右侧 ops 滚动列表 ---------- */
