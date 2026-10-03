@@ -1041,7 +1041,7 @@
   function land(g) { return T0 + BEAT / 2 - (7 - g) * 0.02; }
   function unfold(i) { var g = ROWS21.indexOf(UNFOLD21[i]); return [land(g) + 0.02, land(g) + 0.18]; }
   function rect(i, j) { return [MX + j * CS, MY + i * CS, MX + j * CS + CS - 2, MY + i * CS + CS - 2]; }
-  function cellColor(i, j) { return T.mix(T.ANOM, 0.06 + 0.94 * PV.blindCellValue(i, j)); }
+  function cellColor(i, j) { return T.mix(T.UI, 0.06 + 0.94 * PV.blindCellValue(i, j)); }   /* 权威 s_sft.py:66 cell_color = mix(AMBER, ...)，tuikit.py:42 AMBER = UI（deepsea 的 UI=(200,214,234) 与 T.UI 逐位相同）；原来用 T.ANOM=(255,204,0) 于是 causal mask 画成黄的（参考是白的） */
   function cellA(t) {
     var m = {}, g, i;
     for (g = 0; g < 8; g++) m[ROWS21[g]] = land(g);
@@ -1144,7 +1144,7 @@
     var ky = DZ.kx + (DZ.ky - DZ.kx) * a, kz = DZ.kz * b, rot = PV.dizzyRot(t);
     return function (x, y, z) { return PV.dizzyProject(x, y, rot, cx, cy, ky, kz, z); };
   }
-  function cellColor(i, j) { return T.mix(T.ANOM, 0.06 + 0.94 * PV.blindCellValue(i, j)); }
+  function cellColor(i, j) { return T.mix(T.UI, 0.06 + 0.94 * PV.blindCellValue(i, j)); }
   PV.addCut(T0, PRE, 0.5, function (ctx, t, cut) {
     var DZ = PV.dizzy.DZ, proj = projOf(t), i, j, k;
     var oc = PV.newCanvas(1280, 720), og = oc.getContext('2d');
