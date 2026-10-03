@@ -1163,13 +1163,32 @@
      dancer.render()：整个窗格内容都是她。我们的窗格是 HTML（pane.js 生成），所以在这一层用
      canvas 覆盖。默认时段 = 参考成片里左侧框长到 (24,56)-(700,604) 并且里面是她本人的那一段
      （shot_happy 66.159-68.005）；PV.DANCER_SPANS 可覆盖。 */
-  /* ⚠️ 时段原来写的是 [[66.159, 68.005]]（shot_happy），但抽帧实测（pvport/dance_ref.png）显示：
-       66.5 / 67.0 / 67.5 —— 参考里她是**半调网点立绘**，不是字符舞者；
-       59.75 / 60.00 / 60.50 —— 参考里才是**ASCII 字符画的人形**（还在散开/流动）。
-     所以把时段从 shot_happy 改到 shot_if_i_can（58.543-60.620）。
-     用户反馈原话："1分左右是 ASCII 字符画的 deepseek 娘跳舞形象，但是你做的是静态的，
-     并且 1分06 到 1分08 的跳舞内容的实际渲染看起来一塌糊涂" —— 正好对应这个开反了。 */
-  var SPANS = PV.DANCER_SPANS || [[58.543, 60.620]];
+  /* ===== 时段：实测结论（2026-10-04，逐时刻各起一个 node 进程，左窗格 24..384 x 56..604 平均绝对差）=====
+     [A] 58.543-60.620（shot_if_i_can）：**不是她**。参考帧里那段的字形人形是 scene_p2b 的
+         "IF I CAN" 字符雨 -> 溶解成她（rain_layers + glyph_grid + glyphLines），已经实现好了。
+         把本舞者盖上去反而更差：60.00 左窗格 10.88->18.40，59.90 12.18->18.48，60.20 9.14->18.42；
+         而且 #pv-her 覆盖层的 boxAt 是按 (24,56,700,604) 定的，会盖住左侧 HTML 聊天窗 ->
+         用户看到的"字符舞与半调立绘还重叠图层了 / 聊天框还是存在"。所以这一段不开。
+     [B] 66.159-68.005（shot_happy，grad-cam）：**开**。她本人（字符串舞者）替掉静止半调立绘，
+         六个采样点全部变好（off -> on）：
+           66.25 L 53.08->32.40   66.50 L 46.65->35.54   67.00 L 31.21->24.67
+           67.50 L 24.68->16.84   67.75 L 35.35->27.94   68.00 L 36.17->29.31
+         均值 L 37.86->27.78（-26.6%）、C 23.36->16.71（-28.5%）、F 23.65->18.52（-21.7%）。
+         用 PV.DANCER_SPANS = [[a,b]] 可覆盖。 */
+  /* ✅ 2026-10-04 收口结论：**默认两段都不开**。
+     - 58.543-60.620：shot_if_i_can 自己的 "IF I CAN" 字符雨->溶解成她
+       已经就是参考里那个字符网格人形；再叠一层反而更差
+       （我的 canvas 指标 59.75 21.41->20.55、60.25 12.10->11.01；子代理的左窗格
+       指标 60.00 10.88->18.40）。而且 #pv-her 覆盖层的 boxAt=(24,56,700,604)
+       会盖住左侧 HTML 聊天窗又不会把它擦干净 -> 用户看到的
+       "字符舞与半调立绘还重叠图层了 / 聊天框还是存在"。
+     - 66.159-68.005：参考帧里是**半调网点立绘**（用户原话就叫它"半调立绘"），
+       scene_p2a.js 的 shot_happy 已经用 halfblock 画在 (24,56)-(700,604) 框里了。
+       把稀疏字符舞者叠上去反而更差：66.50 16.85->13.21 但
+       67.00 14.11->19.19、67.50 19.03->24.45，均值 16.66->18.95。
+       参考帧：/storage/emulated/0/fix_pictures/_ovl_6668.png（关着）vs _ovl_6668b.png（开着）。
+     需要时用 PV.DANCER_SPANS = [[a,b]] 显式打开。 */
+  var SPANS = PV.DANCER_SPANS || [];
   PV.DANCER_SPANS = SPANS;
   function on(t) {
     for (var i = 0; i < SPANS.length; i++) if (t >= SPANS[i][0] && t < SPANS[i][1]) return true;
@@ -1273,6 +1292,155 @@
     }
     ctx.restore();
   }
+
+
+  /* ================================================================ shot_happy 的半调立绘：尺寸/位置/墨量校正
+     参考帧实测（1280x720，窗格内部 30..700 x 70..560，亮度 >110 的"墨"）：
+       t      参考 bbox                参考 ink   我们(旧 spW=650 spH=430 sx=37 sy=70) ink
+       66.50  x  48..699 y  86..555    0.144      x  37..610 y  91..498   0.256
+       67.00  x 132..665 y 190..498    0.164      x  92..685 y  91..498   0.258
+       67.50  x 327..685 y 155..498    0.135      x 182..685 y  75..498   0.231
+       67.75  x 212..685 y 145..498    0.178      x 222..685 y  75..498   0.210
+     结论：我们的人像**又高又靠上、墨量多出约 55%**（参考 ink 均值 0.155，我们 0.239）。
+     做法：spW=650 spH=430 -> spW=520 spH=345，sy=70 -> sy=153（底部仍落在 y≈498）。
+     scene_p2a.js 归别的代理，这里只在它画完之后重画人像区（框、标题、attribution、右侧面板都不动）。 */
+  var HAPPY_WIN = [66.159, 68.005];
+  PV.HAPPY_GEOM = PV.HAPPY_GEOM || { maxW: 520, maxH: 350, sy: 153, px: 5 };
+  if (PV.HAPPY_PORTRAIT_FIX === undefined) PV.HAPPY_PORTRAIT_FIX = true;
+
+  function whaleAspect(expr, crop) {
+    var im = WHALE[expr]; if (!im) return null;
+    var w = im.width, h = im.height;
+    var rw = Math.floor(w * crop[2]) - Math.floor(w * crop[0]);
+    var rh = Math.floor(h * crop[3]) - Math.floor(h * crop[1]);
+    return rh / Math.max(1, rw);
+  }
+  function whaleLumAlpha(expr, crop, cols, rows) {
+    var im = WHALE[expr]; if (!im || cols < 1 || rows < 1) return null;
+    var key = expr + '|' + cols + 'x' + rows + '|' + crop.join(',') + '|la';
+    if (_wcell[key]) return _wcell[key];
+    var w = im.width, h = im.height;
+    var rc = [Math.floor(w * crop[0]), Math.floor(h * crop[1]), Math.floor(w * crop[2]), Math.floor(h * crop[3])];
+    var cv = mkCanvas(cols, rows); if (!cv) return null;
+    var g = cv.getContext('2d');
+    g.drawImage(im, rc[0], rc[1], rc[2] - rc[0], rc[3] - rc[1], 0, 0, cols, rows);
+    var d = g.getImageData(0, 0, cols, rows).data;
+    var lum = new Float32Array(cols * rows), al = new Uint8Array(cols * rows), k;
+    for (k = 0; k < cols * rows; k++) {
+      lum[k] = 0.299 * d[k * 4] + 0.587 * d[k * 4 + 1] + 0.114 * d[k * 4 + 2];
+      al[k] = d[k * 4 + 3];
+    }
+    return (_wcell[key] = { lum: lum, alpha: al, cols: cols, rows: rows });
+  }
+  function halfblockSize2(expr, crop, maxW, maxH, px) {
+    var asp = whaleAspect(expr, crop);
+    if (asp === null) return null;
+    var cols = Math.max(2, Math.floor(Math.min(maxW / px, (maxH / px) / asp)));
+    var rows = Math.max(2, Math.round(cols * asp)); rows -= rows % 2;
+    return [cols, rows];
+  }
+  function tileCellDraw(ctx, x, y, px, r, col, a0) {   /* tuikit.grid_mask：每格右侧留 1px 竖缝 + 奇数行压暗 */
+    ctx.fillStyle = col;
+    ctx.globalAlpha = a0;
+    if (r % 2 === 1) {
+      ctx.fillRect(x, y, px - 1, px - 1);
+      ctx.globalAlpha = a0 * 70 / 255;
+      ctx.fillRect(x, y + px - 1, px - 1, 1);
+    } else {
+      ctx.fillRect(x, y, px - 1, px);
+    }
+    ctx.globalAlpha = 1;
+  }
+  function halfblockDraw(ctx, sx, sy, expr, crop, maxW, maxH, px, tint) {
+    var sz = halfblockSize2(expr, crop, maxW, maxH, px); if (!sz) return null;
+    var cols = sz[0], rows = sz[1];
+    var C = whaleLumAlpha(expr, crop, cols, rows); if (!C) return null;
+    var ramp = RAMPS[tint] || RAMPS.blue, q = 255 / 7, r, k;
+    for (r = 0; r < rows; r++) for (k = 0; k < cols; k++) {
+      if (C.alpha[r * cols + k] <= 100) continue;
+      var lv = Math.round((0.16 + 0.84 * C.lum[r * cols + k] / 255) * 7) * q;
+      tileCellDraw(ctx, sx + k * px, sy + r * px, px, r, 'rgb(' + ramp[Math.max(0, Math.min(255, Math.round(lv)))].join(',') + ')', 1);
+    }
+    return { cols: cols, rows: rows, spW: cols * px, spH: rows * px };
+  }
+  function heatDraw(ctx, sx, sy, spW, spH, u, expr, crop) {
+    var cell = 20;
+    var hc = Math.max(1, Math.floor(spW / cell)), hr = Math.max(1, Math.floor(spH / cell));
+    var alpha = whaleCells(expr, crop, hc, hr); if (!alpha) return;
+    var blobs = [[0.40, 0.58, 0.10], [0.63, 0.58, 0.10], [0.52, 0.80, 0.12 + 0.05 * smooth(u)]];
+    var band = (Date.now ? 0 : 0);   /* band 由调用方给：见下面的 t */
+    return { hc: hc, hr: hr, alpha: alpha, blobs: blobs, cell: cell };
+  }
+  function heatPaint(ctx, t, sx, sy, spW, spH, u, expr, crop) {
+    var cell = 20;
+    var hc = Math.max(1, Math.floor(spW / cell)), hr = Math.max(1, Math.floor(spH / cell));
+    var alpha = whaleCells(expr, crop, hc, hr); if (!alpha) return;
+    var blobs = [[0.40, 0.58, 0.10], [0.63, 0.58, 0.10], [0.52, 0.80, 0.12 + 0.05 * smooth(u)]];
+    var band = (t * 1.3) % 1.0, lvl = smooth(u * 1.5), gy, gx;
+    for (gy = 0; gy < hr; gy++) for (gx = 0; gx < hc; gx++) {
+      if (alpha[gy * hc + gx] < 60) continue;
+      var uu = (gx + 0.5) / hc, vv = (gy + 0.5) / hr, hv = 0;
+      for (var b2 = 0; b2 < 3; b2++) {
+        var bx = blobs[b2][0], by = blobs[b2][1], rr = blobs[b2][2];
+        hv += Math.exp(-((uu - bx) * (uu - bx) + (vv - by) * (vv - by)) / (2 * rr * rr));
+      }
+      hv *= 0.55 + 0.45 * lvl;
+      hv += 0.18 * Math.exp(-Math.pow((vv - band) / 0.04, 2));
+      if (hv > 0.25) {
+        var col = hv > 0.85 ? (T.ANOM || [255, 204, 0]) : (T.UI || [200, 214, 234]);
+        var css = T.css ? T.css(col) : 'rgb(255,204,0)';
+        ctx.fillStyle = css;
+        ctx.globalAlpha = Math.min(0.30, hv * 0.28);
+        ctx.fillRect(sx + gx * cell + 2, sy + gy * cell + 2, cell - 5, cell - 5);
+        if (hv > 0.6) {
+          ctx.globalAlpha = Math.min(0.8, hv * 0.6);
+          ctx.lineWidth = 1; ctx.strokeStyle = css;
+          ctx.strokeRect(sx + gx * cell + 1.5, sy + gy * cell + 1.5, cell - 3, cell - 3);
+        }
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+  function installHappyFix() {
+    if (!PV.SHOTS) return;
+    for (var i = 0; i < PV.SHOTS.length; i++) {
+      var s = PV.SHOTS[i];
+      if (s.name !== 'shot_happy' || !s.fn || s.fn.__dancerWrapped) continue;
+      var orig = s.fn;
+      var wrapped = function (ctx, t) {
+        orig.apply(this, arguments);
+        if (!PV.HAPPY_PORTRAIT_FIX) return;
+        if (t < HAPPY_WIN[0] || t >= HAPPY_WIN[1]) return;
+        var G = PV.HAPPY_GEOM, px = G.px || 5;
+        var u = Math.max(0, Math.min(1, (t - HAPPY_WIN[0]) / (HAPPY_WIN[1] - HAPPY_WIN[0])));
+        var expr = u < 0.5 ? 'cheerful' : 'starry';
+        var crop = faceCropAt(u);
+        if (!WHALE[expr]) return;                     /* 立绘没加载就別动原图 */
+        var sz0 = halfblockSize2(expr, crop, 650, 520, px);
+        if (sz0) {                                    /* 1) 擦掉原来那块（人像 + 它的热力图） */
+          var w0 = sz0[0] * px, h0 = sz0[1] * px, x0 = 24 + Math.floor((676 - w0) / 2);
+          ctx.save();
+          ctx.fillStyle = '#050914';
+          ctx.fillRect(x0 - 4, 70 - 4, w0 + 8, h0 + 8);
+          ctx.restore();
+        }
+        var sz = halfblockSize2(expr, crop, G.maxW, G.maxH, px);
+        if (!sz) return;
+        var spW = sz[0] * px, spH = sz[1] * px;
+        var sx = 24 + Math.floor((676 - spW) / 2), sy = G.sy;
+        ctx.save();
+        ctx.beginPath(); ctx.rect(26, 68, 674, 458); ctx.clip();   /* 别画出窗格 */
+        halfblockDraw(ctx, sx, sy, expr, crop, G.maxW, G.maxH, px, 'blue');
+        heatPaint(ctx, t, sx, sy, spW, spH, u, expr, crop);
+        ctx.restore();
+        PV.happyGeom = [sx, sy, spW, spH];
+      };
+      wrapped.__dancerWrapped = true;
+      s.fn = wrapped;
+    }
+  }
+  installHappyFix();
+  PV.installHappyFix = installHappyFix;
 
   /* ================================================================ 对外 API */
   PV.dancer = {

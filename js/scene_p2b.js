@@ -425,6 +425,149 @@
   }
   PV.shotMemoryLs = memoryLs;
 
+  /* ---- dsh_patch_mem（118.10-121.80）：她挖出记忆 ----
+     权威 pv_dsh_frontend_20260927/dsh_patch_mem.py。lyric line 59 的四个重音字上，光标跳（MOVE=3 帧：
+     两帧在途、第三帧落在字上）到右面 ls 列表的一行：那一行**反白成她的颜色**（her colour 的底 + 文字重画成 BG），
+     记忆作为真正的 dsh 消息在她左边打开（BUB_R=376 右对齐），POP=4 帧缩放进入、之后每帧上飘 8px，
+     前一个在下一个到来前 FADE=5 帧淡掉；wav 那张另外带一段波形爆发。四张气泡图是 dsh 自己的 markup+CSS
+     截图（mem_sprites/*.png，2x），已放进 assets/mem/。 */
+  var MEM_ROW_X = 430, MEM_CARET_X = 388, MEM_BUB_R = 376, MEM_GAP = 10;
+  var MEM_MOVE = 3 / 24, MEM_POP = 4 / 24, MEM_FADE = 5 / 24, MEM_SOLID = 0.35;
+  var MEM_BLUE = [77, 107, 254], MEM_HOME = [110, 560];
+  var MEM_SPAN = [118.10, 121.80];
+  var MEMS = [
+    { A: 118.25, row: 1, name: 'first_hello.txt', sprite: 'hello', sc: 1.00, halo: 0.30, flash: 0.12 },
+    { A: 119.00, row: 4, name: 'your_cat.png', sprite: 'cat', sc: 1.15, halo: 0.50, flash: 0.20 },
+    { A: 119.375, row: 3, name: 'laugh_2026-03-14.wav', sprite: 'wav', sc: 1.25, halo: 0.70, flash: 0.28 },
+    { A: 119.9167, row: 7, name: 'last_message.txt', sprite: 'last', sc: 1.65, halo: 0.95, flash: 0.35 }
+  ];
+  var MEM_IMG = {};
+  (function () {
+    for (var i = 0; i < MEMS.length; i++) (function (m) {
+      if (!PV.loadImage) return;
+      PV.loadImage('assets/mem/' + m.sprite + '.png', function (im) {
+        var cv = PV.newCanvas(Math.round(im.width / 2 * m.sc), Math.round(im.height / 2 * m.sc));
+        var g = cv.getContext('2d');
+        g.imageSmoothingQuality = 'high';
+        g.drawImage(im, 0, 0, im.width, im.height, 0, 0, cv.width, cv.height);
+        MEM_IMG[m.sprite] = cv;
+      });
+    })(MEMS[i]);
+  })();
+  function memRowGeom(i) {                    /* dsh_patch_mem.row_geom：行的 ink 外框 */
+    var size = 1000 + (i * 7919) % 90000;
+    var head = '-rw-r--r--  me  me  ' + pad(size, 6) + '  ';
+    var y = 84 + i * 40, r = T.twMono(head + FILES[i], 18);
+    return [head, y, [MEM_ROW_X - 4, y, MEM_ROW_X + r + 5, y + 21]];
+  }
+  function memRowCy(i) { var b = memRowGeom(i)[2]; return (b[1] + b[3]) / 2; }
+  function memLeaving(k, t) {
+    if (k + 1 >= MEMS.length) return 0;
+    return T.clamp01((t - (MEMS[k + 1].A - 2 / 24)) / MEM_FADE);
+  }
+  function memRest(k, t) {
+    if (k === 0 || k === 5) return MEM_HOME;
+    if (k === 4) return MEM_LAST_CARET(t);
+    return [MEM_CARET_X, memRowCy(MEMS[k - 1].row)];
+  }
+  var MEM_LAST_CARET = function () { return MEM_HOME; };   /* 第 4 段（120 s 后）由 erase 那条线负责 */
+  function memPos(t) {                        /* home -> row1 -> row4 -> row3 -> ... */
+    var k = 0, j;
+    for (j = 0; j < MEMS.length; j++) if (t >= MEMS[j].A - MEM_MOVE) k = j + 1;
+    if (k === 0) return [memRest(0, t), false];
+    var a = MEMS[k - 1].A;
+    if (t >= a) return [memRest(k, t), false];
+    var u = T.clamp01((t - (a - MEM_MOVE)) / MEM_MOVE), e = 1 - Math.pow(1 - u, 2);
+    var p0 = memRest(k - 1, a - MEM_MOVE), p1 = memRest(k, a);
+    return [[p0[0] + (p1[0] - p0[0]) * e, p0[1] + (p1[1] - p0[1]) * e], true];
+  }
+  function memCursor(ctx, t) {
+    var p = memPos(t), c = p[0], moving = p[1], cw = 9, ch = 18, k = 1.0, j;
+    for (j = 0; j < MEMS.length; j++)
+      if (t >= MEMS[j].A - MEM_MOVE && t < MEMS[j].A + MEM_SOLID) k = 1.0;
+    if (k === 1.0 && !moving && !(function () {
+      for (var j2 = 0; j2 < MEMS.length; j2++)
+        if (t >= MEMS[j2].A - MEM_MOVE && t < MEMS[j2].A + MEM_SOLID) return true;
+      return false;
+    })()) k = (Math.floor((t - 115.42) / 0.53) % 2 === 0) ? 1.0 : 0.45;
+    ctx.save();
+    if (moving) {                             /* 跳的时候拖一道尾迹 */
+      var pp = memPos(t - 1 / 24)[0], dist = Math.hypot(c[0] - pp[0], c[1] - pp[1]), n = Math.floor(dist / 5);
+      for (j = 0; j < n; j++) {
+        var q = j / Math.max(1, n);
+        T.fill(ctx, pp[0] + (c[0] - pp[0]) * q - cw / 2 + 1, pp[1] + (c[1] - pp[1]) * q - ch / 2 + 2,
+               pp[0] + (c[0] - pp[0]) * q + cw / 2 - 2, pp[1] + (c[1] - pp[1]) * q + ch / 2 - 3,
+               T.mix(MEM_BLUE, (40 + 150 * q) / 255, [0, 0, 0]), 1);
+      }
+    }
+    ctx.shadowColor = T.css(MEM_BLUE, 1); ctx.shadowBlur = 4 * k;
+    T.fill(ctx, c[0] - cw / 2, c[1] - ch / 2, c[0] + cw / 2 - 1, c[1] + ch / 2 - 1, T.mix(MEM_BLUE, k), 1);
+    ctx.restore();
+  }
+  function memWaveBurst(ctx, m, cy, w_, h_, t, a) {
+    var dt = t - m.A;
+    var b = T.clamp01(dt / (2 / 24) + 0.5) * (0.18 + 0.82 * Math.exp(-Math.max(0, dt) / 0.4));
+    var rng = PV.mt(Math.round(t * 24)), n = Math.floor(w_ / 5), x0 = MEM_BUB_R - w_;
+    for (var j = 0; j < n; j++) {
+      var f = j / Math.max(1, n - 1), env = 0, i;
+      for (i = 0; i < 6; i++) env += (1 - 0.11 * i) * Math.exp(-Math.pow((f - (i + 0.5) / 6) / 0.05, 2));
+      var hh = h_ / 2 + 3 + 46 * m.sc * b * env * (0.65 + 0.35 * rng.random());
+      ctx.save(); ctx.globalAlpha = a * 220 / 255;
+      T.fill(ctx, x0 + 8 + j * 5, cy - hh, x0 + 10 + j * 5, cy + hh, T.mix(T.ME_HI, 0.7 + 0.3 * Math.min(1, env)), 1);
+      ctx.restore();
+    }
+  }
+  function memBubble(ctx, k, t) {
+    var m = MEMS[k], cv = MEM_IMG[m.sprite];
+    if (!cv || t < m.A) return;
+    var u = T.clamp01((t - m.A + 1 / 24) / MEM_POP);
+    var scale = 0.62 + 0.38 * T.ease_back(u), alpha = T.clamp01(0.55 + u * 1.8);
+    var v = memLeaving(k, t);
+    alpha *= 1 - T.smoothstep(v); scale *= 1 - 0.08 * v;
+    if (alpha <= 0.01 || scale <= 0.01) return;
+    var cy = memRowCy(m.row) - 8 * (t - m.A);
+    var w_ = cv.width * scale, h_ = cv.height * scale;
+    var fl = m.flash * T.clamp01(1 - (t - m.A) / 0.3);
+    if (m.sprite === 'wav') memWaveBurst(ctx, m, cy, w_, h_, t, alpha);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.imageSmoothingEnabled = true;
+    if (m.halo > 0.01) {
+      ctx.shadowColor = T.css(T.ME_HI, 1);
+      ctx.shadowBlur = Math.max(4, Math.round(5 * m.sc)) * m.halo * (0.85 + 0.15 * PV.pulse(t));
+    }
+    if (fl > 0.01) { ctx.shadowColor = T.css([255, 255, 255], 1); ctx.shadowBlur = 8 * fl; }
+    ctx.drawImage(cv, Math.round(MEM_BUB_R - w_), Math.round(cy - h_ / 2), Math.round(w_), Math.round(h_));
+    ctx.restore();
+  }
+  function memOverlay(ctx, t) {
+    if (t < MEM_SPAN[0] || t >= MEM_SPAN[1]) return;
+    var k, m, a, y;
+    for (k = 0; k < 3; k++) {                 /* 1. 反白的行 */
+      m = MEMS[k];
+      if (t < m.A) continue;
+      a = 1 - T.clamp01(memLeaving(k, t) * MEM_FADE / 3);
+      if (a <= 0.01) continue;
+      var rg = memRowGeom(m.row), box = rg[2];
+      y = rg[1];
+      var hot = T.clamp01(1 - (t - m.A) / 0.2), lvl = [0.78, 0.88, 0.98][k];
+      var bar = T.mix([235, 240, 255], hot * 0.6, T.mix(T.ME_HI, lvl));
+      ctx.save(); ctx.globalAlpha = a;
+      T.fill(ctx, box[0], box[1], box[2], box[3], bar, 1);
+      T.textMono(ctx, rg[0], MEM_ROW_X, y, T.BG, 18);
+      T.textMono(ctx, m.name, MEM_ROW_X + T.twMono(rg[0], 18), y, T.BG, 18);
+      ctx.restore();
+    }
+    for (k = 0; k < 3; k++) memBubble(ctx, k, t);   /* 2. 气泡 */
+    memCursor(ctx, t);                              /* 3. 她的光标 */
+  }
+  var _memPrevOverlay = PV.overlay;
+  PV.overlay = function (ctx, t) {
+    if (_memPrevOverlay) { try { _memPrevOverlay(ctx, t); } catch (e) {} }
+    try { memOverlay(ctx, t); } catch (e) { PV.memErr = e; }
+  };
+  PV.p2bMem = { MEMS: MEMS, rowGeom: memRowGeom, pos: memPos };
+
   /* ================================================================ 55 erase */
   var ERASE_TXT = 'goodnight. see you tomorrow. i had fun today. you too. goodnight.';
   var MSG_XY = [48, 100];
