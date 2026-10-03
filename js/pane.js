@@ -302,6 +302,9 @@
     try {
       if (typeof Image !== 'function' || typeof setTimeout !== 'function') return false;
       if (typeof document === 'undefined' || !document || typeof document.createElement !== 'function') return false;
+      /* 真浏览器的判据：pvport/{render,render_p2b}.mjs 的无头沙箱有假 Image 和 {search:''}
+         的假 location，但没有 location.href / navigator —— 那边绝不能跑预热器。 */
+      if (typeof navigator === 'undefined' || typeof location === 'undefined' || !location.href) return false;
       if (/(^|[?&])nowarm=1(&|$)/.test(location.search || '')) return false;
     } catch (e) { return false; }
     return true;
