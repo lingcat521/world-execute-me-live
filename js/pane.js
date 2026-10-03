@@ -58,6 +58,11 @@
       im.onload = function () { AVIMG[k] = im; lastBody = null; };
       im.onerror = function () {};
       im.src = AVSRC[k];
+      /* 无头渲染器（pvport/lib.mjs）把 window.Image 换成了永不 onload 的 FakeImage，
+         于是 AVIMG 恒空 -> avBase 恒 null -> avURL 走兜底返回清晰立绘，
+         会让"左框头像"在 node 侧永远测不出真实行为。这里补一条 PV.loadImage 通道
+         （浏览器里是从缓存再取一次，无副作用）。 */
+      if (PV.loadImage) { try { PV.loadImage(AVSRC[k], function (im2) { AVIMG[k] = im2; lastBody = null; }); } catch (e) {} }
     })(k);
   })();
   function avInvert(name, dark, light) {
