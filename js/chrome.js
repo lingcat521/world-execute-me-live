@@ -148,6 +148,9 @@
   function ticker(ctx, t, opt) {
     var x0 = TICK[0], y0 = TICK[1], x1 = TICK[2], y1 = TICK[3];
     var col = opt.alert === 'err' ? T.ERR : T.UI;
+    /* 权威 ticker 一律用 amb()（= mix(UI, lv*uiGainNow)，带系统色增益）；
+       我们原来直接用 T.mix(col, lv) —— 漏了 uiGainNow，整列比参考偏亮（放大并排图确认）。 */
+    function g(lv) { return T.css(T.mix(col, lv * (col === T.UI ? T.uiGainNow : 1))); }
     T.box(ctx, x0, y0, x1, y1, 'ops', 0.45, col);
     var ops = (opt.ops && opt.ops.length) ? opt.ops : ['IDLE'];
     var rh = 17, scroll = t * (rh / (BEAT / 2)), cursor = 15, base = Math.floor(scroll / rh), off = scroll % rh;
@@ -156,11 +159,11 @@
       if (y < y0 + 4 || y > y1 - 16) continue;
       var op = ops[((base + i) % ops.length + ops.length) % ops.length];
       if (i === cursor) {
-        T.fill(ctx, x0 + 4, y - 1, x1 - 3, y + 15, T.mix(col, 0.95), 1);
+        T.fill(ctx, x0 + 4, y - 1, x1 - 3, y + 15, g(0.95), 1);
         T.textPIL(ctx, op.slice(0, 10), x0 + 8, y, T.css(T.BG), 12);
       } else {
         var dist = Math.abs(i - cursor);
-        T.textPIL(ctx, op.slice(0, 10), x0 + 8, y, T.css(T.mix(col, Math.max(0.18, 0.6 - dist * 0.04))), 12);
+        T.textPIL(ctx, op.slice(0, 10), x0 + 8, y, g(Math.max(0.18, 0.6 - dist * 0.04)), 12);
       }
     }
   }

@@ -1039,9 +1039,15 @@
       var c = ropeCenter(i), sp = PV.circleSpec ? PV.circleSpec(i) : null;
       if (PV.circleSpec && !sp) continue;   /* C14：六个圆按节拍逐个诞生，未到时间的先不画 */
       if (sp) {
+        /* 权威 scenes.py:391 的默认值是 labels=True / hand=True / sweep=1.0，hook 只覆盖它给出的键；
+           我们原来直接传 sp.labels / sp.hand / sp.sweep —— C14 那条 hook 没给 labels，于是
+           「六个圆下面各有一个 freq_i θ=… 的值」整段没画（用户报的「这五个圆下面每一个都有值，你没做」）。 */
         PV.drawRope(ctx, i, sp.cx === undefined ? c[0] : sp.cx, sp.cy === undefined ? c[1] : sp.cy,
                     sp.R === undefined ? 70 : sp.R, ropeTheta(t, i),
-                    sp.a === undefined ? 1 : sp.a, sp.labels, sp.hand, sp.sweep);
+                    sp.a === undefined ? 1 : sp.a,
+                    sp.labels === undefined ? true : sp.labels,
+                    sp.hand === undefined ? true : sp.hand,
+                    sp.sweep === undefined ? 1 : sp.sweep);
       } else {
         PV.drawRope(ctx, i, c[0], c[1], 70, ropeTheta(t, i), 1, true, true, 1);
       }
