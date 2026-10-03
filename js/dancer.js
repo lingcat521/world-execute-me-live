@@ -1163,7 +1163,13 @@
      dancer.render()：整个窗格内容都是她。我们的窗格是 HTML（pane.js 生成），所以在这一层用
      canvas 覆盖。默认时段 = 参考成片里左侧框长到 (24,56)-(700,604) 并且里面是她本人的那一段
      （shot_happy 66.159-68.005）；PV.DANCER_SPANS 可覆盖。 */
-  var SPANS = PV.DANCER_SPANS || [[66.159, 68.005]];
+  /* ⚠️ 时段原来写的是 [[66.159, 68.005]]（shot_happy），但抽帧实测（pvport/dance_ref.png）显示：
+       66.5 / 67.0 / 67.5 —— 参考里她是**半调网点立绘**，不是字符舞者；
+       59.75 / 60.00 / 60.50 —— 参考里才是**ASCII 字符画的人形**（还在散开/流动）。
+     所以把时段从 shot_happy 改到 shot_if_i_can（58.543-60.620）。
+     用户反馈原话："1分左右是 ASCII 字符画的 deepseek 娘跳舞形象，但是你做的是静态的，
+     并且 1分06 到 1分08 的跳舞内容的实际渲染看起来一塌糊涂" —— 正好对应这个开反了。 */
+  var SPANS = PV.DANCER_SPANS || [[58.543, 60.620]];
   PV.DANCER_SPANS = SPANS;
   function on(t) {
     for (var i = 0; i < SPANS.length; i++) if (t >= SPANS[i][0] && t < SPANS[i][1]) return true;
