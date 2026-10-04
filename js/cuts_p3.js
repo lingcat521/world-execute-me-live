@@ -369,6 +369,21 @@
       st.x = PANE_X + (784 - 24) * eIo((t - (141.3895 - 0.15)) / 0.45);
       return st;
     }
+    /* C85 坍缩（174.851-176.006）：权威 s_exec.collapse_frame 把**整帧**（chrome + 她 + 窗格）
+       纵向压成 hh = 720*(1-u^2.6)、居中、提亮 1+1.8k^2，上下各压一条红线。canvas 那一份由
+       scene_p2c 的 PV.p2cCollapseDraw 做；DOM 窗格是 HTML，只能在这里跟着压 ——
+       用户报的「2:54~2:56 左框没被压缩」就是这条：浏览器实测 t=175.625 时 #chatbox 还是
+       matrix(1,0,0,1,27,65)（恒等），而参考同刻整幅已经压到 465/720。
+       变换模板是 translate(st.x,st.y) scale(sx,sy) translate(-PANE_X,-PANE_Y)，
+       要满足 p.y -> y0 + sy*p.y，取 st.y = y0 + sy*PANE_Y ✓ */
+    if (t >= 174.851 && t < (PV.p2cLineT || 176.006)) {
+      var hhC = PV.p2cCollapseHeight ? PV.p2cCollapseHeight(t) : 720;
+      if (hhC > 715.0) return st;
+      var syC = hhC / 720, y0C = Math.round(360 - hhC / 2), kC = 1 - syC, gC = 1 + 1.8 * kC * kC;
+      st.x = PANE_X; st.sx = 1; st.sy = syC; st.y = y0C + syC * PANE_Y;
+      if (gC > 1.01) st.filter = 'brightness(' + gC.toFixed(3) + ')';
+      return st;
+    }
     /* C63：洪水从左往右漫过她（**只在 shot_flood 期间**：144.159-147.620）。
        原来没有上界，144.16 之后一直到片尾都在这个分支里 —— 洪水多边形早就把她整块裁光了，
        于是 2:42 以后的聊天框一直空白（用户截图实证）。 */
