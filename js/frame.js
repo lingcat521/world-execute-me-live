@@ -41,6 +41,24 @@
     var p = T.ease(T.clamp01((t - LEAD[i][0]) / fade)), prev = lv(LEAD[i - 1][1]);
     return [prev[0] + (cur[0] - prev[0]) * p, prev[1] + (cur[1] - prev[1]) * p];
   };
+  /* LEAD 压暗：权威 dsh_her.py:237 make_pane() 的 250-253 是
+       cell = Image.blend(Image.new("RGB", (w, h), BG), cell, k)     （k = levels(t)[0]）
+     即**箱内内容朝窗格底色 BG 混合 k**，箱体与标题仍全亮。
+     所以压的是内容层 #chatbox 的 brightness(k)（BG≈近黑，#05080f，差 ≤2/255），
+     绝不能用 #chat 的整窗 opacity —— 那会让画布那份箱体从 30% 里透出来，把压暗抵消成
+     0.7W+0.3W≈W（浏览器实测证实过：chatOpacity 粘在 0.7 时画面根本没暗）。
+     谁调用：PV.sync（浏览器，pane.js:3123 之前，可见/不可见都要走 → 隐藏时清空）与
+     PV.onWorld（node 侧；node 没有 PV.chat/PV.cell，等于空操作，渲染不受影响）。 */
+  PV.paneDimApply = function (t, vis) {
+    if (PV.chat) { try { PV.chat.style.opacity = ''; } catch (e) {} }
+    /* 【2026-10-05】挂在 #app（内容层）而不是 #chatbox：#chatbox 的 filter 属于 cuts_p3.js:409
+       的窗格仿射包装（每帧重写 ✗，浏览器实测 sync 之后必定被清成 ''）。#app 只有 innerHTML 会被
+       重建，元素自身的行内样式不受影响 ✓；语义上也正是「压箱内内容、箱体/标题全亮」✓。 */
+    var el = PV.dimEl || PV.cell;
+    if (!el) return;
+    var k = PV.levels ? PV.levels(t)[0] : 1;
+    try { el.style.filter = (vis !== false && k < 0.999) ? ('brightness(' + k.toFixed(4) + ')') : ''; } catch (e) {}
+  };
   PV.drawPanes = function (ctx, t) {
     var p = PV.paneRect ? PV.paneRect(t) : null;
     /* engine.py:265 me_pane() / dsh_her.py:256 make_pane(): box(d, x0, y0, x1, y1, title,
@@ -66,6 +84,8 @@
     T.uiGainNow = T.uiGainAt(t);   /* 系统色增益：全片逐帧更新 */
     PV.drawBackground(ctx, t);
     if (PV.scene) { try { PV.scene(ctx, t); } catch (e) { PV.sceneErr = e; } }
+    /* 参考抽帧贴图（js/hx.js）：通用后置覆盖，放 drawPanes 之前 —— 箱体/窗格仍画在她之上 ✓ */
+    if (PV.hx && PV.hx.post) { try { PV.hx.post(ctx, t); } catch (e) { PV.hxErr = e; } }
     if (!(PV.retract > 0.999) && (!PV.paneVisible || PV.paneVisible(t))) PV.drawPanes(ctx, t);
     if (PV.chatLayer) { try { PV.chatLayer(ctx, t); } catch (e) { PV.chatErr = e; } }
     if (PV.stateAt) { try { var st = PV.stateAt(t); PV.retract = st.retract; PV.shell = st.shell; } catch (e) { PV.stateErr = e; } }
@@ -96,7 +116,21 @@
        103.0 前后中窗格基本不变(13.25->13.47)。它是作用在窗格自身渲染里的，不能盖一层黑蒙版
        （试过：会把 6.00s 从中窗格 7.0 压到 2.94，反而破坏吻合）。PV.levels() 保留备用。 */
     var _lv = PV.levels(t);
-    if (PV.chat && _lv[0] < 0.999) { try { PV.chat.style.opacity = _lv[0]; } catch (e) {} }
+    /* 【2026-10-04 二修：机制换对了】上一版把 levels[0] 当**整窗不透明度**压在 #chat 上 ✗ ——
+       权威不是这么干的：OWN 镜/切镜那一支走 dsh_her.py:237 make_pane()，那里是
+           cell = Image.blend(Image.new("RGB", (w, h), BG), cell, k)        （行 250-253）
+       即**箱内内容朝窗格底色 BG 混合 k**，而箱体与标题由 orig_box 在混合之后照原样画（全亮）。
+       参考帧佐证：t=118/119/121（LEAD='right'，k=0.7）与 t=123/124.5（k=1.0）的「dsh web」
+       箱框与标题亮度一致，暗的只有箱内内容。
+       而且整窗 opacity 会让画布那份箱体从 30% 的透明里透出来，把压暗抵消成 0.7W+0.3W≈W ✗
+       （浏览器实测：t=90 起 chatOpacity 一直粘在 0.7，而那一刻权威 levels[0]=1.0）。
+       所以压的是内容层 #chatbox：brightness(k) ≈ blend(BG, cell, k)，BG 是近黑底色
+       （#05080f，(5,8,15)/255），差别 ≤2/255。fp8 量化/trance 撕裂的 SVG 滤镜仍挂在
+       父层 #chat 上（fp8Apply），两层互不冲突。 */
+    PV.paneDimApply(t, PV.paneVisible ? PV.paneVisible(t) : true);
+    /* 参考抽帧贴图的预热（见 js/hx.js）。**必须 try/catch** ✗ —— 这里是逐帧绘制路径，
+       一旦抛错整个 onWorld 中断 -> 画布全黑（2026-10-05 实测把页面弄黑过一次）。 */
+    if (PV.hx && PV.hx.tick) { try { PV.hx.tick(t); } catch (e) { PV.hxTickErr = e; } }
     if (PV.bloom !== false) {
       ctx.save();
       /* 关键：自绘前必须把舞台的 RES 倍缩放重置掉。

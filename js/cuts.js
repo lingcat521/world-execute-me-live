@@ -822,7 +822,9 @@
       var rect = [S[0] - 4 + (24 - (S[0] - 4)) * e, S[1] - 4 + (56 - (S[1] - 4)) * e,
                   S[0] + 4 + (384 - (S[0] + 4)) * e, S[1] + 4 + (604 - (S[1] + 4)) * e];
       var lvl = 0.45 + 0.35 * PV.pulse(t);
-      T.box(ctx, rect[0], rect[1], rect[2], rect[3], e > 0.97 ? '/dev/me  pid 4471' : '', e > 0.97 ? lvl : lvl + 0.35 * (1 - e));
+      /* 权威 dsh_patch_fix.py P2：tuikit.box/decode 的 '/dev/me' 一律改成 'dsh web'
+         （grad-cam 面板保留后缀）。参考 111.0/105.0 同刻帧的窗格标题实测就是 `dsh web` ✓。 */
+      T.box(ctx, rect[0], rect[1], rect[2], rect[3], e > 0.97 ? 'dsh web  pid 4471' : '', e > 0.97 ? lvl : lvl + 0.35 * (1 - e));
       var k2 = Math.max(0, 1 - (t - land) / 0.92);
       if (k2 > 0) { var s2 = 4 + 3 * PV.pulse(t); T.fill(ctx, S[0] - s2, S[1] - s2, S[0] + s2, S[1] + s2, T.mix(T.ME_HI, 1.0), k2); }
     }
@@ -934,7 +936,7 @@
           bk.xy.push(Math.round(x - 4), Math.round(y - 1));
         }
         /* 后段：逐点 textPIL -> 精灵 + drawImage（scene_boot 的球面同一处理） */
-        else T.spriteAt(ctx, glyph(z), x - 4, y - 8, T.css(T.ui(T.shade(0.35 + 0.65 * z))), 15, true);
+        else T.spriteAt(ctx, glyph(z), x - 4, y - 8, T.css(T.ui(T.shade(0.35 + 0.65 * z))), 15, 'monoB');
       }
       var kk;
       for (kk in buckets) {

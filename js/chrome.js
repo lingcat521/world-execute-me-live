@@ -166,11 +166,14 @@
       if (y < y0 + 4 || y > y1 - 16) continue;
       var op = ops[((base + i) % ops.length + ops.length) % ops.length];
       if (i === cursor) {
-        T.fill(ctx, x0 + 4, y - 1, x1 - 3, y + 15, g(0.95), 1);
-        T.textPIL(ctx, op.slice(0, 10), x0 + 8, y, T.css(T.BG), 12);
+        /* 权威 engine.py:196 是 [x0+4, y-1, x1-4, y+14]（我们原来 x1-3 / y+15，各差 1px） */
+        T.fill(ctx, x0 + 4, y - 1, x1 - 4, y + 14, g(0.95), 1);
+        /* 权威 engine.py:183/197 用的是 F_MONO 12（Consolas）；我们这里原来走 textPIL
+           （比例字体），整列的逐字位置都偏，是 tick 区误差的主要来源之一。 */
+        T.textMono(ctx, op.slice(0, 10), x0 + 8, y, T.css(T.BG), 12);
       } else {
         var dist = Math.abs(i - cursor);
-        T.textPIL(ctx, op.slice(0, 10), x0 + 8, y, g(Math.max(0.18, 0.6 - dist * 0.04)), 12);
+        T.textMono(ctx, op.slice(0, 10), x0 + 8, y, g(Math.max(0.18, 0.6 - dist * 0.04)), 12);
       }
     }
   }

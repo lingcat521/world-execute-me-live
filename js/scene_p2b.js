@@ -1064,7 +1064,7 @@
   for (var K = 0; K < 5; K++) {
     (function (k, a, b) {
       reg('shot_you_left', a, b, function (ctx, t, lt, u, dur, h) { youLeft(ctx, t, lt, u, dur, h, k); },
-          { k: k, idx: 48 + k, expr: YL_EXPR[k], title: '/dev/me  waiting' });
+          { k: k, idx: 48 + k, expr: YL_EXPR[k], title: 'dsh web  waiting' });   /* P2：/dev/me -> dsh web */
     })(K, YL[K][0], YL[K][1]);
   }
   reg('shot_isolation', 115.5433, 117.851, isolation, { idx: 53 });

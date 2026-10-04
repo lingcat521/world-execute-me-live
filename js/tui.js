@@ -226,26 +226,42 @@
     return _mk[key];
   };
   T.twMono = function (s, size) { return s.length * size * T.MONO_ADV; };
+  /* F_MONO_B（Consolas Bold）：球面点阵用的是粗体等宽（scenes_boot.py:418 / s_boot.py:483），
+     以前我们两边一个用比例字体、一个用非粗等宽，落点字形不同 -> 用户报的「颜色不连贯」。 */
+  T.textMonoB = function (ctx, s, x, y, col, size, align) {
+    var k = T.monoScale(ctx, size);
+    var w = s.length * size * T.MONO_ADV;
+    var ox = align === 'center' ? -w / 2 : (align === 'right' ? -w : 0);
+    ctx.save();
+    ctx.translate(x + ox, y + T.ascentMono(size));
+    ctx.scale(k, 1);
+    ctx.font = '700 ' + size + 'px ' + T.MONO_FAM;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = typeof col === 'string' ? col : T.css(col);
+    ctx.fillText(s, 0, 0);
+    ctx.restore();
+  };
   /* 【性能】球面/点阵这类「上万个同款字符」的场景，逐点 textMono 的代价是每个点一次
      save/translate/scale/font=字符串/fillText/restore（浏览器里 font 赋值要解析字符串）。
      参考成片是离线 PIL，怎么写都行；浏览器版必须合批。这里把单字符渲染进小画布缓存，
      之后每点只 drawImage 一次 —— 像素与 textMono 完全一致（就是用 textMono 画进缓存的）。
      用户报的「f269-271 圆球卡顿」就是这条路径。 */
   var _sprCache = {};
-  T.sprite = function (ch, size, colStr, pil) {
-    var key = ch + '|' + size + '|' + colStr + (pil ? '|p' : ''), cv = _sprCache[key];
+  T.sprite = function (ch, size, colStr, mode) {
+    var key = ch + '|' + size + '|' + colStr + '|' + (mode || ''), cv = _sprCache[key];
     if (cv) return cv;
     var pad = Math.ceil(size * 1.8), w = pad * 2, h = pad * 2;
     cv = PV.newCanvas(w, h);
     var g = cv.getContext('2d');
-    if (pil) T.textPIL(g, ch, pad, pad, colStr, size);
+    if (mode === 'monoB') T.textMonoB(g, ch, pad, pad, colStr, size);
+    else if (mode === 'pil' || mode === true) T.textPIL(g, ch, pad, pad, colStr, size);
     else T.textMono(g, ch, pad, pad, colStr, size);
     cv._dx = -pad; cv._dy = -pad;
     _sprCache[key] = cv;
     return cv;
   };
-  T.spriteAt = function (ctx, ch, x, y, colStr, size, pil) {
-    var sp = T.sprite(ch, size, colStr, pil);
+  T.spriteAt = function (ctx, ch, x, y, colStr, size, mode) {
+    var sp = T.sprite(ch, size, colStr, mode);
     ctx.drawImage(sp, Math.round(x) + sp._dx, Math.round(y) + sp._dy);
   };
   /* 颜色量化：球面每点一个 z（连续）会让精灵缓存每点新建一张 -> 反而更慢。

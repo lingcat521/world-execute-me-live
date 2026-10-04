@@ -33,12 +33,17 @@
     scale: 1, audioReady: false, hold: false, layers: [], bootQueue: []
   };
   PV.audio = audioEl; PV.chat = chatEl; PV.screen = screenEl;
+  /* 箱内单元（#chat ≤ #chatbox ≤ #app）：LEAD 的压暗落在这一层，见 frame.js 里 levels 的注释 */
+  PV.cell = document.getElementById('chatbox');
+  /* LEAD 压暗真正挂在这一层：#chatbox 的 filter 被 cuts_p3.js:409 每帧覆盖 ✗，
+     而内容全在 #app 里（重建 innerHTML 不影响元素自身的行内样式 ✓）。 */
+  PV.dimEl = document.getElementById('app');
   PV.FILM_LEN = FILM_LEN;
   PV.audioDur = 0;
   audioEl.addEventListener('loadedmetadata', function () {
     if (isFinite(audioEl.duration) && audioEl.duration > 1) PV.audioDur = audioEl.duration;
   });
-  PV.VER = '202610043800';
+  PV.VER = '202610049800';
   var errEl = document.getElementById('err');
   PV.showErr = function (msg) {
     if (!errEl) return;

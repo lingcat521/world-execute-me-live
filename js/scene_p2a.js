@@ -631,13 +631,20 @@
       var x = 414 + gx * tw, y = 70 + gy * th;
       s = prog(i);
       T.rect(ctx, x, y, x + tw - 8, y + th - 8, hot(i) ? T.ME_TEXT : T.UI, 1, 1);
-      /* Python: diffusion_tile(EXPRS[(i*3)%8], "upper", tw-20, th-30, 3, s) */
+      /* 权威 dsh_patch_r1.py:88-94（frontend 补丁，参考成片的实际行为）：
+           sim_tile: if crop == "upper" and (w,h) == (166,122):
+               return centred(orig(expr, "full", w, h-6, px, s), 178, 124)
+         即**改用 full 裁切**（她整身）再居中进 178x124 的画布、底对齐 178x152 的格子（label 在上）。
+         我们原来照抄未打补丁的 "upper"（宽幅切法）→ 人形被压成横躺一团，
+         这就是用户报的「右边 12 个 sample tile 被压扁了」。 */
       var ex = WEXP[(i * 3) % WEXP.length];
-      var sz = halfblockSize(ex, 'upper', tw - 20, th - 30, 3, SIM_PADX, SIM_PADY) || herSize(tw - 20, th - 30, 3, 'upper');
+      var AWC = tw - 8, AHC = th - 28, AW2 = AWC, AH2 = AHC;
+      var sz = halfblockSize(ex, 'full', tw - 20, th - 36, 3, SIM_PADX, SIM_PADY) || herSize(tw - 20, th - 36, 3, 'full');
       var tww = sz[0] * 3, thh = sz[1] * 3;
-      var tx0 = x + Math.floor((tw - 8 - tww) / 2), ty0 = y + th - 10 - thh;
-      if (wDiffusionTile(ctx, tx0, ty0, ex, 'upper', tw - 20, th - 30, 3, s, 900 + i, SIM_PADX, SIM_PADY) === null)
-        diffusionTile(ctx, tx0, ty0, tw - 20, th - 30, 3, 'upper', s, 900 + i);
+      var tx0 = x + Math.floor((tw - 8 - AW2) / 2) + Math.floor((AW2 - tww) / 2);
+      var ty0 = y + th - 8 - AH2 + Math.floor((AH2 - thh) / 2);
+      if (wDiffusionTile(ctx, tx0, ty0, ex, 'full', tw - 20, th - 36, 3, s, 900 + i, SIM_PADX, SIM_PADY) === null)
+        diffusionTile(ctx, tx0, ty0, tw - 20, th - 36, 3, 'full', s, 900 + i);
       pil(ctx, '#' + pad4(i) + ' t=' + pad3(Math.floor(999 * (1 - s))), x + 6, y + 4,
           i === 0 ? blue(0.95) : amb(0.7), 12);
     }
@@ -828,6 +835,17 @@
     if (sz) { cols = sz[0]; rows = sz[1]; } else { var szb = herSize(360, 238, px, 'bust'); cols = szb[0]; rows = szb[1]; }
     var spW = cols * px, spH = rows * px;
     var sx = 24 + Math.floor((676 - spW) / 2), sy = 70;
+    /* 【2026-10-05 用户点名】她这一镜的**真舞姿**原始 take 不在仓库里（cache/h3_full_v1/_standin.json
+       列明 16 个 take 全是 placeholder_h3.py 写的替身：只有「每小节左右轻摆、每拍微沉」），
+       所以这里优先用**从参考成片直接抽帧**的逐帧贴图（data/hx/happy/*.webp，见 js/hx.js）：
+       那是参考里那一刻的原生像素（视频 1.5 倍 = 画布 RES，1:1 落回，不二次重采样），
+       **连热力图都在里面** -> 有贴图时不再自己画半调与 heat（否则叠两层 ✗）；
+       没贴图（还没加载完 / 缺段）时完整走原来的代码路径。 */
+    var hxS = (PV.hx && PV.hx.ready && PV.hx.ready('happy')) ? PV.hx.seg['happy'] : null;
+    var hxImg = hxS ? PV.hx.img('happy', PV.hx.idx('happy', t)) : null;
+    if (hxImg) {
+      try { d.drawImage(hxImg, hxS.x, hxS.y, hxS.w, hxS.h); } catch (eHx) {}
+    } else {
     if (sz) wHalfblock(d, sx, sy, expr, 'face', 650, 520, px, 'blue', 1);
     else { var cells0 = herCells(cols, rows, 'bust'); if (cells0) halfblock(d, sx, sy, 360, 238, px, 'bust', 'color', 1); }
     /* heat map：三个热斑 + 一条扫描带 */
@@ -855,6 +873,7 @@
                                  sy + gy * cell + cell - 2, col, Math.min(0.8, hval * 0.6), 1);
         }
       }
+    }
     }
     pil(d, 'attribution(smile) = ' + (0.71 + 0.27 * T.ease(u)).toFixed(3), 40, 576, amb(0.95), 16, true);
     box(d, 720, 56, 1164, 330, 'policy gradient', 0.5, T.UI, t + 0.3);
@@ -1363,7 +1382,7 @@
     var k = Math.min(63, Math.trunc(Math.max(0, lt) / (BEAT / 8))), qx = k % 8, qy = Math.floor(k / 8);
     mono(ctx, 'patch (' + qx + ',' + qy + ') -> token ' + (k + 1 < 10 ? '0' : '') + (k + 1) + '/64',
          430, 300, amb(0.7), 16);
-    mono(ctx, 'input: /dev/me  (live, 8x8 patches)', 430, 330, amb(0.5), 15);
+    mono(ctx, 'input: dsh web  (live, 8x8 patches)', 430, 330, amb(0.5), 15);   /* P2 */
     var lv = patchLevels(t);
     var x0 = TOK[0], y0 = TOK[1], s = TOK[2];
     mono(ctx, 'patch tokens  64 x 768', x0, y0 - 24, amb(0.55), 13);

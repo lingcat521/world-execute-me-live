@@ -547,15 +547,23 @@
     opts = opts || {};
     PV.ops = ['WORLD.NEW', 'SPACE', 'TIME', 'PHYSICS', 'SIMULATE?'];
     T.box(ctx, 404, 56, 1164, 604, 'world = World(dim=3)', 0.5, T.UI, t);
-    var R = R0 * T.ease(u * 2);
+    /* 【用户观察 f271-276 修复】权威 scenes_boot.py:417 是 R = GLOBE["R"] * h("radius", ease(u*2))：
+       那个 ease(u*2) 只是**钩子的默认值**，C06 转场自画的球面（s_boot.py:482 用的是 B.GLOBE["R"]）
+       是恒定 R0=230 —— 两者必须一致。我们原来无条件用 ease(u*2)：11.29s（u=0.21）只有 0.5R0，
+       于是① 转场球与场景球同时在场 = 「球套球」（f271）；② 转场球一撤（11.255）就「突然变小」
+       （f272），之后 273-276 又渐渐涨回来。参考同刻帧全程是满半径的球，无这两种现象。 */
+    var R = R0;
     var pts = opts.globe === false ? [] : PV.globePoints(t, R);   /* C06：球面由转场层逐点拼出来 */
     for (var i = 0; i < pts.length; i++) {
       var p = pts[i], z = p[2];
       /* 参考的球面字符是等宽体的窄椭圆（实测 8.8x12），textPIL(SpaceMono) 画出来是 10.4x11.2 的圆 -> 改等宽 */
       /* 【性能】逐点 textMono -> 字形精灵 + drawImage（用户报的 f269-271 圆球卡顿）。
          量级：球面上万个点、每帧一次 font 字符串赋值+fillText，单帧 400-600ms。 */
-      T.spriteAt(ctx, z < 0.35 ? '·' : (z < 0.75 ? 'o' : 'O'), p[0] - 4, p[1] - 3,
-                 T.css(T.ui(T.shade(0.35 + 0.65 * z))), 15);
+      /* 权威 scenes_boot.py:418-421：d.text((px-4, py-8), globe_glyph(z), font=F_MONO_B 15,
+         fill=amb(0.35+0.65z))。我们原来是 (x-4, y-3) + 非粗等宽，与转场里的落点错开 5px、字形也不同
+         -> 转场球撤走后看起来「颜色不连贯」。 */
+      T.spriteAt(ctx, z < 0.35 ? '·' : (z < 0.75 ? 'o' : 'O'), p[0] - 4, p[1] - 8,
+                 T.css(T.ui(T.shade(0.35 + 0.65 * z))), 15, 'monoB');
     }
     for (var k = 0; opts.markers !== false && k < 2; k++) {   /* C07：标记由转场层接管 */
       var mp = PV.markerPos(t, k, R);

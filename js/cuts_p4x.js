@@ -371,7 +371,7 @@
     return ln;
   }
   function c34TitleSlot(t) {
-    var pre = ' ' + '|/-\\'.charAt(Math.trunc(t * 8) % 4) + ' /dev/me  ';
+    var pre = ' ' + '|/-\\'.charAt(Math.trunc(t * 8) % 4) + ' dsh web  ';   /* P2：/dev/me -> dsh web */
     return [[LEFT[0] + 12 + measure(pre, 13, false, false), LEFT[1] - 10], measure('role=deploy', 13, false, false)];
   }
   PV.addCut(C34_T, C34_PRE, C34_POST, function (ctx, t, cut) {

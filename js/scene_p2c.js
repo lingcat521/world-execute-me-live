@@ -646,7 +646,15 @@
     return false;
   };
   PV.p2cInRaw = function (t) {
-    for (var n in RAW_SHOTS) { var m = PV.p2cMine[n]; if (m && t >= m.a && t < m.b) return true; }
+    for (var n in RAW_SHOTS) {
+      var m = PV.p2cMine[n]; if (!(m && t >= m.a && t < m.b)) continue;
+      /* 【2026-10-04 实测修正】shot_collapse（174.851-176.928）不是整段 raw：权威 s_exec.collapse_frame
+         在 LINE_T 之前返回的是**完整的 trapped_frame**（content + her + walls + chrome 一起被压扁 ✓），
+         参考 175.0 同刻帧实测顶栏 `07 / EXECUTION … ERROR`、ops 列、歌词 `> Though we are trapped` 都在 ✓，
+         176.0 才压成一条线。所以只有 t >= LINE_T 才算 raw（shot_black 仍然整段 raw）。 */
+      if (n === 'shot_collapse') return t >= PV.p2cLineT;
+      return true;
+    }
     return false;
   };
 
@@ -773,8 +781,15 @@
     return st;
   };
   var origPane = PV.paneVisible;
+  /* 【2026-10-04 实测修正】黑场（shot_black，207.7738 起）虽然是 fullbleed，但权威 dsh_patch_g 第 4 条写明
+     黑场里画的就是 **dsh 页本身**：最后一轮 tail + 她的 composer + 她把 `在吗？` 打进去 + 全亮/45% 之间闪。
+     参考同刻帧实测：207.5 还全黑（无窗格）、208.0 起 composer 出现、209.0 有蓝色 `在吗？` ✓ —— 所以这一段
+     窗格必须显示，以前被 fullbleed 一刀藏掉，黑场里就只剩纯黑了 ✗。 */
   PV.paneVisible = function (t) {
-    if (PV.p2cInFullbleed(t) || PV.p2cInRaw(t)) return false;
+    if (t >= 207.7738) return true;                 /* 黑场里的 dsh 页（dsh_patch_g 第 4 条，实测 208.0 起有 composer）*/
+    /* fullbleed 镜（exec_hit 全屏批 + shot_count）整帧由场景自己画，窗格要藏 —— 2026-10-04 回归修复：
+       改写这个包装时漏了 p2cInFullbleed，160s（shot_count，参考是红色 runExecution dump）又冒出来了 ✗。 */
+    if (PV.p2cInRaw(t) || PV.p2cInFullbleed(t)) return false;
     return origPane ? origPane(t) : true;
   };
 })();
@@ -980,6 +995,15 @@
     var layers = rainLayers(t, rng, COLS, ROWS, ificanLetter, bRows, 9.0, ageB, 9);
     var noise = layers[0], A = layers[1], Bn = layers[2];
     var landed = o.landed, burst = o.burst, lift = o.lift || 0;
+    /* 【2026-10-05 用户点名「抽人形」】这一镜的人形是 glyphGrid 从 H3 替身姿势拼出来的 ✗
+       （参考里是另一个戴帽舞者），所以只要 data/hx/glyph78 有这一帧，就整块贴参考的原生像素
+       （网格区 = (36,68) 起 1112x528，正好盖住噪声/字母/人形三层的全部绘制范围），
+       没贴图（未加载完/缺段）时完整走原来的代码路径。 */
+    var hxS78 = (PV.hx && PV.hx.ready && PV.hx.ready('glyph78')) ? PV.hx.seg['glyph78'] : null;
+    var hxI78 = hxS78 ? PV.hx.img('glyph78', PV.hx.idx('glyph78', t)) : null;
+    if (hxI78) {
+      try { ctx.drawImage(hxI78, hxS78.x, hxS78.y, hxS78.w, hxS78.h); } catch (eHx78) {}
+    } else
     for (var r = 0; r < ROWS; r++) {
       var y = GY0 + r * CH, row, q;
       if (noise[r].replace(/ /g, '')) mono(ctx, noise[r], GX0, y, red(0.3), GF, 'left', true);
@@ -1020,7 +1044,13 @@
   /* 原始半调（full 全身，166x136@px3）；cols/rows/px/alpha 供 C79 的 artBBox 使用 */
   function tileArtRaw(i) {
     if (TILE_CACHE[i]) return TILE_CACHE[i];
-    var p = PV.p2cPortraitBuild(tileExpr(i), 'upper', TILE_W - 20, TILE_H - 30, 3, 'blue');
+    /* 权威 dsh_patch_r1.py:105-108（frontend 补丁 = 参考成片的实际行为）：
+         art = X.SC.diffusion_tile(X.tile_expr(i), "full", X.TILE_W-20, X.TILE_H-36, 3, 1.0)
+         return centred(art, X.TILE_W-8, X.TILE_H-28)
+       即 **full 裁切**（她整身）166x136，再居中进 178x144。本行原来是 'upper'/TILE_H-30
+       （宽幅上半身切法），与上一行注释「full 全身，166x136@px3」自相矛盾 —— 回归，
+       人形因此被压成横躺（与 shot_simulations 的「tile 被压扁」同源）。 */
+    var p = PV.p2cPortraitBuild(tileExpr(i), 'full', TILE_W - 20, TILE_H - 36, 3, 'blue');
     if (p) TILE_CACHE[i] = p;
     return p || null;
   }

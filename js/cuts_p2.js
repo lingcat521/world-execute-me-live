@@ -252,7 +252,9 @@
     var x1 = Math.round(T.lerp(700, 384, e));
     var lvl = T.lerp(0.55 + 0.3 * PV.pulse(t), 0.45 + 0.35 * PV.pulse(t), e);
     var tTitle = S0 + 0.45 * (S1 - S0);
-    var title = t < tTitle ? HAPPY_TITLE : (T.decode('/dev/me  pid 4471', t - tTitle, rng, 40.0, 0.1, 0) || '/');
+    /* P2（dsh_patch_fix.py）：tuikit.decode 里的 '/dev/me' 也改成 'dsh web' —— 参考 68.5 同刻帧
+       的窗格标题实测以 `dsh web` 开头（后面在逐字 decode）✓；HAPPY_TITLE 仍保留 /dev/me（grad-cam 例外）。 */
+    var title = t < tTitle ? HAPPY_TITLE : (T.decode('dsh web  pid 4471', t - tTitle, rng, 40.0, 0.1, 0) || '/');
     T.box(a, 24, 56, x1, 604, title, lvl, T.UI, t);
     /* 脸缩回她的头：中心走到她的脸上 */
     var sc = T.lerp(1.0, HEAD.w / 640, e);
@@ -276,6 +278,12 @@
       function (c) { PV.p2Shot('shot_execution', c, t); },
       delay, { region: REGION, cell: [8, 16], dur: 0.09 });
     PV.p2Flicker(ctx, t, delay, REGION, [8, 16], 0.09, 31, 0.4);
+    /* 权威 full/engine.py:179-201 的 ops 列读的是**本帧 ctx 的 ops**；C31 渲的是上一镜 shot_happy，
+       所以整段转场里 ops 显示的是 shot_happy 的列表。参考 68.0 实测 = FORWARD / LOGIT[happy] /
+       BACKWARD / GRAD.CAM / ADVANTAGE / PPO.CLIP / ADAM.STEP ✓，我们却带出了 shot_execution 的
+       （PLAN / TOOL.CALL / … ✗），tick 区误差 12.98。必须在 reveal 之后设（reveal 会渲 shot_execution）。 */
+    PV.ops = ['FORWARD', 'LOGIT[happy]', 'BACKWARD', 'GRAD.CAM', 'ADVANTAGE', 'PPO.CLIP', 'ADAM.STEP'];
+    PV.alert = '';
     var k = Math.max(0, 1 - Math.abs(t - S1) / 0.15);
     if (k > 0.01) T.box(ctx, 24, 56, 384, 604, '', 0.9 * k, T.UI);
   });

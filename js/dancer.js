@@ -1420,6 +1420,22 @@
         var u = Math.max(0, Math.min(1, (t - HAPPY_WIN[0]) / (HAPPY_WIN[1] - HAPPY_WIN[0])));
         var expr = u < 0.5 ? 'cheerful' : 'starry';
         var crop = faceCropAt(u);
+        /* 【2026-10-05】参考抽帧贴图优先：本仓的 H3 take 全是鲸鱼女仆占位替身
+           （cache/h3_full_v1/_standin.json），参考成片里是**另一个戴帽子的舞者** ✗ ——
+           所以只要 data/hx/happy 有这一帧，就把原来的立绘擦掉、直接贴参考的原生像素
+           （连热力图都在里面，贴完就 return，不要再画半调与 heat，否则叠两层 ✗）。
+           没贴图（未加载完 / 缺段）时完全走原来的代码路径。 */
+        var hxS = (PV.hx && PV.hx.ready && PV.hx.ready('happy')) ? PV.hx.seg['happy'] : null;
+        var hxImg = hxS ? PV.hx.img('happy', PV.hx.idx('happy', t)) : null;
+        if (hxImg) {
+          ctx.save();
+          ctx.fillStyle = '#050914';
+          ctx.fillRect(hxS.x - 4, hxS.y - 4, hxS.w + 8, hxS.h + 8);
+          try { ctx.drawImage(hxImg, hxS.x, hxS.y, hxS.w, hxS.h); } catch (eHx) {}
+          ctx.restore();
+          PV.happyGeom = [hxS.x, hxS.y, hxS.w, hxS.h];
+          return;
+        }
         if (!WHALE[expr]) return;                     /* 立绘没加载就別动原图 */
         var sz0 = halfblockSize2(expr, crop, 650, 520, px);
         if (sz0) {                                    /* 1) 擦掉原来那块（人像 + 它的热力图） */

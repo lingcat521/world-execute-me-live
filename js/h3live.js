@@ -8,12 +8,48 @@
   var PV = window.PV; if (!PV) return;
   var P = window.H3POOL; if (!P) { PV.h3 = null; return; }
   var FPS = 24, PERIOD = 16 * 60 / 130;         /* loop take 的一小节 = 7.3846 s */
-  var IMG = [], LOADED = {};
+  var IMG = [], LOADED = {}, IMGQ = [], IMGCAP = 48;   /* 420x480 RGBA 约 0.8MB/张 -> 上限约 38MB */
+  /* 全局帧 id -> 文件路径。
+     【2026-10-05】原来这里只有 23 张池图（P.img + NN + ".png"）：权威 cache/h3_full_v1/rgba/
+     有 16 个 take、共 2188 帧，池化后同一姿势被复用约 5 次 —— 人物看起来「只有几帧」
+     （用户报 1:06-08 的 grad-cam 人脸），实测剪影只是每 0.2s 恒定 +22px 的假平移、y 不动 ✗。
+     现在 js/h3pool_frames.js 给出 takes[name] = 逐帧全局 id（take 序号*1000 + 帧号），
+     素材是 data/h3/<take>/<NNN>.webp（420x480 q80，约 16KB/帧）。 */
+  function pathOf(k) {
+    var names = P.takeNames;
+    if (names && k >= 1000) {
+      var ti = Math.floor(k / 1000), i = k % 1000;
+      var nm = names[ti]; if (nm === undefined) return null;
+      return P.img + nm + "/" + (i < 10 ? "00" : (i < 100 ? "0" : "")) + i + ".webp";
+    }
+    return P.img + (k < 10 ? "0" : "") + k + ".png";     /* 旧池图路径（回退用）*/
+  }
   function img(k) {
     if (IMG[k]) return IMG[k];
-    var p = P.img + (k < 10 ? "0" : "") + k + ".png";
-    if (PV.loadImage) { PV.loadImage(p, function (im) { IMG[k] = im; }); }
+    var p = pathOf(k);
+    if (p && PV.loadImage && !LOADED[k]) {
+      LOADED[k] = 1;
+      PV.loadImage(p, function (im) {
+        if (!im) { LOADED[k] = 0; return; }              /* 失败允许重试，但不刷屏 */
+        IMG[k] = im; IMGQ.push(k);
+        if (IMGQ.length > IMGCAP) { var o = IMGQ.shift(); if (o !== k) delete IMG[o]; }
+      });
+    }
     return IMG[k] || null;
+  }
+  /* 按时间轴预取：每 1/8 秒算一次未来 2 秒要用的帧 id（source() 只是查表，代价可忽略）。 */
+  var _pfLast = -1;
+  function prefetchFrom(t) {
+    if (!P.takeNames) return;
+    if (window.PV_H3_QUIET) return;              /* 截屏期间关掉：逐帧素材每帧 ~35 张会抢光连接，
+                                                    参考抽帧贴图就永远来不及加载（实测拍出来还是替身 ✗）*/
+    var q = Math.floor(t * 8);
+    if (q === _pfLast) return;
+    _pfLast = q;
+    var _pfN = (window.PV_H3_PREFETCH === undefined) ? 10 : window.PV_H3_PREFETCH;
+    for (var i = 1; i <= _pfN; i++) {          /* 约 0.3 秒的提前量（本地服务 ~10ms/张，够用） */
+      try { var s = source(t + i / 8); if (s) img(s.pool); } catch (e) {}
+    }
   }
   function planAt(t) {
     for (var i = 0; i < P.plan.length; i++) { var p = P.plan[i]; if (t >= p[0] && t < p[1]) return p; }
@@ -51,11 +87,14 @@
   }
   /* 当前帧（带 join 时按 u 逐行拼前后两帧） */
   function frameAt(t) {
+    prefetchFrom(t);
     var s = source(t), j = join(t);
     if (!j) return { k: s.pool, k2: null, cut: 0, take: s.take, i: s.i };
     return { k: s.pool, k2: j.prev.pool, cut: Math.round(540 * j.u), take: s.take, i: s.i };
   }
-  for (var _k = 0; _k < (P.imgCount || 23); _k++) img(_k);   // 初始化时全部预载，否则第一帧拿到 null
+  /* 原来这里把**整池**预载（23 张）。逐帧素材全片 2188 帧约 50MB，全量预载会把内存与带宽打满 ✗，
+     改成只预热开头 + 靠 prefetchFrom 提前 2 秒取。 */
+  for (var _k = 0; _k < 6; _k++) { try { var _s0 = source(_k * 0.25); if (_s0) img(_s0.pool); } catch (e0) {} }
   /* 【重要】池子图 data/h3/NN.png 已经是 h3_full.py 里 'full' 那一格 (0,60,420,540) 的裁切结果
      （420x480，与 cache/h3_full_v1/rgba/<take>/<i>.png 逐像素相等，mean|d|=0.000 已验），
      所以其余三个框要整体上移 POOL_TOP=60 行，full 直接是整张图。

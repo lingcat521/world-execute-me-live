@@ -1038,17 +1038,86 @@
     }
     return base;
   }
-  function nekoK(t) {                       /* 背景粉化程度 0..1 */
-    var k = NEKO_KF, i;
-    if (t <= k[0][0]) return 0;
-    if (t >= k[k.length - 1][0]) return k[k.length - 1][1];
-    for (i = 0; i + 1 < k.length; i++) {
-      if (t <= k[i + 1][0]) {
-        var u = (t - k[i][0]) / (k[i + 1][0] - k[i][0]);
-        return k[i][1] + (k[i + 1][1] - k[i][1]) * u;
-      }
+  var NEKO_ON = 0, NEKO_OFF = 0, NEKO_READY = false;
+  function nekoSteps() {
+    if (NEKO_READY) return;
+    /* 权威 batch_c.py:159：NEKO_ON, NEKO_OFF = TABBY, SESSIONS[2][0]（后者 = PM + 0.35）；
+       batch_c.py:387 是 `theme = f"<style>{NEKO}</style>" if NEKO_ON <= t < NEKO_OFF else ""`
+       —— **整段硬开/关**，没有淡入淡出。我们原来写成插值的 NEKO_KF（82.6 起、89.5-91 淡出到 0、92 再起 ✗）：
+       参考同刻帧实测 88/89/89.5/92 窗格主色都是粉 (77,44,62)（NEKO 一直亮着 ✓），90/90.5 的品红 (88,18,81)
+       与 91 的近黑 (17,12,15) 是 her_filter（fp8 量化 + trance 溶解）叠出来的，不是主题切换 ✗。 */
+    NEKO_ON = w(37, 3); NEKO_OFF = w(44, 3) + 0.35; NEKO_READY = true;
+  }
+  /* ---- fp8：窗格的色深量化（权威 s_deploy.py:368 levels_at）----
+     原文："Her colour depth: full, then down to the fp8 format's levels (8, 4, 2) in quick steps,
+     then back" —— 作用在**整个窗格**上。参考同刻帧的观感：90s 的品红 (88,18,81)、91s 的近黑
+     (17,12,15) 都是这套量化叠在 NEKO 粉主题上的结果（不是主题切换 ✓）。
+     窗口：shot_fp8 = 88.312-91.543（T42/T43），前 6 帧 [64,32,16,12,10,8] 降到 8，
+     之后维持 SD.LEVELS[0]=8（FMT_T 在 194.5s，这一段 fmt_at=0），T43 后 6 帧 [2,3,4,6,8,16] 回档。 */
+  var FP8_T42 = 88.312, FP8_T43 = 91.543;
+  PV.fp8Levels = function (t) {
+    var down = [64, 32, 16, 12, 10, 8], up = [2, 3, 4, 6, 8, 16], f = Math.round(6 / 24 * 24);
+    if (t >= FP8_T42 && t < FP8_T43) {
+      var dt = t - FP8_T42;
+      if (dt < 6 / 24) return down[Math.min(5, Math.floor(dt * 24))] || 8;
+      return 8;
     }
-    return 0;
+    if (t >= FP8_T43 && t < FP8_T43 + 6 / 24) return up[Math.min(5, Math.floor((t - FP8_T43) * 24))] || 256;
+    return 256;
+  };
+  /* ---- trance 的窗格溶解（权威 scenes_deploy.py:726 heat_at + s_deploy.py:392 dissolve）----
+     heat_at 原文："The sampling temperature as 0..1: a shimmer with the spin at cut 45, then it climbs on
+     'The trance'. It drives both the pane (T = 0.6 + 2.4 * heat) and her dissolve"；dissolve 的效果是
+     "Her core stays; **rows tear sideways**, edge cells drop out, and sampled letters drift around her"。
+     窗口：t45=98.928（shot_trance）、t46=103.082（shot_feel_you）、word=101.281（歌词行 47 "The trance"
+     起唱，实测 data/lyrics.json 的 start）、TRANCE_TAIL=0.33。
+     DOM 里用 feTurbulence(baseFrequency 0.02 0.9 = 横向、按行高频) + feDisplacementMap 近似「整行横向撕裂」，
+     和 fp8 的离散量化串成同一条滤镜链（量化在前，与权威 quantize→dissolve 的顺序一致）。 */
+  var TR45 = 98.928, TR46 = 103.082, TR_WORD = 101.281, TR_TAIL = 0.33;
+  PV.heatAt = function (t) {
+    var f = function (x) { x = T.clamp01(x); return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+    if (t < TR45 - 0.25) return 0;
+    var hv = 0.14 * f((t - (TR45 - 0.25)) / 0.5) + 0.86 * f((t - TR_WORD) / (TR46 - 0.1 - TR_WORD));
+    if (t >= TR46) hv *= (1 - f((t - TR46) / TR_TAIL));
+    return hv < 0 ? 0 : (hv > 1 ? 1 : hv);
+  };
+  var _fxWrap = null, _fxChat = null, _fxN = -1, _fxDisp = null, _fxOn = null;
+  function fp8Apply(t) {
+    if (typeof document === 'undefined' || !document.createElement || !document.body) return;
+    var n = PV.fp8Levels(t), heat = PV.heatAt(t), on = (n < 256) || (heat > 0.01);
+    if (!_fxChat) _fxChat = document.getElementById('chat');
+    if (!_fxChat) return;
+    if (!on) { if (_fxOn !== false) { _fxChat.style.filter = ''; _fxOn = false; } _fxN = -1; return; }
+    if (!_fxWrap) {
+      _fxWrap = document.createElement('div');
+      _fxWrap.setAttribute('aria-hidden', 'true');
+      _fxWrap.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;pointer-events:none';
+      _fxWrap.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0">' +
+        '<filter id="p2c-winfx" x="-10%" y="-10%" width="120%" height="120%">' +
+        /* type="table" + 256 项 LUT：权威 s_deploy.quantize 用 lut=[round(round(v/step)*step) for v in 0..255]，
+           而 discrete 是「就近下取」✗ —— 只有 table 才与它逐值一致 ✓ */
+        '<feComponentTransfer result="q"><feFuncR type="table"/><feFuncG type="table"/>' +
+        '<feFuncB type="table"/></feComponentTransfer>' +
+        '<feTurbulence type="fractalNoise" baseFrequency="0.02 0.9" numOctaves="1" seed="7" result="n"/>' +
+        '<feDisplacementMap in="q" in2="n" scale="0" xChannelSelector="R" yChannelSelector="G"/>' +
+        '</filter></svg>';
+      document.body.appendChild(_fxWrap);
+      _fxDisp = _fxWrap.querySelector('feDisplacementMap');
+    }
+    if (n !== _fxN) {
+      var tbl = [], i, step = 255 / (n - 1);
+      if (n >= 256) { tbl = ['0', '1']; }
+      else { for (i = 0; i < 256; i++) tbl.push((Math.round(Math.round(i / step) * step) / 255).toFixed(5)); }
+      var s = tbl.join(' '), fs = _fxWrap.querySelectorAll('feFuncR,feFuncG,feFuncB'), j;
+      for (j = 0; j < fs.length; j++) fs[j].setAttribute('tableValues', s);
+      _fxN = n;
+    }
+    if (_fxDisp) _fxDisp.setAttribute('scale', (26 * heat).toFixed(2));
+    if (_fxOn !== true) { _fxChat.style.filter = 'url(#p2c-winfx)'; _fxOn = true; }
+  }
+  function nekoK(t) {                       /* NEKO 主题：整段开(1)/关(0) */
+    nekoSteps();
+    return (t >= NEKO_ON && t < NEKO_OFF) ? 1 : 0;
   }
   var NEKO_BASE = null;
   function nekoBaseVars() {                 /* 没被覆盖前的原值（只取一次） */
@@ -1339,24 +1408,20 @@
     for (var i = 0; i < 5; i++) FORGED_KEYS.push([D_FORGE + 0.05 + i * SIXTEENTH, '你很满意。'.slice(0, i + 1)]);
     return FORGED_KEYS;
   }
-  /* 立绘：像素素材在 avatars/d/，这里用 canvas 从 complete.png 现推（同一套 mosaic 规则） */
+  /* 权威 seg_page.py:92-114 `avatars_d()`：climax 立绘是**预生成素材** —— 头部裁切 → 8/16/32/64 格
+     蓝马赛克（BOX 缩小 → 灰度 → colorize((6,10,28),(120,150,255)) → NEAREST 放大到 SIZES）、
+     108x64 格的加宽版 wide_m64（HERO 324x192）、以及全彩的 wide。
+     我们原来是用 canvas 从 120x120 的 complete.png 现推 ✗：① 源图太小，放大到 324x192 必然糊；
+     ② 灰阶/着色公式与权威不同。现在按同一配方从替身帧 data/h3/00.png 的头部裁切生成了真素材
+     （pv-live/avatars/d/{m8,m16,m32,m64,wide_m64,wide}.png），直接引用。 */
   function dMosaic(cells) {
-    return avURL('d_m' + cells, function () {
-      var g = avBase('cheerful', [cells, cells]); if (!g) return null;
-      return grayToURL(g, BLUE[0], BLUE[1], cells, cells, false);
-    });
+    return avURL('d_m' + cells, function () { return 'avatars/d/m' + cells + '.png'; });
   }
   function dWideBlue() {
-    return avURL('d_wide_m64', function () {
-      var g = avBase('cheerful', [108, 64]); if (!g) return null;
-      return grayToURL(g, BLUE[0], BLUE[1], 108 * 3, 64 * 3, false);
-    });
+    return avURL('d_wide_m64', function () { return 'avatars/d/wide_m64.png'; });
   }
   function dWide() {
-    return avURL('d_wide', function () {
-      var g = avBase('cheerful', [108, 64]); if (!g) return null;
-      return grayToURL(g, [0, 0, 0], [255, 255, 255], 108 * 3, 64 * 3, true);
-    });
+    return avURL('d_wide', function () { return 'avatars/d/wide.png'; });
   }
   var D_AV = null;
   function dAvatarAt(t) {
@@ -1501,6 +1566,17 @@
   }
   function dPortrait(t) {
     dSteps();
+    /* 【2026-10-05 新目标①】参考抽帧优先：这一段的立绘就是参考那一刻的原生像素
+       （连生长/回缩动画都烘在像素里），所以直接用贴图自己的框、跳过 DOM 侧的马赛克/宽图拼装
+       与圆角描边 —— 那些素材 avatars/d/* 都是从 H3 占位替身裁的 ✗。没有贴图时完整走原逻辑。 */
+    var hxS = (PV.hx && PV.hx.ready && PV.hx.ready('domclimax')) ? PV.hx.seg['domclimax'] : null;
+    /* 用 PV.hx.url 给**路径**、不等解码好的图片对象 —— 后者第一次调用只发起加载、返回 null，
+       会白白回退到 avatars/d/*（H3 替身裁的 ✗）。petFix 里踩过同一个坑。 */
+    var hxU = hxS ? PV.hx.url('domclimax', PV.hx.idx('domclimax', t)) : null;
+    if (hxU) {
+      return ['<img id="pv-portrait" src="' + hxU + '" style="position:absolute;left:' + hxS.x + 'px;top:' +
+              hxS.y + 'px;width:' + hxS.w + 'px;height:' + hxS.h + 'px;z-index:2">', hxS.y + hxS.h];
+    }
     var pr = portraitRect(t), rect = pr[0], k = pr[1];
     var x = rect[0], y = rect[1], pw = rect[2], ph = rect[3];
     var p = settled(t), times = STEPS.concat([FINALLY]), since = t - times[k];
@@ -2911,7 +2987,9 @@
      （dsh_patch_f P1），scene_p2c 的 fullbleed 已经把 lay 0/2/3 与 count 藏掉；shot_black 从
      CHIME-0.1（207.774）起把页面贴回来。 */
   var HIDE_SHOTS = { shot_power: 1, shot_protection: 1, shot_pieces: 1, shot_erase: 1, shot_moe_dense: 1,
-                     shot_flood: 1, shot_collapse: 1, shot_last_execution: 1, shot_black: 1, shot_whale_fall: 1 };
+                     shot_flood: 1, shot_last_execution: 1, shot_black: 1 };
+  /* shot_whale_fall（193.543-211.0）**不在这里**：它跨过黑场的起点 207.7738，靠上面那条 193.543/207.7738
+     的区间判据，才不会把黑场里的 dsh 页一起藏掉（2026-10-04 实测修正）。 */
   /* continuity C60 塌掉不是 display:none，而是**从上往下擦掉**：24fps 实测（video1.mp4 134.3-135.0，
      取 x<420 的饱和红区上边界）红块闪一下之后 y0 走 56(134.51) → 75(134.55) → 117(134.59) →
      189(134.63) → 299(134.68) → 603(134.72)，之后完全消失。用 clip-path inset 复刻这条曲线。 */
@@ -2950,8 +3028,18 @@
     if (t >= D_GONE && t < D_BACK) return false;              /* 115.42-121.77：她只剩一个光标，画在 canvas 上 */
     if (t >= 134.74 && t < 138.1587) return false;            /* shot_moe_dense：C60 塌掉（见 paneEraseY）*/
     if (t >= 144.44 && t < 147.6202) return false;            /* shot_flood：她被洪水吃掉 */
-    if (t >= 193.543 && t < 207.7738) return false;           /* 鲸落 + last_execution：窗格滑出画面 */
+    /* 鲸落 + last_execution：窗格滑出画面（193.543 起它只留一个淡框）。
+       注意 207.7738 之后要**恢复**：权威 dsh_patch_g 第 4 条 —— 黑场里画的就是 dsh 页本身
+       （最后一轮 tail + composer + 她打字的 `在吗？` + 全亮/45% 闪烁）。参考同刻实测 207.5 全黑、
+       208.0 起 composer 出现、209.0 有 `在吗？` ✓，正是这条边界。
+       以前这里靠 HIDE_SHOTS 里的 shot_whale_fall 兜底，但它跨到 211.0，会把 207.77-211 一起藏掉 ✗ ——
+       权威 eval 段的 HIDE_HER 只有 {shot_last_execution, shot_black}，不含 whale_fall。 */
+    if (t >= 193.543 && t < 207.7738) return false;
     if (execHitPaneOff(t)) return false;              /* lay 0/2/3 的 exec_hit：参考里这一段没有聊天窗 */
+    /* shot_collapse（174.851-176.928）：压成线/点之后不再有窗格；**之前**要显示 —— 权威 collapse_frame
+       在 LINE_T 前返回完整的 trapped_frame（含 her/window 与页面自己的红墙），参考 175.0 实测左框
+       是聊天窗 + 红 hatch 墙 ✓、176.0 才是那条红线上。以前把整镜塞进 HIDE_SHOTS，175 段就全空了 ✗。 */
+    if (t >= (PV.p2cLineT || 175.9) && t < 176.9279) return false;
     /* shot_happy（66.159-68.005）：权威 v2.py:267 的 OWN 分支让 approved renderer 直接返回整帧，
        her layer（聊天窗）根本不合成；这一镜自己把 grad-cam 面板（24..700）画在窗格上，所以参考里
        看不到聊天窗（1920 同刻实测：66.00 有、66.50/67.00/67.50 没有 ✓）。
@@ -3034,6 +3122,27 @@
     return 'translate(' + (r[0] + 3 + (w - iw * sc) / 2).toFixed(2) + 'px,' + (r[1] + 9) + 'px) scale(' +
            sc.toFixed(6) + ')';
   }
+  /* 【2026-10-05 新目标①】窗格头像统一换成「参考抽帧」。
+     .pv-pet 的框在全片是固定的 60x60（pv.css:28 -> 屏幕 (39.5,75.5)），而六处 builder 用的都是
+     avatars/*（H3 占位替身的裁图 ✗）。与其改六处，不如在这里把 paneBody 的 HTML 统一替换一次：
+     只换第一个 .pv-pet 里 <img> 的 src（贴图是参考那一刻的原生像素，逐帧抽好的）。 */
+  function petFix(html, t) {
+    if (!PV.hx || !PV.hx.ready || !PV.hx.ready('pet')) return html;
+    var i = PV.hx.idx('pet', t);
+    if (i < 0) return html;
+    var u = PV.hx.url ? PV.hx.url('pet', i) : null;
+    if (!u) return html;
+    var re = /(<div class="pv-pet"[^>]*>\s*<img[^>]*?src=")[^"]*(")/;
+    return re.test(html) ? html.replace(re, '$1' + u + '$2') : html;
+  }
+  (function () {
+    var base = PV.paneBody;
+    if (typeof base !== 'function') return;
+    PV.paneBody = function (t) {
+      var html = base(t);
+      try { return petFix(html, t); } catch (e) { PV.petErr = e; return html; }   /* 抛错就退回原样 ✗ */
+    };
+  })();
   PV.paneBoxTransform = paneBoxTransform;   /* cuts_p3.js 的 PV.sync 包装要复用它（不能整个覆盖） */
   PV.sync = function (t) {
     if (!chatEl) chatEl = document.getElementById('chat');
@@ -3043,12 +3152,18 @@
     var wipe = PV.paneEraseY(t);                  /* 134.50-134.72 的从上往下擦除 */
     chatEl.style.display = (vis || wipe !== null) ? 'block' : 'none';
     chatEl.style.clipPath = (wipe !== null) ? 'inset(' + wipe.toFixed(1) + 'px 0 0 0)' : '';
-    if (!vis) return;
+    /* LEAD 压暗（frame.js 的 PV.paneDimApply）。浏览器实测：放在这里会被本函数后面的步骤清掉 ✗
+       （探针实测 manualFirst='brightness(0.7)' 而 afterSync2=''，syncCalls=1 ✓）——
+       所以隐藏分支只负责**清空**，真正的设置挪到函数**最后**一行。 */
+    if (!vis) { if (PV.paneDimApply) PV.paneDimApply(t, false); return; }
     var boxel = document.getElementById('chatbox');
     if (boxel) boxel.style.transform = paneBoxTransform(t);
+    fp8Apply(t);                                   /* fp8 色深量化（88.312-91.543 + 6 帧回档）*/
     applySheets(t);
     var b = PV.paneBody(t);
     if (b !== lastBody) { app.innerHTML = b; lastBody = b; perfFrame(b); }
+    /* 压暗放最后：中间任何一步都可能把 #chatbox 的内联 filter 清掉（2026-10-05 浏览器实测）*/
+    if (PV.paneDimApply) PV.paneDimApply(t, true);
   };
   /* 页面本身要 <body data-ds-dark-theme="true">：dsh 的 token 块（vendor/index/components）
      全是 body[data-ds-dark-theme] 选择器，原工程 seg.html 就把它写在 body 上。 */
