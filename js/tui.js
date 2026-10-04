@@ -11,7 +11,7 @@
   T.ME_LO = [4, 8, 34];
   T.ME_MID = [77, 107, 254];
   T.ME_HI = [196, 212, 255];
-  T.ME_TEXT = [120, 148, 255];
+  T.ME_TEXT = [126, 152, 255];   /* 权威 tuikit.py: ME_TEXT */
   T.SCR = '!<>-_\\/[]{}=+*^?#%$&@01|~:;';
   T.DS_BLUE = [77, 107, 254];
   T.clamp = function (v, a, b) { return v < a ? a : (v > b ? b : v); };

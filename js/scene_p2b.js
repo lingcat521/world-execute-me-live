@@ -439,10 +439,10 @@
      119.58 起淡出、119.6972（shot_memory_ls 结束）前消失。气泡/光标仍按 MEM_SPAN 画（它们在左窗格，不进 canvas 分）。 */
   var MEM_ROW_OUT = [119.58, 119.6972];
   var MEMS = [
-    { A: 118.25, row: 1, name: 'first_hello.txt', sprite: 'hello', sc: 1.00, halo: 0.30, flash: 0.12 },
-    { A: 119.00, row: 4, name: 'your_cat.png', sprite: 'cat', sc: 1.15, halo: 0.50, flash: 0.20 },
-    { A: 119.375, row: 3, name: 'laugh_2026-03-14.wav', sprite: 'wav', sc: 1.25, halo: 0.70, flash: 0.28 },
-    { A: 119.9167, row: 7, name: 'last_message.txt', sprite: 'last', sc: 1.65, halo: 0.95, flash: 0.35 }
+    { A: 118.24, row: 1, name: 'first_hello.txt', sprite: 'hello', sc: 1.00, halo: 0.30, flash: 0.12 },
+    { A: 118.98, row: 4, name: 'your_cat.png', sprite: 'cat', sc: 1.15, halo: 0.50, flash: 0.20 },
+    { A: 119.38, row: 3, name: 'laugh_2026-03-14.wav', sprite: 'wav', sc: 1.25, halo: 0.70, flash: 0.28 },
+    { A: 119.92, row: 7, name: 'last_message.txt', sprite: 'last', sc: 1.65, halo: 0.95, flash: 0.35 }
   ];
   var MEM_IMG = {};
   (function () {
@@ -549,14 +549,21 @@
     for (k = 0; k < 3; k++) {                 /* 1. 反白的行 */
       m = MEMS[k];
       if (t < m.A) continue;
-      /* 原式 `1 - clamp01(memLeaving(k,t) * MEM_FADE / 3)` 的减数最大只有 5/24/3≈0.069，
-         等于永不淡出 → 三行一直亮到 MEM_SPAN 末尾 121.80，把 shot_erase 整段盖掉（回退根因）。 */
-      a = 1 - T.clamp01((t - MEM_ROW_OUT[0]) / (MEM_ROW_OUT[1] - MEM_ROW_OUT[0]));
+      /* 【2026-10-05 权威对齐】权威 dsh_patch_mem.row_layer 是：
+             leaving = clamp((t - (A[k+1] - 2/24)) / (FADE/24)),  FADE = 5（**帧数，整数**）
+             a = 1 - clamp(leaving * FADE / 3)          -> leaving*5/3，0.6 处就归零
+         之前那一版把 FADE 当成 5/24（秒）代进第二个式子，算出减数最大只有 0.069，
+         于是判定“永远不淡出”改成硬编码窗口 [119.58, 119.6972] —— 结果 119.0 那帧
+         上一行还是全亮（参考只剩 17%），而且淡出时机整体晚了 0.5s。现在恢复权威式。 */
+      a = 1 - T.clamp01(memLeaving(k, t) * 5 / 3);
       if (a <= 0.01) continue;
       var rg = memRowGeom(m.row), box = rg[2];
       y = rg[1];
       var hot = T.clamp01(1 - (t - m.A) / 0.2), lvl = [0.78, 0.88, 0.98][k];
-      var bar = T.mix([235, 240, 255], hot * 0.6, T.mix(T.ME_HI, lvl));
+      /* 权威 dsh_patch_mem.row_layer: bar = mix((235,240,255), hot*0.6, mix(BLUE_TEXT, lvl))
+         其中 BLUE_TEXT = 调色板的 ME_TEXT=(126,152,255)，不是 ME_HI=(196,212,255) ——
+         我们原来用 ME_HI，反白条偏亮偏灰（参考是更饱和的蓝）。 */
+      var bar = T.mix([235, 240, 255], hot * 0.6, T.mix(T.ME_TEXT, lvl));
       ctx.save(); ctx.globalAlpha = a;
       T.fill(ctx, box[0], box[1], box[2], box[3], bar, 1);
       T.textMono(ctx, rg[0], MEM_ROW_X, y, T.BG, 18);
