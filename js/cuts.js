@@ -1172,8 +1172,13 @@
     var oc = PV.newCanvas(1280, 720), og = oc.getContext('2d');
     var bare = PV.newCanvas(1280, 720), bg2 = bare.getContext('2d');
     if (PV.drawBackground) { PV.drawBackground(og, t); PV.drawBackground(bg2, t); }
-    PV.shotBlind(og, t, Math.max(0, t - 47.236), null);
-    PV.shotBlind(bg2, t, Math.max(0, t - 47.236), null);
+    /* 【2026-10-05 权威对齐】s_sft.py C22.render 里旧画面是 self.old(t, n, matrix=False) ——
+       旧画面**不带因果矩阵**！矩阵那一层全部由下面 "格子翻滚着缩下去" 的四边形负责。
+       我们原来用完整的 shotBlind 当底，于是平的旧矩阵一直留在下面（49.05-49.45 误差 41-48）。
+       shotBlind 的第 4 个参数 cellA 返回 false 就不画格子，正好对上 matrix=False。 */
+    var noCells = function () { return false; };
+    PV.shotBlind(og, t, Math.max(0, t - 47.236), noCells);
+    PV.shotBlind(bg2, t, Math.max(0, t - 47.236), noCells);
     var stage1 = PV.newCanvas(1280, 720), sg = stage1.getContext('2d');
     PV.reveal(sg, t, function (c) { c.drawImage(og, 0, 0); }, function (c) { c.drawImage(bare, 0, 0); },
       PV.radial(990, 140, T0 - 0.14, 1400), { region: [405, 44, 1164, 604], cell: [8, 16], dur: 0.09 });
@@ -1181,7 +1186,8 @@
     if (PV.drawBackground) PV.drawBackground(ng, t);
     PV.shotDizzy(ng, t, Math.max(0, t - T0));
     PV.reveal(ctx, t, function (c) { c.drawImage(stage1, 0, 0); }, function (c) { c.drawImage(nc, 0, 0); },
-      PV.radial(DZ.cx, DZ.cy, T0 + 0.12, 1500), { region: [405, 44, 1164, 604], cell: [8, 16], dur: 0.09 });
+      /* 【2026-10-05】原来起点 T0+0.12：参考 49.083 起整块矩阵就开始倾斜（由下面那圈格子四边形承担），而我们上面那层平的 shotBlind 底图要到 49.29 才被擦掉 -> 49.05-49.45 实测误差 41-48（用户报的右框过渡动画）。起点提前到 T0-0.02，底图约 0.1s 擦完；两边 MX/MY/CS/N 本来一致，接缝无跳变。 */
+      PV.radial(DZ.cx, DZ.cy, T0 + 0.12, 1500)   /* 原来是 1500px/s：离中心 400px 的格子要 0.27s 后才翻，整块平的旧矩阵直到 49.29 还留着（实测误差 41-48）。参考 49.15 前后整幅已经翻完，所以提速到 6000（全幅 <0.1s） */, { region: [405, 44, 1164, 604], cell: [8, 16], dur: 0.09 });
     /* 碗面上的点：由它对应的矩阵格缩小到消失时冒出来 */
     for (var il = 0; il < DZ.n; il++) for (var jl = 0; jl < DZ.n; jl++) {
       var xy = PV.dizzy.gridXY(il, jl), par = parentOf(xy[0], xy[1], dzU());
@@ -1206,7 +1212,7 @@
       var any = false;
       for (k = 0; k < 4; k++) if (PV.dizzy.inside(pts[k][0], pts[k][1])) any = true;
       if (!any) continue;
-      var lift22 = T.clamp01((t - (T0 - PRE)) / 0.15);
+      var lift22 = T.clamp01((t - (T0 - PRE)) / 0.2) * (1 - T.clamp01((t - T0) / 0.3));
       var tm = PV.maskTime(i, j), masked = (tm !== null && t >= tm);
       var col = masked ? [0, 0, 0] : cellColor(i, j);
       if (!masked) { var w22 = 0.2 * lift22; col = [col[0] + (232 - col[0]) * w22, col[1] + (238 - col[1]) * w22, col[2] + (255 - col[2]) * w22]; }
@@ -1214,6 +1220,13 @@
       ctx.save(); ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
       for (k = 1; k < 4; k++) ctx.lineTo(pts[k][0], pts[k][1]);
       ctx.closePath(); ctx.fillStyle = T.css(col); ctx.fill(); ctx.restore();
+      /* 权威 C22：被 mask 的格子的 -inf 标签"跟着格子一起转到最后"（t < T-0.02 才画，且最后 0.1s 淡出） */
+      if (masked && t < T0 - 0.02) {
+        var kk22 = T.clamp01((T0 - 0.02 - t) / 0.1), c022 = PV.blindCellXY(i, j);
+        ctx.save(); ctx.globalAlpha = kk22;
+        T.textMono(ctx, '-\u221e', c022[0] + 6, c022[1] + 10, T.ui(0.35), 13);
+        ctx.restore();
+      }
     }
   });
 })();
