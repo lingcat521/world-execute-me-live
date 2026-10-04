@@ -50,10 +50,20 @@
       '<div style="height:100%;width:' + pct.toFixed(1) + '%;background:#4d6bfe"></div></div>' +
       '<div style="margin-top:10px;font-size:12.5px;opacity:.75;line-height:1.5">' +
       (PRE.ready ? '<b style="color:#7ee787">可以开始了：点下方 ▶（或页面任意处）</b>'
-                 : '缓存到 ' + (PRE.thresh * 100).toFixed(0) + '% 才允许开始播放<br>' +
-                   '现在点 ▶ 也行 —— 到 ' + (PRE.thresh * 100).toFixed(0) + '% 会自动开<br>' +
-                   '<span style="opacity:.8">中途刷新不会丢：已缓存的部分会跳过</span>') +
-      '</div>';
+                 : (PV.pendingStart ? '<b style="color:#ffd479">已记录你的点击</b> —— 到 ' + (PRE.thresh * 100).toFixed(0) + '% 自动开始'
+                                    : '缓存到 ' + (PRE.thresh * 100).toFixed(0) + '% 才会自动开始') +
+                   '<br><span style="opacity:.8">中途刷新不会丢：已缓存的部分会跳过</span>') +
+      '</div>' +
+      (PRE.ready ? '' : '<button id="prego" style="margin-top:12px;padding:7px 16px;border-radius:8px;' +
+        'border:1px solid #4d6bfe;background:#18213a;color:#cdd8ff;font:13px ui-monospace,monospace;cursor:pointer">' +
+        '不等了，现在就开始 ▶</button>');
+    var go = document.getElementById('prego');
+    if (go) go.onclick = function (ev) {
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+      PRE.thresh = 0; PRE.ready = true; hide();
+      PV.pendingStart = false;
+      if (PV.startAudio) { try { PV.startAudio(); } catch (e) {} }
+    };
   }
   /* 开始播放（手动或自动）后把框收掉 */
   var poll = setInterval(function () { if (PV.started) { hide(); clearInterval(poll); } }, 300);
