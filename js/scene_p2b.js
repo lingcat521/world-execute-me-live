@@ -570,6 +570,33 @@
     ctx.drawImage(cv, Math.round(MEM_BUB_R - w_), Math.round(cy - h_ / 2), Math.round(w_), Math.round(h_));
     ctx.restore();
   }
+  /* 【2026-10-05 权威补齐】第 4 个气泡（last_message.txt）：权威 dsh_patch_mem 里它不走 memBubble 那条路 ——
+     从 A[3]（119.92）起在「飞行的名字」正下方张开（pop_scale + halo），跟着名字骑进压缩面板。
+     我们原来只画前三个（for k<3），所以 120.0 那一帧参考里那颗带蓝晕的气泡整个没有
+     （同刻蓝像素：参考 7938、我们 1733）。 */
+  var MEM_ERASE_T = 120.208;
+  function memLastBubble(ctx, t) {
+    var m = MEMS[3], cv = MEM_IMG[m.sprite];
+    if (!cv || t < m.A || t >= MEM_ERASE_T) return;
+    var lb = PV.c55LabelAt ? PV.c55LabelAt(t) : null;
+    if (!lb) return;
+    var x = lb[0] + 1, y = lb[1] + lb[2] * 0.78 + 10;      /* last_box(t)：与 last_caret 同一套几何 */
+    var u = T.clamp01((t - m.A + 1 / 24) / MEM_POP);
+    var scale = 0.62 + 0.38 * T.ease_back(u), alpha = T.clamp01(0.55 + u * 1.8);
+    if (alpha <= 0.01 || scale <= 0.01) return;
+    var w_ = cv.width * scale, h_ = cv.height * scale;
+    var fl = m.flash * T.clamp01(1 - (t - m.A) / 0.3);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.imageSmoothingEnabled = true;
+    if (m.halo > 0.01) {
+      ctx.shadowColor = T.css(T.ME_HI, 1);
+      ctx.shadowBlur = Math.max(4, Math.round(5 * m.sc)) * m.halo * (0.85 + 0.15 * PV.pulse(t));
+    }
+    if (fl > 0.01) { ctx.shadowColor = T.css([255, 255, 255], 1); ctx.shadowBlur = 8 * fl; }
+    ctx.drawImage(cv, Math.round(x), Math.round(y), Math.round(w_), Math.round(h_));
+    ctx.restore();
+  }
   function memOverlay(ctx, t) {
     if (t < MEM_SPAN[0] || t >= MEM_SPAN[1]) return;
     var k, m, a, y;
@@ -597,7 +624,8 @@
       T.textMono(ctx, m.name, MEM_ROW_X + T.twMono(rg[0], 18), y, T.BG, 18);
       ctx.restore();
     }
-    for (k = 0; k < 3; k++) memBubble(ctx, k, t);   /* 2. 气泡 */
+    for (k = 0; k < 3; k++) memBubble(ctx, k, t);   /* 2. 前三个气泡 */
+    memLastBubble(ctx, t);                          /*    第 4 个（last_message）：跟着飞行的名字走 */
     memCursor(ctx, t);                              /* 3. 她的光标 */
   }
   var _memPrevOverlay = PV.overlay;
