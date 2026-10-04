@@ -244,9 +244,21 @@
     lyricTokens(ctx, t, rng, corrupt);
     if (opt.shell && e > 0.01) {
       ctx.save(); ctx.globalAlpha = e;
-      var age = (e - 0.3) * 1.2;
-      var txt = age > 0 ? T.decode('me@deepsea:~$ ' + opt.shell, age, rng, 30.0, 0.1, 0) : 'me@deepsea:~$';
+      var txt;
+      if (opt.raw) {
+        /* userleft 段（s_userleft.py:158 prompt()）：整串已经按 50 字/秒算好，直接画 */
+        txt = opt.shell;
+      } else {
+        var age = (e - 0.3) * 1.2;
+        txt = age > 0 ? T.decode('me@deepsea:~$ ' + opt.shell, age, rng, 30.0, 0.1, 0) : 'me@deepsea:~$';
+      }
       T.textPIL(ctx, txt, 24, 12, T.css(T.mix(T.ME_TEXT, 0.95)), 18, 'left', true);
+      /* 块光标（权威 s_userleft.py:185-188）：x = 24 + 提示行宽 + 3，9x17，她蓝 0.8，
+         闪规则 int(t*3)%2==0 或还没打完（len < 14+2）。原来完全没画 ✓ 补上。 */
+      if (Math.floor(t * 3) % 2 === 0 || txt.length < 16) {
+        var cx = 24 + T.tw(txt, 18, true) + 3;
+        T.fill(ctx, cx, 15, cx + 9, 32, T.mix(T.ME_TEXT, 0.8), 1);
+      }
       T.textPIL(ctx, pad2(Math.floor(t / 60)) + ':' + fmt4(t % 60) + ' / 03:32', W - 190, 14, T.ui(0.5), 14);
       ctx.restore();
     }

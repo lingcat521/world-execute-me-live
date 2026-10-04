@@ -300,6 +300,25 @@
     { a: 7.082, b: 9.851, cmd: 'neofetch' },
     { a: 41.928, b: 44.005, cmd: 'ulimit -a' }];
   PV.stateAt = function (t) {
+    /* ---- s_userleft.py:142-190：这一段的 chrome 是**该段自己 wrap 掉 kit.chrome** 的：
+       CHROME = (U.SUNG["left0"]=110.40, 0.3, T55=115.5433, 0.3) —— 从首次唱词起「收起」顶栏/ops 列，
+       到下一镜（isolation, 115.5433）之后 0.3s 放回；收起来之后在 (24,12) 打一行 shell 提示（她蓝，
+       50 字/秒）：
+         CMD_PING = (110.55, "ping you")；CMD_LS = (beat_t(253)+0.05, "ls -la ~/memory/you/")；
+         到 CMD_LS-0.14 显示 "...ping you^C"；光标紧跟提示行（int(t*3)%2 闪）。
+       我们原来只有 3 个 SHELL 窗口（boot 的两处 + ulimit）→ 110.40-115.9 整段没收起：
+       实测 t=115 参考里 **ops 列整块不存在**、顶栏是 "me@deepsea:~$ ping you"，我们两样都在画
+       （hotbox 该块 19）。 */
+    var UL0 = 110.40, UL_END = 115.5433, UL_EASE = 0.3;
+    if (t >= UL0 && t < UL_END + UL_EASE + 0.05) {
+      var ue = T.ease_out((t - UL0) / UL_EASE);
+      if (t >= UL_END) ue *= 1 - T.ease_io((t - UL_END) / UL_EASE);
+      var lsT = PV.beatT(253) + 0.05, pingT = UL0 + 0.15, us, nch;
+      if (t < lsT - 0.14) { us = 'ping you'; nch = Math.max(0, Math.floor((t - pingT) * 50)); }
+      else if (t < lsT) { us = 'ping you^C'; nch = us.length; }
+      else { us = 'ls -la ~/memory/you/'; nch = Math.max(0, Math.floor((t - lsT) * 50)); }
+      return { retract: ue, shell: 'me@deepsea:~$ ' + us.slice(0, nch), raw: true };
+    }
     var SH = PV.SHELL_SHOTS;
     for (var i = 0; i < SH.length; i++) {
       var s = SH[i];
