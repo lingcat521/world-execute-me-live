@@ -467,7 +467,12 @@
     capAbort = false;
     /* 【2026-10-05】先把参考抽帧贴图整段预热（异步），否则拍的那一瞬同步绘制拿不到图、
        会回退成代码画的替身立绘 ✗ —— 服务器里那批 cap_*_nocap.png 全是这么错过去的。 */
-    try { if (PV.hx && PV.hx.warmAll) PV.hx.warmAll(); } catch (eW) {}
+    try {
+      if (PV.hx && PV.hx.warmRange) {
+        var lo = Math.min.apply(null, list), hi = Math.max.apply(null, list);
+        PV.hx.warmRange(lo, hi + 1);
+      } else if (PV.hx && PV.hx.warmAll) PV.hx.warmAll();
+    } catch (eW) {}
     var i = 0, tries = 0;
     function next() {
       if (capAbort || i >= list.length) {
