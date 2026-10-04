@@ -503,9 +503,24 @@
                T.mix(MEM_BLUE, (40 + 150 * q) / 255, [0, 0, 0]), 1);
       }
     }
+    /* 【2026-10-05 权威补齐】kit.her_glow(layer, 0.6k)：光标形状高斯模糊(r=4)染成 her blue 垫在底下(强度 1.1k)，再叠一层 (190,205,255) alpha=0.3k 的柔光。参考 120.0 那颗蓝色光晕就是它 ——我们原来只有光标本体 + 4px 阴影，没有这层。 */
+    var gk = 0.6 * k;
+    if (gk > 0.01) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      try { ctx.filter = 'blur(4px)'; } catch (eGl) {}
+      ctx.globalAlpha = Math.min(1, 1.1 * gk);
+      T.fill(ctx, c[0] - cw / 2 - 1, c[1] - ch / 2 - 1, c[0] + cw / 2, c[1] + ch / 2, MEM_BLUE, 1);
+      ctx.restore();
+    }
     ctx.shadowColor = T.css(MEM_BLUE, 1); ctx.shadowBlur = 4 * k;
     T.fill(ctx, c[0] - cw / 2, c[1] - ch / 2, c[0] + cw / 2 - 1, c[1] + ch / 2 - 1, T.mix(MEM_BLUE, k), 1);
     ctx.restore();
+    if (gk > 0.01) {
+      ctx.save(); ctx.globalAlpha = 0.3 * gk;
+      T.fill(ctx, c[0] - cw / 2, c[1] - ch / 2, c[0] + cw / 2 - 1, c[1] + ch / 2 - 1, [190, 205, 255], 1);
+      ctx.restore();
+    }
   }
   function memWaveBurst(ctx, m, cy, w_, h_, t, a) {
     var dt = t - m.A;
