@@ -12,7 +12,7 @@
   'use strict';
   var PV = window.PV || (window.PV = {});
   var q = new URLSearchParams(location.search);
-  var THRESH = q.has('pre') ? parseFloat(q.get('pre')) : 0.5;
+  var THRESH = q.has('pre') ? parseFloat(q.get('pre')) : 1.0;   /* 用户要求：默认缓存到 100% 再播 */
   if (q.has('capt')) THRESH = 0;
   var CONC = Math.max(1, parseInt(q.get('prec') || '16', 10));   /* 16 路：HTTP/2 下实测比 8 路快一倍 */
   var CACHE = q.get('cache') || 'pv-assets-v4';
@@ -49,22 +49,46 @@
       '<div style="margin:10px auto 0;width:240px;height:6px;background:#1f2937;border-radius:3px;overflow:hidden">' +
       '<div style="height:100%;width:' + pct.toFixed(1) + '%;background:#4d6bfe"></div></div>' +
       '<div style="margin-top:10px;font-size:12.5px;opacity:.75;line-height:1.5">' +
-      (PRE.ready ? '<b style="color:#7ee787">可以开始了：点下方 ▶（或页面任意处）</b>'
-                 : (PV.pendingStart ? '<b style="color:#ffd479">已记录你的点击</b> —— 到 ' + (PRE.thresh * 100).toFixed(0) + '% 自动开始'
-                                    : '缓存到 ' + (PRE.thresh * 100).toFixed(0) + '% 才会自动开始') +
-                   '<br><span style="opacity:.8">中途刷新不会丢：已缓存的部分会跳过</span>') +
+      (PRE.ready ? '<b style="color:#7ee787">缓存完成：点下方 ▶（或页面任意处）开始</b>'
+                 : (PV.pendingStart ? '<b style="color:#ffd479">已记录你的点击</b> —— 缓存满 100% 自动开始'
+                                    : '缓存到 <b>100%</b> 才会自动开始播放') +
+                   '<br><span style="opacity:.85">中途刷新不会丢：已缓存的部分会跳过，' +
+                   '第二次打开基本是 0 下载</span>') +
       '</div>' +
       (PRE.ready ? '' : '<button id="prego" style="margin-top:12px;padding:7px 16px;border-radius:8px;' +
         'border:1px solid #4d6bfe;background:#18213a;color:#cdd8ff;font:13px ui-monospace,monospace;cursor:pointer">' +
-        '不等了，现在就开始 ▶</button>');
+        '不等了，现在就开始 ▶</button>' +
+        '<div style="margin-top:8px;font-size:11.5px;color:#ffb86b;max-width:300px;margin-left:auto;margin-right:auto">' +
+        '（不等缓存直接开始：还没下到的帧<b>可能不渲染</b>，播放中也可能卡顿；' +
+        '剩下的会在后台继续下，下满 100% 提示自动消失）</div>');
     var go = document.getElementById('prego');
     if (go) go.onclick = function (ev) {
       if (ev && ev.stopPropagation) ev.stopPropagation();
-      PRE.thresh = 0; PRE.ready = true; hide();
+      PRE.forced = true; PRE.ready = true; hide();
+      warn(true);
       PV.pendingStart = false;
       if (PV.startAudio) { try { PV.startAudio(); } catch (e) {} }
     };
   }
+  /* 没等缓存满就开播 -> 右下角挂个常驻提醒，满 100% 自动消失 */
+  function warn(on) {
+    var el = document.getElementById('prewarn');
+    if (!el && on) {
+      el = document.createElement('div');
+      el.id = 'prewarn';
+      el.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:9400;max-width:62vw;' +
+        'background:rgba(40,22,6,.94);border:1px solid #b26a1f;border-radius:9px;padding:9px 13px;' +
+        'color:#ffd7a8;font:12.5px/1.5 ui-monospace,Menlo,Consolas,monospace;pointer-events:none';
+      document.body.appendChild(el);
+    }
+    if (!el) return;
+    if (!on) { el.style.display = 'none'; return; }
+    var pct = PRE.total ? Math.min(100, PRE.done / PRE.total * 100) : 0;
+    el.textContent = '⚠ 素材只缓存了 ' + pct.toFixed(0) + '%：还没下到的帧可能不渲染 / 播放中可能卡顿（后台继续下载中）';
+    el.style.display = 'block';
+  }
+  PV.preWarn = warn;
+
   /* 开始播放（手动或自动）后把框收掉 */
   var poll = setInterval(function () { if (PV.started) { hide(); clearInterval(poll); } }, 300);
 
@@ -78,7 +102,7 @@
       if (!PRE.ready && PRE.total && PRE.done / PRE.total >= PRE.thresh) {
         PRE.ready = true; paint();
         if (PV.pendingStart && PV.startAudio) { try { PV.startAudio(); } catch (e) {} }
-      } else if (PRE.n % 20 === 0) paint();
+      } else if (PRE.n % 20 === 0) { paint(); if (PRE.forced) warn(true); }
       after();
     }
     function imgFallback() {
@@ -127,7 +151,13 @@
     var next = 0;
     function pump() {
       while (next < list.length && CONC > 0) { CONC--; one(list[next++], function () { CONC++; pump(); }); }
-      if (next >= list.length) { PRE.over = true; paint(); }
+      /* 全部发完 = 放行（**不能**只靠 done/total>=1：个别文件 404/超时就永远差那一点，
+         门会一直卡着）。收尾时把 warning 也收掉。 */
+      if (next >= list.length) {
+        PRE.over = true;
+        if (!PRE.ready) { PRE.ready = true; if (PV.pendingStart && PV.startAudio) { try { PV.startAudio(); } catch (e) {} } }
+        paint(); warn(false);
+      }
     }
     pump();
   }).catch(function (e) {
