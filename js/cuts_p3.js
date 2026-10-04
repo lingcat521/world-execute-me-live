@@ -32,10 +32,14 @@
   function eOut(u) { u = clamp01(u); var d = 1 - u; return 1 - d * d * d; }
   function lerp(a, b, u) { return a + (b - a) * u; }
   function beatT(n) { return FB + n * BEAT; }
-  function bez(p0, p1, bend, u) {   /* 二次贝塞尔：控制点在中点法线方向 */
+  function bez(p0, p1, bend, u) {
+    /* 【2026-10-06 权威对齐】kit.bezier:269-275 是 cx = mx + dy*bend, cy = my - dx*bend。
+       我们这里原来写成 mx - dy*bend / my + dx*bend（**符号反了**），等于 bend 取反 ——
+       所有走这条 bez 的飞行弧线都往另一侧弯（C55 的 last_message.txt 名字因此低了约 90px）。
+       cuts.js 里那 7 份同样的写法也一并修了；cuts_p4/cuts_p4x/trans_pre 本来就是对的。 */
     var mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2;
-    var dx = p1[0] - p0[0], dy = p1[1] - p0[1], L = Math.hypot(dx, dy) || 1;
-    var cx = mx + (-dy / L) * bend * L, cy = my + (dx / L) * bend * L;
+    var dx = p1[0] - p0[0], dy = p1[1] - p0[1];
+    var cx = mx + dy * bend, cy = my - dx * bend;
     var v = 1 - u;
     return [v * v * p0[0] + 2 * v * u * cx + u * u * p1[0], v * v * p0[1] + 2 * v * u * cy + u * u * p1[1]];
   }

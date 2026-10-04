@@ -232,7 +232,7 @@
   function bez(p0, p1, bend, u) {
     var mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2;
     var dx = p1[0] - p0[0], dy = p1[1] - p0[1];
-    var cx = mx - dy * bend, cy = my + dx * bend, a = 1 - u;
+    var cx = mx + dy * bend, cy = my - dx * bend   /* 权威 kit.bezier:269-275（原来符号反了：弧线向另一侧弯） */, a = 1 - u;
     return [a * a * p0[0] + 2 * a * u * cx + u * u * p1[0], a * a * p0[1] + 2 * a * u * cy + u * u * p1[1]];
   }
   function chips() {
@@ -517,7 +517,7 @@
   function bez(p0, p1, bend, u) {
     var mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2;
     var dx = p1[0] - p0[0], dy = p1[1] - p0[1];
-    var cx = mx - dy * bend, cy = my + dx * bend, a = 1 - u;
+    var cx = mx + dy * bend, cy = my - dx * bend   /* 权威 kit.bezier:269-275（原来符号反了：弧线向另一侧弯） */, a = 1 - u;
     return [a * a * p0[0] + 2 * a * u * cx + u * u * p1[0], a * a * p0[1] + 2 * a * u * cy + u * u * p1[1]];
   }
   function stroke(ctx, pts, col, w, alpha) {
@@ -609,7 +609,7 @@
   function bez(p0, p1, bend, u) {
     var mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2;
     var dx = p1[0] - p0[0], dy = p1[1] - p0[1];
-    var cx = mx - dy * bend, cy = my + dx * bend, a = 1 - u;
+    var cx = mx + dy * bend, cy = my - dx * bend   /* 权威 kit.bezier:269-275（原来符号反了：弧线向另一侧弯） */, a = 1 - u;
     return [a * a * p0[0] + 2 * a * u * cx + u * u * p1[0], a * a * p0[1] + 2 * a * u * cy + u * u * p1[1]];
   }
   function cellCenter(k) {
@@ -762,7 +762,7 @@
   function eBack(u, s) { u = T.clamp01(u); var c = s * 1.70158; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); }
   function bez(p0, p1, bend, u) {
     var mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2, dx = p1[0] - p0[0], dy = p1[1] - p0[1];
-    var cx = mx - dy * bend, cy = my + dx * bend, a = 1 - u;
+    var cx = mx + dy * bend, cy = my - dx * bend   /* 权威 kit.bezier:269-275（原来符号反了：弧线向另一侧弯） */, a = 1 - u;
     return [a * a * p0[0] + 2 * a * u * cx + u * u * p1[0], a * a * p0[1] + 2 * a * u * cy + u * u * p1[1]];
   }
   function cellCenter(i) { var g = PV.GRID; return [g.x + (i % g.cols) * g.dx + g.w / 2, g.y + Math.floor(i / g.cols) * g.dy + g.h / 2]; }
@@ -863,7 +863,7 @@
   function eBack(u, s) { u = T.clamp01(u); var c = s * 1.70158; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); }
   function bez(p0, p1, bend, u) {
     var mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2, dx = p1[0] - p0[0], dy = p1[1] - p0[1];
-    var cx = mx - dy * bend, cy = my + dx * bend, a = 1 - u;
+    var cx = mx + dy * bend, cy = my - dx * bend   /* 权威 kit.bezier:269-275（原来符号反了：弧线向另一侧弯） */, a = 1 - u;
     return [a * a * p0[0] + 2 * a * u * cx + u * u * p1[0], a * a * p0[1] + 2 * a * u * cy + u * u * p1[1]];
   }
   PV.addCut(T0, PRE, 0.62, function (ctx, t, cut) {
@@ -962,7 +962,7 @@
   function eBack(u, s) { u = T.clamp01(u); var c = s * 1.70158; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); }
   function bez(p0, p1, bend, u) {
     var mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2, dx = p1[0] - p0[0], dy = p1[1] - p0[1];
-    var cx = mx - dy * bend, cy = my + dx * bend, a = 1 - u;
+    var cx = mx + dy * bend, cy = my - dx * bend   /* 权威 kit.bezier:269-275（原来符号反了：弧线向另一侧弯） */, a = 1 - u;
     return [a * a * p0[0] + 2 * a * u * cx + u * u * p1[0], a * a * p0[1] + 2 * a * u * cy + u * u * p1[1]];
   }
   function glyph(z) { return z < 0.35 ? '\u00b7' : (z < 0.75 ? 'o' : 'O'); }
@@ -1245,7 +1245,7 @@
   function eIo(u) { u = T.clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
   function bez(p0, p1, bend, u) {
     var mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2, dx = p1[0] - p0[0], dy = p1[1] - p0[1];
-    var cx = mx - dy * bend, cy = my + dx * bend, a = 1 - u;
+    var cx = mx + dy * bend, cy = my - dx * bend   /* 权威 kit.bezier:269-275（原来符号反了：弧线向另一侧弯） */, a = 1 - u;
     return [a * a * p0[0] + 2 * a * u * cx + u * u * p1[0], a * a * p0[1] + 2 * a * u * cy + u * u * p1[1]];
   }
   var BARS = null, PLAN = null;
