@@ -800,10 +800,21 @@
         if (v >= 1) { arrived++; continue; }
         var xy = [c2[0] + (G[0] - c2[0]) * eIn(v), c2[1] + (G[1] - c2[1]) * eIn(v)];
         var hw = 21 + (3 - 21) * s, hh = 18 + (3 - 18) * s;
-        /* 参考实测（t=4.75 逐格取色）：排空的格子仍是加载态的蓝灰底、只是整体提亮约 +43 灰阶
-           （(138,149,167)->(181,193,211)），不是黄色；3 位数字一直保留到格子缩没。 */
-        T.fill(ctx, xy[0] - hw, xy[1] - hh, xy[0] + hw, xy[1] + hh, T.ui(0.78 - 0.23 * s), 1);
-        if (hw > 8) T.textMono(ctx, ('00' + (i + 1)).slice(-3), xy[0] - hw + 6, xy[1] - hh + 10, T.BG, 13);
+        /* 权威 s_boot.py:349-352（C03.render 排空）：
+             col = lerp(lit(amb(0.55), 0.3 * lift), BLUE_HI, s)
+             d.rectangle([x-hw, y-hh, x+hw, y+hh], fill=col + (255,))
+             if s < 0.3: d.text((x-hw+6, y-hh+10), "NNN", fill=BG + (int(255 * (1 - s / 0.3)),))
+           原来用 T.ui(0.78 - 0.23 * s)：① 不朝她的蓝走（s=1 时权威是 (196,212,255)、我们停在琥珀 0.55）；
+           ② 数字画到 hw<=8（s<0.72）才停，权威 s>=0.3 就没有数字、且 0..0.3 之间是渐隐 —— 实测 t=5.0
+           参考只有中心斜带那几格带数字，我们满屏数字。mix 的取整也按 Python 的 int() 截断写。 */
+        var c0 = PV.lit([Math.trunc(T.BG[0] + (T.UI[0] - T.BG[0]) * 0.55),
+                         Math.trunc(T.BG[1] + (T.UI[1] - T.BG[1]) * 0.55),
+                         Math.trunc(T.BG[2] + (T.UI[2] - T.BG[2]) * 0.55)], 0.3 * lift);
+        var dcol = [Math.trunc(c0[0] + (T.ME_HI[0] - c0[0]) * s),
+                    Math.trunc(c0[1] + (T.ME_HI[1] - c0[1]) * s),
+                    Math.trunc(c0[2] + (T.ME_HI[2] - c0[2]) * s)];
+        T.fill(ctx, xy[0] - hw, xy[1] - hh, xy[0] + hw, xy[1] + hh, dcol, 1);
+        if (s < 0.3) T.textMono(ctx, ('00' + (i + 1)).slice(-3), xy[0] - hw + 6, xy[1] - hh + 10, T.css(T.BG, 1 - s / 0.3), 13);
       }
       var kk = arrived / g.n;
       if (kk > 0) { var rr = 1 + kk * 4; T.fill(ctx, G[0] - rr, G[1] - rr, G[0] + rr, G[1] + rr, T.mix(T.ME_HI, 1.0), Math.min(1, 0.4 + kk)); }
