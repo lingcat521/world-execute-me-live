@@ -10,7 +10,7 @@
   var FPS = 24, PERIOD = 16 * 60 / 130;         /* loop take 的一小节 = 7.3846 s */
   var IMG = [], LOADED = {}, IMGQ = [], IMGCAP = 48;   /* 420x480 RGBA 约 0.8MB/张 -> 上限约 38MB */
   /* 全局帧 id -> 文件路径。
-     【2026-10-05】原来这里只有 23 张池图（P.img + NN + ".png"）：权威 cache/h3_full_v1/rgba/
+     【2026-10-05】原来这里只有 23 张池图（P.img + NN + ".webp"）：权威 cache/h3_full_v1/rgba/
      有 16 个 take、共 2188 帧，池化后同一姿势被复用约 5 次 —— 人物看起来「只有几帧」
      （用户报 1:06-08 的 grad-cam 人脸），实测剪影只是每 0.2s 恒定 +22px 的假平移、y 不动 ✗。
      现在 js/h3pool_frames.js 给出 takes[name] = 逐帧全局 id（take 序号*1000 + 帧号），
@@ -22,7 +22,7 @@
       var nm = names[ti]; if (nm === undefined) return null;
       return P.img + nm + "/" + (i < 10 ? "00" : (i < 100 ? "0" : "")) + i + ".webp";
     }
-    return P.img + (k < 10 ? "0" : "") + k + ".png";     /* 旧池图路径（回退用）*/
+    return P.img + (k < 10 ? "0" : "") + k + ".webp";     /* 旧池图路径（回退用）*/
   }
   function img(k) {
     if (IMG[k]) return IMG[k];

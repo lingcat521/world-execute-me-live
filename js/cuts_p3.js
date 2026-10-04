@@ -181,6 +181,12 @@
     if (t >= 120.497 && t < 121.7741) return false;          /* shot_erase（C55 之后） */
     if (t >= 134.4664 + 0.41 && t < 138.1587) return false;  /* shot_moe_dense（C60 塌掉之后） */
     if (t >= 147.30 && t < 147.62) return false;             /* flood 末尾她已被淹掉 */
+    /* 【2026-10-04 实测】ASCII 段 157.083-164.333 参考成片里**根本没有她的窗格**：整幅都是 ASCII 画
+       （EXECUTE / 12345 / EXECUTION / IF I CAN / 她的剪影）。我们的 DOM 窗格却一直挂着，把它左三分之一
+       盖成了聊天窗 —— 用户报的「2:43-2:45 的 ASCII art 没做好」就是这个。
+       边界逐帧实测（refex2 + 半帧抽帧）：157.0417 窗格可见、157.0833 已黑；164.1667 她随调试窗开始淡入、
+       164.3333 全亮 —— 所以藏到 164.3333，淡入那 0.17s 交给 asciileft 贴图（贴图盖住整块窗格区）。 */
+    if (t >= 157.0833 && t < 164.3333) return false;
     return true;
   }
   var baseVisible = PV.paneVisible;

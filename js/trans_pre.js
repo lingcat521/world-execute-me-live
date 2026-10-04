@@ -241,7 +241,7 @@
   /* 她窗格里的字形格（v2 C13.targets：她的 alpha>60 的 2px 网格，random.Random(13) 洗牌）。
      立绘不在仓库里，用 avatars/complete.png 近似，拿不到时退回一个人形轮廓。 */
   var TG = null, HER_IMG = null;
-  PV.loadImage('avatars/complete.png', function (im) { HER_IMG = im; });
+  PV.loadImage('avatars/complete.webp', function (im) { HER_IMG = im; });
   function herTargets() {
     if (TG) return TG;
     var x0 = 24, y0 = 56, x1 = 384, y1 = 604, cells = [], x, y;

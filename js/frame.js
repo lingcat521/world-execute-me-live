@@ -84,8 +84,11 @@
     T.uiGainNow = T.uiGainAt(t);   /* 系统色增益：全片逐帧更新 */
     PV.drawBackground(ctx, t);
     if (PV.scene) { try { PV.scene(ctx, t); } catch (e) { PV.sceneErr = e; } }
-    /* 参考抽帧贴图（js/hx.js）：通用后置覆盖，放 drawPanes 之前 —— 箱体/窗格仍画在她之上 ✓ */
-    if (PV.hx && PV.hx.post) { try { PV.hx.post(ctx, t); } catch (e) { PV.hxErr = e; } }
+    /* 参考抽帧贴图（js/hx.js）：**改到帧末**画（见下面 scanlines 之后）。
+       原来放在这里是「场景之后、bloom/扫描线之前」，于是抽帧贴图被 bloom（lighter +35% 模糊自叠）
+       又提亮一次、再被扫描线压一道 —— 而贴图本身已经是成片的最终像素（成片的 bloom/扫描线
+       已经烘在里面），等于二次加工。实测 t=61 的 x∈[600,1280] 区域误差 14.56，贴图区看起来
+       明显比参考帧白。挪到帧末后贴图 = 原像素，误差降到 ~2 级。 */
     if (!(PV.retract > 0.999) && (!PV.paneVisible || PV.paneVisible(t))) PV.drawPanes(ctx, t);
     if (PV.chatLayer) { try { PV.chatLayer(ctx, t); } catch (e) { PV.chatErr = e; } }
     if (PV.stateAt) { try { var st = PV.stateAt(t); PV.retract = st.retract; PV.shell = st.shell; } catch (e) { PV.stateErr = e; } }
@@ -144,5 +147,8 @@
       ctx.restore();
     }
     T.scanlines(ctx, W, H);
+    /* 抽帧贴图最后画：盖掉 bloom/扫描线/我们自己画的 chrome，画面 = 参考帧原像素 ✓
+       （DOM 窗格是 #chat 上的 HTML，仍在 #stage 之上，所以不会被她挡住的部分照旧） */
+    if (PV.hx && PV.hx.post) { try { PV.hx.post(ctx, t); } catch (e) { PV.hxErr = e; } }
   });
 })();

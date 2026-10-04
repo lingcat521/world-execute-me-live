@@ -226,7 +226,30 @@
              与 cell 字段配对看，才知道「该压暗的时刻真的压上了」 */
           k: PV.levels ? +PV.levels(PV.t)[0].toFixed(4) : null,
           ksup: PV.levels ? +PV.levels(PV.t)[1].toFixed(4) : null,
-          hold: !!PV.hold, ver: PV.VER || ''
+          hold: !!PV.hold, ver: PV.VER || '',
+          /* 【几何核对】窗格内关键元素的 1280 设计坐标矩形 —— 与参考帧同一特征比位置/大小，
+             就能判「她的窗格内容被压缩了没有」，不靠肉眼。 */
+          geo: (function () {
+            try {
+              var c = document.getElementById('chatbox'); if (!c) return null;
+              var out = [];
+              function add(label, el) { if (!el) { out.push([label, null]); return; }
+                var b = el.getBoundingClientRect();
+                out.push([label, [+((b.left - sr2.left) / s2).toFixed(1), +((b.top - sr2.top) / s2).toFixed(1),
+                                     +(b.width / s2).toFixed(1), +(b.height / s2).toFixed(1)]]); }
+              add('cell', c);
+              add('head', c.querySelector('.pv-head'));
+              add('pet', c.querySelector('.pv-pet'));
+              var all = c.querySelectorAll('*'), foot = null, online = null, last = null;
+              for (var i = 0; i < all.length; i++) { var tx = all[i].textContent || '';
+                if (!foot && all[i].children.length === 0 && /缓存命中|步/.test(tx) && tx.length < 60) foot = all[i];
+                if (!online && all[i].children.length === 0 && /对方在线/.test(tx)) online = all[i];
+                if (all[i].children.length === 0 && (all[i].innerText || '').trim()) last = all[i]; }
+              add('foot', foot); add('online', online); add('lastText', last);
+              out.push(['n', all.length, c.scrollHeight, c.clientHeight]);
+              return out;
+            } catch (eg) { return null; }
+          })()
         }) });
       } catch (e) {}
       return new Promise(function (res) {
@@ -402,15 +425,20 @@
       s = String(s).trim();
       if (!s) return;
       /* 清单支持三种行：数字列表=截屏 / probe=…=只回 DOM 计算值 / drift=开音画采样 */
-      var caps = [], probes = [], wantDrift = false;
+      var caps = [], probes = [], wantDrift = false, holdT = null, release = false;
       s.split(/[\n;]+/).forEach(function (line) {
         line = line.trim();
         if (!line) return;
         var mp = /^probe\s*[:=]\s*(.*)$/i.exec(line);
         if (mp) { probes = probes.concat(mp[1].split(',').map(parseFloat).filter(function (x) { return !isNaN(x); })); return; }
         if (/^drift/i.test(line)) { wantDrift = true; return; }
+        var mh = /^hold\s*[:=]\s*([0-9.]+)$/i.exec(line);
+        if (mh) { holdT = parseFloat(mh[1]); return; }
+        if (/^(play|release)$/i.test(line)) { release = true; return; }
         if (/^[0-9.,\s]+$/.test(line)) caps = caps.concat(line.split(',').map(parseFloat).filter(function (x) { return !isNaN(x); }));
       });
+      if (holdT !== null && !isNaN(holdT)) { PV.t = Math.floor(holdT * 24) / 24; PV.hold = true; PV.holdMode = true; }
+      if (release) { PV.hold = false; PV.holdMode = false; }
       if (wantDrift) driftArm(0);   /* 后端开的采样：只要在播就一直采，文件固定、只留最后一条 */
       if (probes.length) probeOnly(probes);
       if (caps.length) runCapture(caps);

@@ -126,7 +126,7 @@
   var F2SPEC = {3: { cut: 150.6202, until: 151.5433, land: 150.75000, z0: 1.0, z1: 1.25, bars: 1 },
                 7: { cut: 154.3125, until: 155.2356, land: 154.41667, z0: 1.35, z1: 1.6, bars: 2 }};
   var F2_SRC = null;
-  if (PV.loadImage) PV.loadImage('avatars/f/closeup_la.png', function (im) { F2_SRC = im; });
+  if (PV.loadImage) PV.loadImage('avatars/f/closeup_la.webp', function (im) { F2_SRC = im; });
   function f2View(z) {
     var a0 = [F2R[0] + F2MID[0] * F2S0, F2R[1] + F2MID[1] * F2S0];
     var k = P.smooth2((z - 1.0) / 0.6);
@@ -386,9 +386,9 @@
   PV.p2cImages = IMGS;
   /* 表情名 -> 素材（沿用原工程的 EXPRS 命名，方便逐句对照 Python） */
   var MAP = {
-    cheerful: 'avatars/complete.png', starry: 'avatars/a3/00900.png', shy: 'avatars/a2/00600.png',
-    serious: 'avatars/a2/00500.png', confused: 'avatars/a2/00400.png', frightened: 'avatars/lost.png',
-    angry: 'avatars/forged.png', exasperated: 'avatars/left.png', full: 'avatars/complete.png'
+    cheerful: 'avatars/complete.webp', starry: 'avatars/a3/00900.webp', shy: 'avatars/a2/00600.webp',
+    serious: 'avatars/a2/00500.webp', confused: 'avatars/a2/00400.webp', frightened: 'avatars/lost.webp',
+    angry: 'avatars/forged.webp', exasperated: 'avatars/left.webp', full: 'avatars/complete.webp'
   };
   var CROPS = { full: [0, 0, 1, 1], upper: [0.05, 0.0, 0.95, 0.62], face: [0.15, 0.02, 0.85, 0.45],
                 bust: [0.08, 0.0, 0.92, 0.72] };

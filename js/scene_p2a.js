@@ -368,7 +368,7 @@
   /* ================================ 她的立绘：halfblock / glyph_grid / conv_maps 的替代 ================================
      素材只有 avatars/complete.png（120x120 RGB 无 alpha）；Python 用的是 H3 帧缓存的她。 */
   var HER = null, _cells = {};
-  if (PV.loadImage) { try { PV.loadImage('avatars/complete.png', function (im) { HER = im; }); } catch (e) {} }
+  if (PV.loadImage) { try { PV.loadImage('avatars/complete.webp', function (im) { HER = im; }); } catch (e) {} }
   var CROPS = { full: [0, 0, 1, 1], upper: [0.10, 0.00, 0.86, 0.62], face: [0.20, 0.03, 0.62, 0.52],
                 bust: [0.06, 0.00, 0.94, 0.72], fig: [0.30, 0.00, 0.72, 1.00] };
   function herCells(cols, rows, crop) {
@@ -1215,7 +1215,7 @@
 
   /* ---------------------------------------------------------------- 她的立绘（P2A_BRIEF §4） */
   var HER = null;
-  if (PV.loadImage) { try { PV.loadImage('avatars/complete.png', function (im) { HER = im; }); } catch (e) {} }
+  if (PV.loadImage) { try { PV.loadImage('avatars/complete.webp', function (im) { HER = im; }); } catch (e) {} }
   var CROPS = { full: [0, 0, 1, 1], upper: [0.10, 0.00, 0.86, 0.62], face: [0.20, 0.03, 0.62, 0.52],
                 bust: [0.06, 0.00, 0.94, 0.72] };
   var _cells = {};

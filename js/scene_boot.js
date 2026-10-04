@@ -1147,7 +1147,7 @@
   var PV = window.PV, T = PV.tui;
   var Y0 = 330, A = 150, K = 110, X0 = 430, VIEW = 720;
   var riderImg = null;
-  if (PV.loadImage) { try { PV.loadImage('avatars/rider.png', function (im) { riderImg = im; }); } catch (e) {} }
+  if (PV.loadImage) { try { PV.loadImage('avatars/rider.webp', function (im) { riderImg = im; }); } catch (e) {} }
   function state(lt, dur) {
     var px = Math.min(1, lt / dur * 1.05) * 1000;
     return [px, Math.max(0, Math.min(1080 - VIEW, px - 300))];

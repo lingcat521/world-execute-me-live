@@ -50,7 +50,7 @@
   /* ================================================================ 头像工厂
      原工程的 avatars/{a1,a2,a3,b,c,d,f,g}/*.png 是 PIL 预生成的；这里用 canvas 现场从
      avatars/*.png 推同样的东西（同一个 head crop、同一套 mosaic + colorize 规则），缓存成 dataURL。 */
-  var AVSRC = { cheerful: 'avatars/complete.png', frightened: 'avatars/left.png', starry: 'avatars/forged.png' };
+  var AVSRC = { cheerful: 'avatars/complete.webp', frightened: 'avatars/left.webp', starry: 'avatars/forged.webp' };
   var AVIMG = {}, AVCACHE = {};
   (function () {
     for (var k in AVSRC) (function (k) {
@@ -159,7 +159,7 @@
     if (AVCACHE[key]) return AVCACHE[key];
     var v = null;
     try { v = fn(); } catch (e) { v = null; }
-    if (!v) { var _n2 = Math.round(((PV.h3 && PV.h3.now) ? PV.h3.now() : 0) * 24); if (_n2 >= 1393 && _n2 <= 1728) return 'avatars/e/' + pad(_n2, 5) + '.png'; return 'avatars/complete.png'; }
+    if (!v) { var _n2 = Math.round(((PV.h3 && PV.h3.now) ? PV.h3.now() : 0) * 24); if (_n2 >= 1393 && _n2 <= 1728) return 'avatars/e/' + pad(_n2, 5) + '.webp'; return 'avatars/complete.webp'; }
     AVCACHE[key] = v;
     return v;
   }
@@ -167,7 +167,7 @@
   var BLUE = [[6, 10, 28], [120, 150, 255]];
   function avMosaic(name, cells) {   /* 蓝色 mosaic（A2/A3/B/C/D/F/G 的底子） */
     var _n = Math.round(((PV.h3 && PV.h3.now) ? PV.h3.now() : 0) * 24);
-    if (name === 'cheerful' && _n >= 1393 && _n <= 1728) return 'avatars/e/' + pad(_n, 5) + '.png';   /* t=58-69 按帧取源（参考成片抽帧） */
+    if (name === 'cheerful' && _n >= 1393 && _n <= 1728) return 'avatars/e/' + pad(_n, 5) + '.webp';   /* t=58-69 按帧取源（参考成片抽帧） */
     return avURL('m' + name + cells, function () {
       var g = avBase(name, [cells, cells]); if (!g) return null;
       return colorizeURL(g, BLUE[0], BLUE[1], 120);
@@ -248,13 +248,13 @@
      12 路 48.8 张/秒 = 2 倍余量，够在 t=16s（A2 开始）之前把 a1+a2 全部热完。 */
   var WARM_LIST = (function () {
     var seen = {}, out = [], add = function (p) { if (p && !seen[p]) { seen[p] = 1; out.push(p); } };
-    add('avatars/a1_seed.png');
-    for (var i = 0; i <= 12; i++) add('avatars/a1_params' + pad(i, 2) + '.png');
-    for (var i = 0; i < 24; i++) add('avatars/a1_noise' + pad(i, 2) + '.png');
-    for (var n = 384; n <= 702; n++) add('avatars/a2/' + pad(n, 5) + '.png');
-    for (var n = 703; n <= 1055; n++) add('avatars/a3/' + pad(n, 5) + '.png');
-    add('avatars/complete.png'); add('avatars/left.png'); add('avatars/forged.png');
-    add('avatars/draft.png'); add('avatars/lost.png'); add('avatars/editing.png');
+    add('avatars/a1_seed.webp');
+    for (var i = 0; i <= 12; i++) add('avatars/a1_params' + pad(i, 2) + '.webp');
+    for (var i = 0; i < 24; i++) add('avatars/a1_noise' + pad(i, 2) + '.webp');
+    for (var n = 384; n <= 702; n++) add('avatars/a2/' + pad(n, 5) + '.webp');
+    for (var n = 703; n <= 1055; n++) add('avatars/a3/' + pad(n, 5) + '.webp');
+    add('avatars/complete.webp'); add('avatars/left.webp'); add('avatars/forged.webp');
+    add('avatars/draft.webp'); add('avatars/lost.webp'); add('avatars/editing.webp');
     return out;
   })();
   var WARM_MAX = 12;                 /* 受限并发：不要一次性把 710 个请求全发出去 */
@@ -489,9 +489,9 @@
               'Ġ(', 'ĸ', 'ecause', 'Ġ您', '].', 'ĉ', 'Ġ"', 'Ã©', 'Ġwh', 'ĳ', 'ĠĊ', '0', 'Ġ*', 'ãģ', 'ç', 'Ġto'];
   function soupOf(n) { var s = '', i; for (i = 0; i < n; i++) s += SOUP[i % SOUP.length]; return s; }
   function avatar1(t) {
-    if (t < PARAMS) return 'avatars/a1_seed.png';
-    if (t < INIT) return 'avatars/a1_params' + pad(Math.min(12, Math.floor(13 * (t - PARAMS) / (INIT - 0.15 - PARAMS))), 2) + '.png';
-    return 'avatars/a1_noise' + pad(Math.floor(t * FPS) % 24, 2) + '.png';
+    if (t < PARAMS) return 'avatars/a1_seed.webp';
+    if (t < INIT) return 'avatars/a1_params' + pad(Math.min(12, Math.floor(13 * (t - PARAMS) / (INIT - 0.15 - PARAMS))), 2) + '.webp';
+    return 'avatars/a1_noise' + pad(Math.floor(t * FPS) % 24, 2) + '.webp';
   }
   function typedAt(t) { var txt = '', i; for (i = 0; i < KEYS.length; i++) if (t >= KEYS[i][0]) txt = KEYS[i][1]; return txt; }
   function modelName(t) {
@@ -575,7 +575,7 @@
     var n = Math.round(t * FPS);
     if (n < lo) n = lo;
     if (n > hi) n = hi;
-    return 'avatars/' + dir + '/' + pad(n, 5) + '.png';
+    return 'avatars/' + dir + '/' + pad(n, 5) + '.webp';
   }
   function a2Header(t) {
     return '<div class="pv-head"><div class="pv-pet"><img src="' + avFrame('a2', 384, 702, t) + '" width="60" height="60"></div>' +
@@ -1415,18 +1415,18 @@
      ② 灰阶/着色公式与权威不同。现在按同一配方从替身帧 data/h3/00.png 的头部裁切生成了真素材
      （pv-live/avatars/d/{m8,m16,m32,m64,wide_m64,wide}.png），直接引用。 */
   function dMosaic(cells) {
-    return avURL('d_m' + cells, function () { return 'avatars/d/m' + cells + '.png'; });
+    return avURL('d_m' + cells, function () { return 'avatars/d/m' + cells + '.webp'; });
   }
   function dWideBlue() {
-    return avURL('d_wide_m64', function () { return 'avatars/d/wide_m64.png'; });
+    return avURL('d_wide_m64', function () { return 'avatars/d/wide_m64.webp'; });
   }
   function dWide() {
-    return avURL('d_wide', function () { return 'avatars/d/wide.png'; });
+    return avURL('d_wide', function () { return 'avatars/d/wide.webp'; });
   }
   var D_AV = null;
   function dAvatarAt(t) {
-    if (!D_AV) D_AV = { draft: 'avatars/draft.png', complete: avMosaic('cheerful', 12), left: 'avatars/left.png',
-                        lost: 'avatars/lost.png', editing: 'avatars/editing.png', forged: 'avatars/forged.png' };
+    if (!D_AV) D_AV = { draft: 'avatars/draft.webp', complete: avMosaic('cheerful', 12), left: 'avatars/left.webp',
+                        lost: 'avatars/lost.webp', editing: 'avatars/editing.webp', forged: 'avatars/forged.webp' };
     var a = D_AV, reveal = function (t0, dur) { return ease((t - t0) / (dur || 0.28)); };
     if (t < D_DONE) return [a.draft, null, 0];
     if (t < D_BACK) return [a.draft, a.complete, reveal(D_DONE)];
@@ -2037,7 +2037,7 @@
     if (k > 1.001) spill = 'transform:scale(' + k.toFixed(3) + ');border-radius:14px;box-shadow:0 0 0 1px rgba(255,204,0,.55),' +
       '0 0 14px rgba(255,204,0,.28)';
     return '<div class="pv-head"><div class="pv-pet" style="position:relative;z-index:4' + (spill ? ';overflow:visible' : '') +
-      '"><img src="avatars/forged.png" style="position:relative;z-index:4;' + spill + '"></div>' +
+      '"><img src="avatars/forged.webp" style="position:relative;z-index:4;' + spill + '"></div>' +
       '<div class="pv-who" style="margin-left:' + (30 * (k - 1)).toFixed(1) + 'px"><div class="pv-name">大肥鱼</div>' +
       '<div class="pv-state"><span class="pv-dot" style="background:' + dot + '"></span>' + esc(state) + '</div></div></div>';
   }
@@ -2243,7 +2243,7 @@
   function fKvFill(t) { fInit(); return Math.min(1, 0.70 + 0.30 * ease((t - F_C84) / F_DUR84 * 1.7)); }
   function fAvatar(t) {
     fInit();
-    if (t >= fLine()) return ['avatars/a1_seed.png', 0.0];
+    if (t >= fLine()) return ['avatars/a1_seed.webp', 0.0];
     if (t < 162.159) {
       if (F_HIT_T[F_TOMATO] <= t && t < F_TOMATO_UNTIL) return [avURL('c_tomato', function () {
         var g = avBase('cheerful', [14, 14]); if (!g) return null;

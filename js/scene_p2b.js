@@ -448,7 +448,7 @@
   (function () {
     for (var i = 0; i < MEMS.length; i++) (function (m) {
       if (!PV.loadImage) return;
-      PV.loadImage('assets/mem/' + m.sprite + '.png', function (im) {
+      PV.loadImage('assets/mem/' + m.sprite + '.webp', function (im) {
         var cv = PV.newCanvas(Math.round(im.width / 2 * m.sc), Math.round(im.height / 2 * m.sc));
         var g = cv.getContext('2d');
         g.imageSmoothingQuality = 'high';
