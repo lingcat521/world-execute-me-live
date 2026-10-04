@@ -1557,6 +1557,14 @@
     }
     var cos = 0.412 + (0.9999 - 0.412) * Math.pow(m, 0.8);
     T.textPIL(ctx, 'cos(me, you) = ' + cos.toFixed(4), 430, 572, T.ui(0.95), 20);
+    /* v1 continuity.py:185（成片用的 approved chorus 渲染器，v2 的 s_chorus1 直接沿用）：
+         if name=='shot_unite' and c.u>.65:  chip(im,'we',(694,562,774,597),tk.amb(.95))
+       即 u>0.65 起在底部 (694,562)-(774,597) 画 'we' 令牌芯片（BG 底 + amb(0.95) 2px 边框 +
+       居中的 F_MONO_B 19）。这是 retained 层的物件：scene_p2a.js:206 有这条判断，
+       但**没有任何地方为 shot_unite 调 retained()**（其它镜头都调了）→ 底部那块一直空着
+       （hotbox t=56 的 x640-800/y540-630 块 = 21）。成片实测芯片出现于 55.8333（55.7917 还没有），
+       用我们这版窗口 [54.159,56.697] + u>0.65 算出的门限 55.809 落在 (55.7917, 55.8333] 内 ✓ 阈值不用改。 */
+    if (PV.retained) PV.retained(ctx, t, 'shot_unite', lt, T.clamp01(lt / dur));
   };
 })();
 
