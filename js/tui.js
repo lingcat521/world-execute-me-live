@@ -136,12 +136,36 @@
     ctx.fillText(s, 0, 0);
     ctx.restore();
   };
+  /* 【2026-10-06 大修】权威 F_MONO / F_MONO_B 都是 Consolas（常规 consola.ttf / 粗体 consolab.ttf，
+     advance 同为 0.5498em）。我们原来两档都用 'SpaceMono' —— 而那套字体的 400 权重是**空的**
+     （css/pv.css 只注册了 700 的 SpaceMono-Bold.ttf；node 侧 GlobalFonts 也把 Bold 注册成 'SpaceMono'），
+     浏览器只能拿 700 字形去凑 400 -> **全片所有「常规」等宽字都变成了粗体**，而且宽度是 SpaceMono 的
+     advance（比 Consolas 宽约 9%）。实测 t=109 的 JSON 面板：我们每行亮度是参考的 2 倍。
+     现在非粗体走系统等宽（MONO_FAM + monoScale 压到 0.5498em）、粗体才用 SpaceMono，
+     两者都压缩到 Consolas 的 advance，并用 F_MONO 的 ascent（ascentMono）对齐基线。 */
+  T.famScale = function (ctx, size, fam) {
+    var key = size + '|' + fam, r = _mk[key];
+    if (r !== undefined) return r;
+    ctx.save();
+    ctx.font = size + 'px ' + fam;
+    var w0 = ctx.measureText('M').width || (size * 0.6);
+    ctx.restore();
+    _mk[key] = (size * T.MONO_ADV) / w0;
+    return _mk[key];
+  };
   T.textPIL = function (ctx, s, x, y, col, size, align, bold) {
-    ctx.font = T.font(size, bold);
-    ctx.textAlign = align || 'left';
-    ctx.textBaseline = 'alphabetic';
+    var fam = bold ? ('"SpaceMono", ' + T.MONO_FAM) : T.MONO_FAM;
+    var k = T.famScale(ctx, size, fam);
+    var w = s.length * size * T.MONO_ADV;
+    var ox = align === 'center' ? -w / 2 : (align === 'right' ? -w : 0);
+    ctx.save();
+    ctx.translate(x + ox, y + T.ascentMono(size));
+    ctx.scale(k, 1);
+    ctx.font = size + 'px ' + fam;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = typeof col === 'string' ? col : T.css(col);
-    ctx.fillText(s, x, y + T.ascent(size));
+    ctx.fillText(s, 0, 0);
+    ctx.restore();
   };
   function Rng(seed) { this.s = (seed >>> 0) || 1; }
   Rng.prototype.next = function () {
