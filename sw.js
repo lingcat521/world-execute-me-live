@@ -4,8 +4,10 @@
    做法：**只缓存素材**（data/ avatars/ assets/ fonts/），缓存优先、命中就直接返回，不再走网络；
    代码与 HTML 一律不拦（autoReload / stamp 轮询还要看得见新版本）。
    注意：SW 只在 https 或 localhost 生效；线上是 GitHub Pages（https ✓）。 */
-var VER = 'pv-assets-v3';
-var ASSET = /^\/(data|avatars|assets|fonts)\//;
+var VER = 'pv-assets-v4';
+/* 只缓存**大块二进制素材**：webp/mp3/bin/css。json 不缓存 —— data/precache.json 会随素材变化重生成，
+   缓存住就永远是旧索引（?v= 也救不了 SW 的 cache-first）。 */
+var ASSET = /^\/(data|avatars|assets|fonts)\/[^?]*\.(webp|mp3|bin|css)$/i;
 
 self.addEventListener('install', function () { self.skipWaiting(); });
 

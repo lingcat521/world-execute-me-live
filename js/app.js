@@ -211,6 +211,15 @@
   }
   function startAudio() {
     if (PV.started) return;
+    /* 【2026-10-05 用户要求】素材缓存门：整片素材 ~186MB（hx 贴图 + h3 帧池 + avatars），
+       缓存不到阈值（默认 50%，见 js/precache.js）不允许开始播放 —— 否则一边播一边下会卡死。
+       点了开始但还没到阈值：记下 pendingStart，precache 到点会自动调这里。 */
+    if (PV.pre && PV.pre.on && !PV.pre.ready) {
+      PV.pendingStart = true;
+      if (PV.prePaint) { try { PV.prePaint(); } catch (e) {} }
+      if (msgEl) msgEl.textContent = '素材缓存中 ' + (PV.pre.pct || 0).toFixed(0) + '% …';
+      return;
+    }
     PV.started = true;
     var hintEl = document.getElementById('hint'); if (hintEl) hintEl.style.display = 'none';
     PV.audioReady = true;   /* 元素上有 src 就当它可用；真失败会走 error 事件并写 #msg */
@@ -232,6 +241,7 @@
     document.removeEventListener('pointerdown', startAudio, true);
     document.removeEventListener('keydown', startAudio, true);
   }
+  PV.startAudio = startAudio;   /* precache.js 到阈值后自动放行时要用 */
   audioEl.addEventListener('error', function () {
     if (msgEl) msgEl.textContent = '音频加载失败 code=' + (audioEl.error && audioEl.error.code) + ' src=' + audioEl.currentSrc;
   });
