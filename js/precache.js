@@ -14,10 +14,11 @@
   var q = new URLSearchParams(location.search);
   var THRESH = q.has('pre') ? parseFloat(q.get('pre')) : 0.5;
   if (q.has('capt')) THRESH = 0;
-  var CONC = Math.max(1, parseInt(q.get('prec') || '8', 10));
-  var CACHE = q.get('cache') || 'pv-assets-v4';       /* 与 sw.js 的 VER 同名 */
+  var CONC = Math.max(1, parseInt(q.get('prec') || '16', 10));   /* 16 路：HTTP/2 下实测比 8 路快一倍 */
+  var CACHE = q.get('cache') || 'pv-assets-v4';
+  var t0 = Date.now();       /* 与 sw.js 的 VER 同名 */
   var PRE = PV.pre = { ready: false, on: THRESH > 0, thresh: THRESH, done: 0, total: 0, pct: 0,
-                       got: 0, hit: 0, miss: 0, n: 0, files: 0, err: '', over: false };
+                       got: 0, hit: 0, miss: 0, n: 0, files: 0, err: '', over: false, rate: 0 };
   if (!PRE.on) { PRE.ready = true; return; }
 
   var box = null, gone = false;
@@ -44,7 +45,7 @@
     if (PV.started) { hide(); return; }
     b.innerHTML = '<div style="font-size:16px;color:#8ea2ff">素材缓存 ' + pct.toFixed(0) + '%</div>' +
       '<div style="opacity:.8">' + (PRE.done / 1048576).toFixed(0) + ' / ' + (PRE.total / 1048576).toFixed(0) + ' MB' +
-      '　已命中 ' + PRE.hit + '</div>' +
+      '　已命中 ' + PRE.hit + '　' + PRE.rate + ' KB/s</div>' +
       '<div style="margin:10px auto 0;width:240px;height:6px;background:#1f2937;border-radius:3px;overflow:hidden">' +
       '<div style="height:100%;width:' + pct.toFixed(1) + '%;background:#4d6bfe"></div></div>' +
       '<div style="margin-top:10px;font-size:12.5px;opacity:.75;line-height:1.5">' +
@@ -63,10 +64,11 @@
       if (fin) return; fin = true;
       PRE.n++;
       if (ok) { PRE.got++; PRE.done += size; if (cached) PRE.hit++; } else PRE.miss++;
+      PRE.rate = Math.round(PRE.done / 1024 / Math.max(1, (Date.now() - t0) / 1000));
       if (!PRE.ready && PRE.total && PRE.done / PRE.total >= PRE.thresh) {
         PRE.ready = true; paint();
         if (PV.pendingStart && PV.startAudio) { try { PV.startAudio(); } catch (e) {} }
-      } else if (!PRE.ready && (PRE.n % 20 === 0)) paint();
+      } else if (PRE.n % 20 === 0) paint();
       after();
     }
     function imgFallback() {
@@ -82,10 +84,15 @@
           if (hit) { done(true, true); return; }
           return fetch(url, { credentials: 'same-origin' }).then(function (res) {
             if (!res || !res.ok) { done(false); return; }
-            var put = null;
-            try { put = c.put(url, res.clone()); } catch (e) {}
-            res.arrayBuffer().then(function () { if (put) put.then(function () { done(true); }, imgFallback); else done(true); },
-                                    function () { imgFallback(); });
+            /* clone 交给 cache.put 就完事：以前又 arrayBuffer() 读一遍（多一次全量拷贝 + 多占内存），
+               一万多个文件时这本身就是瓶颈 */
+            var put;
+            try { put = c.put(url, res.clone()); } catch (e) { put = null; }
+            if (!put) { done(true); return; }
+            put.then(function () { done(true); }, function () {
+              /* 存不进（配额/隐私模式）：body 读掉当作已下载，别卡死 */
+              res.arrayBuffer().then(function () { done(true); }, function () { done(false); });
+            });
           }, function () { imgFallback(); });
         });
       }).catch(function () { imgFallback(); });
