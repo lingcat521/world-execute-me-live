@@ -1530,11 +1530,16 @@
         T.textMono(ctx, 'id ' + T.tokenId(label), x2 + 8, 202, T.mix(col, 0.6), 12);
       }
     } else {
+      /* 【A/B 试验】成片里这一组（环 + 'we' 方块 + 标签）比权威源码**整体高 12px**：
+         实测成片 56.0 方块亮带 y=138..178（x=734、宽 101 与源码一致），源码 150..196=我们；
+         环的上弧成片在 125/127/129（t=55.83/55.92/56.0），源码算法 173-(30+60*pulse)=137/139/141。
+         先按成片整体上移 12 试（WE_DY），用块误差验证：改对了那块 42-91 会大幅掉。 */
+      var WE_DY = PV.UNITE_WE_DY === undefined ? -12 : PV.UNITE_WE_DY;
       var r = 30 + 60 * PV.pulse(t);
-      T.ring(ctx, cx, 173, r, T.ui(0.5), 1, 1);
-      T.fill(ctx, cx - 50, 150, cx + 51, 197, T.ui(0.95), 1);
-      T.textPIL(ctx, 'we', cx - 18, 156, T.css(T.BG), 26);
-      T.textMono(ctx, 'merge -> id ' + T.tokenId('we'), cx - 34, 202, T.ui(0.8), 12);
+      T.ring(ctx, cx, 173 + WE_DY, r, T.ui(0.5), 1, 1);
+      T.fill(ctx, cx - 50, 150 + WE_DY, cx + 51, 197 + WE_DY, T.ui(0.95), 1);
+      T.textPIL(ctx, 'we', cx - 18, 156 + WE_DY, T.css(T.BG), 26);
+      T.textMono(ctx, 'merge -> id ' + T.tokenId('we'), cx - 34, 202 + WE_DY, T.ui(0.8), 12);
     }
     T.box(ctx, 404, 320, 1164, 604, 'embedding space  (t-SNE of d=4096)', 0.5, T.UI, t + 0.3);
     var rnd = PV.mt(11);
