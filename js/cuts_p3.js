@@ -534,6 +534,16 @@
         }
       }
     });
+    /* 【2026-10-05 权威补齐】给 dsh_patch_mem.last_caret 用：C55 飞行中的名字在 t 时刻的 (x, y, size)。
+       权威 label_at(t)：着陆+锁定后固定在 (MSG_XY, 20)；起飞前在 (NAME_XY, 18)；
+       中间按 bezier(bend=-0.25) + settle(0.04, 0.12) 飞。 */
+    PV.c55LabelAt = function (t) {
+      if (t >= T0 + LAND + LOCK) return [MSG_XY[0], MSG_XY[1], 20];
+      if (t < T0) return [NAME_XY[0], NAME_XY[1], 18];
+      var u = clamp01((t - T0) / (LAND + 0.06)), e = settle(u, 0.04, 0.12);
+      var p = bez([NAME_XY[0], NAME_XY[1]], MSG_XY, -0.25, e);
+      return [p[0], p[1], Math.round(lerp(18, 20, u) * (1 + 0.5 * Math.sin(Math.PI * Math.min(1, u * 1.3))))];
+    };
   })();
 
   /* ================================================================ C56 erase -> rewrite_reward */

@@ -473,7 +473,19 @@
     if (k === 4) return MEM_LAST_CARET(t);
     return [MEM_CARET_X, memRowCy(MEMS[k - 1].row)];
   }
-  var MEM_LAST_CARET = function () { return MEM_HOME; };   /* 第 4 段（120 s 后）由 erase 那条线负责 */
+  /* 【2026-10-05 权威补齐】权威 dsh_patch_mem.last_caret(t)：光标跟着「最后一个气泡」走 ——
+     last_box = label_at(t)（C55 飞行名字的位置/字号）往下 GAP=10，光标放在气泡右侧 +6 + 半个光标宽。
+     原来这里是桩函数（直接返回 MEM_HOME），于是 119.92-120.20 这段光标早早跳到左下角，
+     参考同刻蓝色像素 7938 个、我们只有 1245 个。 */
+  var MEM_LAST_CARET = function (t) {
+    var p = PV.c55LabelAt ? PV.c55LabelAt(t) : null;
+    if (!p) return MEM_HOME;
+    var size = p[2], sp = MEM_IMG.last;
+    var l = 1, bb = size * 0.78;                 /* F_MONO_B 的 ink bbox 近似（左边距/底边） */
+    var x = p[0] + l, y = p[1] + bb + 10;        /* GAP = 10 */
+    var w = sp ? sp.width : 200, h = sp ? sp.height : 60;
+    return [x + w + 6 + 9 / 2, y + h / 2];
+  };
   function memPos(t) {                        /* home -> row1 -> row4 -> row3 -> ... */
     var k = 0, j;
     for (j = 0; j < MEMS.length; j++) if (t >= MEMS[j].A - MEM_MOVE) k = j + 1;
