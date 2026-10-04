@@ -41,6 +41,24 @@
     var p = T.ease(T.clamp01((t - LEAD[i][0]) / fade)), prev = lv(LEAD[i - 1][1]);
     return [prev[0] + (cur[0] - prev[0]) * p, prev[1] + (cur[1] - prev[1]) * p];
   };
+  /* dsh_her.py:33/42/27 的成片级压暗：RIGHT = 可视化窗格 + ops 列，SUPPORT = 0.42，
+     COVER = 5.0..125.0（分块 A1..D；125 之后由 e/f/g 的各组 patch 接管）。
+     权威 dsh_her.py:296-311 finish()：section 渲染完、post() 的 bloom/扫描线之后、编码之前，
+     把 RIGHT 这块 crop 出来朝底色 blend：
+         reg = im.crop(RIGHT); im.paste(Image.blend(Image.new("RGB", reg.size, BG), reg, r), RIGHT[:2])
+     r = levels(t)[1]（LEAD='left' 时右降到 0.42、0.25s 交叉缓入）。
+     canvas 等价写法：source-over 铺一层 alpha=1-r 的 BG —— out = BG*(1-r) + in*r ✓ 与 blend 同式。 */
+  var LEAD_RIGHT = [392, 44, 1268, 608], LEAD_COVER = [5.0, 125.0];
+  PV.leadDim = function (ctx, t) {
+    if (!(t >= LEAD_COVER[0] && t < LEAD_COVER[1])) return;
+    var r = PV.levels(t)[1];
+    if (r >= 0.999) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = T.css(T.BG, 1 - r);
+    ctx.fillRect(LEAD_RIGHT[0], LEAD_RIGHT[1], LEAD_RIGHT[2] - LEAD_RIGHT[0], LEAD_RIGHT[3] - LEAD_RIGHT[1]);
+    ctx.restore();
+  };
   /* LEAD 压暗：权威 dsh_her.py:237 make_pane() 的 250-253 是
        cell = Image.blend(Image.new("RGB", (w, h), BG), cell, k)     （k = levels(t)[0]）
      即**箱内内容朝窗格底色 BG 混合 k**，箱体与标题仍全亮。
@@ -147,6 +165,11 @@
       ctx.restore();
     }
     T.scanlines(ctx, W, H);
+    /* LEAD 压暗（dsh_her.py:296-311 finish）：**必须在 bloom/扫描线之后**（权威就是这个顺序），
+       且必须在抽帧贴图之前（贴图是成片抽的、已经是压暗后的像素）。
+       踩过的坑：上一版把它写成 shot_feel_you 场景内的整幅蒙版（0.620 alpha 盖 BG），只覆盖
+       103.08-106.77 → 106.77-110.40（shot_completion）整块没压暗，实测 t=109 框边 115 vs 参考 50。 */
+    if (PV.leadDim) { try { PV.leadDim(ctx, t); } catch (e) { PV.leadDimErr = e; } }
     /* 抽帧贴图最后画：盖掉 bloom/扫描线/我们自己画的 chrome，画面 = 参考帧原像素 ✓
        （DOM 窗格是 #chat 上的 HTML，仍在 #stage 之上，所以不会被她挡住的部分照旧） */
     if (PV.hx && PV.hx.post) { try { PV.hx.post(ctx, t); } catch (e) { PV.hxErr = e; } }
