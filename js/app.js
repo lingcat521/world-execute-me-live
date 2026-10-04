@@ -200,17 +200,67 @@
      同时把状态写到 #msg，用户一眼能看到卡在哪一步。 */
   var kickTimer = null, kickN = 0;
   function audioOK() { return !audioEl.paused && !audioEl.ended && audioEl.readyState >= 2; }
+  audioEl.addEventListener('playing', function () { sndHint(false); });
   function kickAudio() {
     if (!PV.started || paused) return;
     if (audioOK()) { if (msgEl) msgEl.textContent = ''; return; }
     var pr = null;
     try { pr = audioEl.play(); } catch (e) {}
     if (pr && pr.catch) pr.catch(function (err) {
-      if (msgEl) msgEl.textContent = '音频未就绪(' + ((err && err.name) || '?') + ') 重试中… readyState=' + audioEl.readyState;
+      var nm = (err && err.name) || '?';
+      if (msgEl) msgEl.textContent = '音频未就绪(' + nm + ') 重试中… readyState=' + audioEl.readyState;
+      /* NotAllowedError = 自动播放策略拦的（不是文件问题）：给个能点的小提示，点一下就有声 */
+      if (nm === 'NotAllowedError') sndHint(true, '▶ 点这里开启声音');
     });
+    if (audioOK()) sndHint(false);
   }
+  /* 【自动播放策略】没声音的元凶：浏览器只允许"用户手势里"带声音起播。
+     到 50% 由 precache.js 定时器自动开播时**没有手势**，play() 会被 NotAllowedError 拒掉。
+     所以：① 用户一点（任何位置/▶）就先用 muted 播一下再停 —— 该元素/该域被记为"已交互过"，
+     之后程序化 play() 就放行了；② 万一还是被拒，右下角给一个"点击开启声音"的小提示。 */
+  function unlockAudio() {
+    /* 先试**带声**：iOS/Safari 只认"手势里那次带声的 play()"——之后同一个 <audio> 的
+       程序化 play() 才放行；被拒（NotAllowedError，多半是桌面 Chrome 还没交互）再退 muted。 */
+    var attempt = function (muted) {
+      try {
+        audioEl.muted = muted;
+        var pu = audioEl.play();
+        if (pu && pu.then) {
+          pu.then(function () { try { audioEl.pause(); audioEl.currentTime = 0; } catch (e) {} audioEl.muted = false; },
+                  function () { if (!muted) attempt(true); else { audioEl.muted = false; sndHint(true); } });
+        } else { try { audioEl.pause(); } catch (e) {} audioEl.muted = false; }
+      } catch (e) { try { audioEl.muted = false; } catch (e2) {} }
+    };
+    attempt(false);
+  }
+  function sndHint(on, text) {
+    var el = document.getElementById('sndhint');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'sndhint';
+      el.style.cssText = 'position:fixed;right:16px;bottom:64px;z-index:9600;background:rgba(6,10,18,.94);' +
+        'border:1px solid #4d6bfe;border-radius:9px;padding:10px 14px;color:#cdd8ff;cursor:pointer;' +
+        'font:13px/1.4 ui-monospace,Menlo,Consolas,monospace;box-shadow:0 6px 24px rgba(0,0,0,.6)';
+      document.body.appendChild(el);
+    }
+    el.textContent = text || '▶ 点击开启声音';
+    el.style.display = on ? 'block' : 'none';
+    el.onclick = function (ev) {
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+      /* 这是一次真手势：把声音起起来，并把画面从"等声音"的暂停里放出来 */
+      try {
+        var pr = audioEl.play();
+        if (pr && pr.then) pr.then(function () { sndHint(false); try { PV.setPaused(false); } catch (e) {} },
+                                   function () { el.textContent = '▶ 还是被拦：再点一次 / 检查静音键'; });
+      } catch (e) {}
+      el.style.display = 'none';
+    };
+  }
+  PV.sndHint = sndHint;
+
   function startAudio() {
     if (PV.started) return;
+    unlockAudio();
     /* 【2026-10-05 用户要求】素材缓存门：整片素材 ~186MB（hx 贴图 + h3 帧池 + avatars），
        缓存不到阈值（默认 50%，见 js/precache.js）不允许开始播放 —— 否则一边播一边下会卡死。
        点了开始但还没到阈值：记下 pendingStart，precache 到点会自动调这里。 */
@@ -230,6 +280,9 @@
     kickN = 0;
     kickTimer = setInterval(function () {
       kickN++;
+      /* 2 秒还起不来声音：把画面也停下（成片是音画同步的，无声画面会一路跑偏），
+         只留右下角那个"▶ 点这里开启声音"，点了就继续。 */
+      if (kickN === 8 && !audioOK()) { sndHint(true); try { PV.setPaused(true); } catch (e) {} }
       if (kickN > 40 || audioOK() || paused) {
         clearInterval(kickTimer); kickTimer = null;
         if (msgEl && audioOK()) msgEl.textContent = '';
