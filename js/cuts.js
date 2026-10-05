@@ -1023,17 +1023,18 @@
         if (u < 0.7) T.spriteAt(ctx, glyph(z), x, y, T.css(T.mix(T.ANOM, T.shade(0.35 + 0.65 * z))), 15, true);
         else T.spriteAt(ctx, '3', x, y, T.css(T.mix(T.ANOM, 0.95)), 16, true);
       }
-      var adv = 18 * T.MONO_ADV, words = [['me', 18, T.ME_TEXT], ['you', 23, T.UI]];
+      /* 索引 = 词在 POP_TEXT 里的字符位置（23 / 27），原来写 18/23 会让芯片落点左移 45-50px ✗ */
+      var adv = 18 * T.MONO_ADV, words = [['me', POP_TEXT.indexOf('me,'), T.ME_TEXT], ['you', POP_TEXT.indexOf('you)'), T.UI]];
       for (var k = 0; k < 2; k++) {
         var w = words[k][0], idx = words[k][1];
-        var x0 = POP_XY[0] + idx * adv - 3, y0 = POP_XY[1] - 1, x1 = x0 + w.length * adv + 6, y1 = POP_XY[1] + 21;
+        var x0 = POP_XY[0] + idx * adv - 3, y0 = POP_XY[1] - 2, x1 = x0 + w.length * adv + 6, y1 = POP_XY[1] + 22;
         var mp = PV.markerPos(Math.min(t, T0 - 0.1), k, GR);
         var uu = T.clamp01((t - (T0 - 0.1)) / (LAND + 0.1));
         var pos = bez(mp, [(x0 + x1) / 2, (y0 + y1) / 2], k ? 0.22 : -0.22, eBack(uu, 0.9));
         var hw = 5 + ((x1 - x0) / 2 - 5) * eIn(uu), hh = 5 + ((y1 - y0) / 2 - 5) * eIn(uu);
         T.fill(ctx, pos[0] - hw, pos[1] - hh, pos[0] + hw, pos[1] + hh, T.mix(words[k][2], 1.0), 1);
         if (uu < 0.6) T.textMono(ctx, w, pos[0] + 10 + 6 * uu, pos[1] - 10, T.mix(words[k][2], 1.0), 16);
-        else if (uu > 0.72) T.textMono(ctx, w, x0 + 3, POP_XY[1], T.BG, 18);
+        else if (uu > 0.72) T.textMono(ctx, w, x0 + 3, POP_XY[1] + 9, T.BG, 18);
       }
     }
   });

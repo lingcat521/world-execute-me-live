@@ -654,6 +654,43 @@
       T.textMono(ctx, 'simulation: running', 460, 400, T.ui(0.9), 22);
       if (!noBudget) T.textMono(ctx, 'tokens budget: 45T', 460, 440, T.ui(0.7), 20);
     }
+    /* 状态行：world 的 population 行**留在原地**、me/you 落进各自的词里变成反白芯片，倒计时结束（u>=0.55）
+       之后整行随画面从左往右被擦掉 —— 权威 s_boot.py:574-600 的 pop_line（s_boot.py:611 注册成 shot_begin_sim
+       的 extra 钩子）。以前只有转场层 C07 画飞行芯片，**这条线本身在 begin_sim 里根本没画** ✗，于是 12.6/13.0/14.0
+       这几帧的右半（径向揭开后的新画面）是空的。颜色：权威写 amb(0.9)，成片实测却是中性蓝白
+       （t=13.0 线区最亮 120 像素均值 (235,250,251)、r-b=-15；整帧只有 20 个琥珀像素）
+       -> 与 C06 点列、'we' 方块同类，以成片为准用 ui。 */
+    var RUN_U = 0.55, POP_TXT = 'world.population = 2  (me, you)', POPX = 430, POPY = 572;
+    var gone = (lt - RUN_U * dur) / 0.22;
+    if (gone < 1) {
+      var prng = PV.rngFor(t, 7919), SCR2 = 'youmestayloveseadeep', ptxt = POP_TXT;
+      if (gone > 0) {
+        var pn = POP_TXT.length, pk = gone * (pn + 2), po = '';
+        for (var pj = 0; pj < pn; pj++) {
+          if (pj < pk - 2) po += ' ';
+          else if (pj < pk) po += SCR2.charAt(Math.floor(prng.next() * SCR2.length));
+          else po += POP_TXT.charAt(pj);
+        }
+        ptxt = po;
+      }
+      /* 成片实测（t=13.0）：这条线墨迹在 y 569..594、宽 308（430->737），即 18px 等宽 advance=9.896；
+         PIL 的 text() 锚点是 ascender 顶=572，而我们的 textMono 以 ascender 顶+ascentMono 作基线 -> 得多给 9px 才落到同一行。 */
+      T.textMono(ctx, ptxt, POPX, POPY + 9, T.ui(0.9), 18);
+      var landP = 12.389 + 0.23;   /* 芯片锁进词里的时刻：C07 的 LAND */
+      if (t >= landP) {
+        var advP = 18 * T.MONO_ADV;   /* 权威用 F_MONO_B 18 的 getlength -> 等宽 advance */
+        /* 索引是**词在 POP_TXT 里的字符位置**（权威 _word_box 用 POP_TEXT.index(word+','/')')） = 23 / 27，
+           不是 18 / 23（原来照抄 cuts.js 的错值 -> 芯片整体左移 45-50px）。芯片框 = 行内那个词的矩形。 */
+        var WP = [['me', POP_TXT.indexOf('me,'), T.ME_TEXT], ['you', POP_TXT.indexOf('you)'), T.UI]];
+        for (var pwi = 0; pwi < 2; pwi++) {
+          var pwd = WP[pwi][0], pidx = WP[pwi][1], pcol = WP[pwi][2];
+          var pbx0 = POPX + pidx * advP - 3, pbx1 = pbx0 + pwd.length * advP + 6;
+          if (gone > 0 && (pbx0 - POPX) / (POP_TXT.length * advP) < gone) continue;
+          T.fill(ctx, pbx0, POPY - 2, pbx1, POPY + 22, T.mix(pcol, 0.95), 1);   /* 成片实测 570..593 */
+          T.textMono(ctx, pwd, pbx0 + 3, POPY + 9, T.BG, 18);
+        }
+      }
+    }
   };
 })();
 
