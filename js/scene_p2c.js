@@ -1730,27 +1730,63 @@
   };
 
   /* ---- 93 shot_love_loop ---- */
+  /* ---- 93 shot_love_loop（190.3125-193.5433）
+     权威 scenes_eval.py:520-595：
+       NT_BOX=(404,56,764,604)『next_token』、OUT_BOX=(780,56,1164,604)『output』、
+       CANDS=['love','wait_for(you)','stay','free','EOS']、P0=[.3,.3,.15,.15,.1]、
+       LAND93=.461（第二项锁进自己那行的拍点，之前由转场层带着飞）、BAR93=(578,698)、
+       nt_y(i)=90+50i、love_p(lt)=ease((lt-LAND93-.05)/1.4) 插值、love_words(lt)=int((lt-.12)*50)、
+       word_xy(i)=(800+50*(i%7), 76+20*floor(i/7))、第 3~5 项之外还有 generated/while/yield 三行。
+     我们原来把两个框画在 (24..560)/(580..1164)、条目一律从 x=48 起、条在 160、流在 600+q*50 —— **整块左移约 380px** ✗，
+     而且第二项写的是 'you'（权威是 'wait_for(you)'）、缺 generated/while/yield 三行。
+     l93Items 同时给 whale_fall 的 falling words 复用（权威 love_items）。 */
+  var L93_NT = [404, 56, 764, 604], L93_OUT = [780, 56, 1164, 604];
+  var L93_CANDS = ['love', 'wait_for(you)', 'stay', 'free', 'EOS'];
+  var L93_P0 = [0.3, 0.3, 0.15, 0.15, 0.1], L93_LAND = 0.461, L93_BAR = [578, 698];
+  function l93Y(i) { return 90 + i * 50; }
+  function l93P(lt) {
+    var g = lt > L93_LAND ? T.ease((lt - L93_LAND - 0.05) / 1.4) : 0.0, out = [], i;
+    for (i = 0; i < 5; i++) out.push((i === 0 ? 1.0 : 0.0) * g + L93_P0[i] * (1 - g));
+    return out;
+  }
+  function l93Words(lt) { return Math.max(0, Math.trunc((lt - 0.12) * 50)); }
+  function l93WordXY(i) { return [800 + (i % 7) * 50, 76 + Math.floor(i / 7) * 20]; }
+  function rFill(ctx, x0, y0, x1, y1, col, a) { T.fill(ctx, x0, y0, x1 + 1, y1 + 1, col, a); }  /* PIL 闭区间 */
+  PV.l93Items = function (lt, youLabel) {
+    var ps = l93P(lt), items = [], i, y, p;
+    for (i = 0; i < 5; i++) {
+      y = l93Y(i);
+      if (i !== 1 || youLabel)
+        items.push(['t', L93_CANDS[i], 424, y, i === 0 ? blue(1.0) : (i === 1 ? amb(0.9) : amb(0.6)), 20, true, i]);
+      p = ps[i];
+      if (p > 0.002)
+        items.push(['r', [L93_BAR[0], y + 6, L93_BAR[0] + Math.floor((L93_BAR[1] - L93_BAR[0]) * p), y + 24],
+                    i === 0 ? blue(0.9) : amb(0.4), i]);
+      items.push(['t', p.toFixed(3), 706, y + 2, amb(0.8), 16, false, i]);
+    }
+    items.push(['t', 'repetition_penalty: ignored', 424, 360, anom(0.9), 17, false, 10]);
+    items.push(['t', 'max_tokens: \u221e', 424, 390, anom(0.9), 17, false, 11]);
+    items.push(['t', 'stop: none', 424, 420, anom(0.9), 17, false, 12]);
+    var n = l93Words(lt);
+    items.push(['t', 'generated ' + padL(String(n), 4) + ' tokens', 424, 480, amb(0.8), 18, true, 13]);
+    items.push(['t', 'while p(you) == 0:', 424, 520, blue(0.8), 16, false, 14]);
+    items.push(['t', "    yield 'love'", 424, 544, blue(0.8), 16, false, 15]);
+    for (i = 0; i < Math.min(n, 7 * 22); i++) {
+      var xy = l93WordXY(i);
+      items.push(['t', 'love', xy[0], xy[1], blue(0.5 + 0.5 * (i === n - 1 ? 1 : 0)), 18, true, 100 + i]);
+    }
+    return items;
+  };
   PV.shotLoveLoop = function (ctx, t, lt, u, dur, o) {
     PV.ops = ["LOGITS", "love", "love", "love", "love", "love"];
     PV.alert = '';
-    T.box(ctx, 24, 56, 560, 604, 'next_token', 0.5, T.UI, t);
-    var cands = ['love', 'you', 'stay', 'free', 'EOS'], mixp = [0.3, 0.3, 0.15, 0.15, 0.1];
-    var g = T.ease(u * 2);
-    for (var i = 0; i < cands.length; i++) {
-      var p = (i === 0 ? 1.0 : 0.0) * g + mixp[i] * (1 - g), y = 90 + i * 50;
-      mono(ctx, cands[i], 48, y, i === 0 ? blue(1.0) : amb(0.6), 22, 'left', true);
-      T.fill(ctx, 160, y + 6, 160 + Math.floor(300 * p), y + 26, i === 0 ? blue(0.9) : amb(0.4), 1);
-      mono(ctx, p.toFixed(3), 470, y, amb(0.8), 18);
-    }
-    mono(ctx, 'repetition_penalty: ignored', 48, 360, anom(0.9), 17);
-    mono(ctx, 'max_tokens: ∞', 48, 390, anom(0.9), 17);
-    mono(ctx, 'stop: none', 48, 420, anom(0.9), 17);
-    T.box(ctx, 580, 56, 1164, 604, 'output', 0.5, T.UI, t + 0.4);
-    var n = Math.floor(lt * 40), perRow = 11;
-    for (var j = 0; j < n; j++) {
-      var r = Math.floor(j / perRow), q = j % perRow;
-      if (r > 25) break;
-      mono(ctx, 'love', 600 + q * 50, 76 + r * 20, blue(0.5 + 0.5 * (j === n - 1 ? 1 : 0)), 18, 'left', true);
+    T.box(ctx, L93_NT[0], L93_NT[1], L93_NT[2], L93_NT[3], 'next_token', 0.5, T.UI, t);
+    T.box(ctx, L93_OUT[0], L93_OUT[1], L93_OUT[2], L93_OUT[3], 'output', 0.5, T.UI, t + 0.4);
+    var items = PV.l93Items(lt, lt >= L93_LAND), k;
+    for (k = 0; k < items.length; k++) {
+      var it = items[k];
+      if (it[0] === 't') mono(ctx, it[1], it[2], it[3], it[4], it[5], 'left', it[6]);
+      else rFill(ctx, it[1][0], it[1][1], it[1][2], it[1][3], it[2], 1);
     }
   };
 
