@@ -1526,7 +1526,8 @@
         var x2 = (label === 'me') ? (xf + (cx - 45 - xf) * m) : (xf + (cx + 5 - xf) * m);
         T.fill(ctx, x2, 150, x2 + 81, 197, T.mix(col, 0.2), 1);
         T.rect(ctx, x2, 150, x2 + 80, 196, T.mix(col, 0.95), 1, 1);
-        T.textPIL(ctx, label, x2 + 10, 156, T.css(T.mix(col, 1.0)), 26);
+        /* 权威 scenes_chorus1.py:81 的 fb = font(F_MONO_B, 26) 是**粗体**，我们漏了 bold -> 细一号 ✗ */
+        T.textPIL(ctx, label, x2 + 10, 156, T.css(T.mix(col, 1.0)), 26, null, true);
         T.textMono(ctx, 'id ' + T.tokenId(label), x2 + 8, 202, T.mix(col, 0.6), 12);
       }
     } else {
@@ -1537,12 +1538,18 @@
       var WE_DY = PV.UNITE_WE_DY === undefined ? -12 : PV.UNITE_WE_DY;
       var r = 30 + 60 * PV.pulse(t);
       T.ring(ctx, cx, 173 + WE_DY, r, T.ui(0.5), 1, 1);
-      /* 方块高度保持源码的 47 行（150..196）：试过按「成片亮带 138..178」收成 41 行（PV.UNITE_WE_BOT=179）
-         → 区域误差 13.45->18.74、方块带 31.17->45.12 **变差**，说明成片那条 178 的读数不可靠（下缘那几行
-         在成片里偏暗，长亮带判据没抓到），高度按源码保留。 */
-      T.fill(ctx, cx - 50, 150 + WE_DY, cx + 51, 197 + WE_DY, T.ui(0.95), 1);
-      T.textPIL(ctx, 'we', cx - 18, 156 + WE_DY, T.css(T.BG), 26);
-      T.textMono(ctx, 'merge -> id ' + T.tokenId('we'), cx - 34, 202 + WE_DY, T.ui(0.8), 12);
+      /* 旧结论作废：上一轮只把方块下缘收到 179、**没把字和标签一起上移** -> 字掉到方块外，区域误差反而 13.45->18.74。
+         2026-10-06 用逐行亮度剖面重测（成片 55.9167/56.0/56.6667 三帧完全一致），三个元素一起钉。 */
+      /* 【2026-10-06 逐行实测】成片 55.9167/56.0/56.6667 三帧几何稳定：方块亮带 y 138..178（41 行）、
+         'we' 墨迹 y 149..161、标签 y 180..191。权威（full/sec_chorus1.py:55-57 = v2 scenes_chorus1.py:85-87）是
+         150..196 / 156 / 202，即便整体上移 12 也只有方块顶对齐：底缘 184 vs 成片 178、字与标签分别低 10/6 行。
+         所以下面三处按成片实测钉住（PV.UNITE_WE_* 可覆盖做 A/B）。 */
+      var WE_BOT = PV.UNITE_WE_BOT === undefined ? 179 : PV.UNITE_WE_BOT;   /* 绝对坐标（上缘已是 150+WE_DY），别再叠 WE_DY */
+      var WE_TXT = PV.UNITE_WE_TXT === undefined ? 133 : PV.UNITE_WE_TXT;
+      var WE_LAB = PV.UNITE_WE_LAB === undefined ? 184 : PV.UNITE_WE_LAB;
+      T.fill(ctx, cx - 50, 150 + WE_DY, cx + 51, WE_BOT, T.ui(0.95), 1);
+      T.textPIL(ctx, 'we', cx - 18, WE_TXT, T.css(T.BG), 26, null, true);   /* 粗体（权威 :86 是 F_MONO_B）+ y 按成片实测 133 */
+      T.textMono(ctx, 'merge -> id ' + T.tokenId('we'), cx - 34, WE_LAB, T.ui(0.8), 12);
     }
     T.box(ctx, 404, 320, 1164, 604, 'embedding space  (t-SNE of d=4096)', 0.5, T.UI, t + 0.3);
     var rnd = PV.mt(11);
