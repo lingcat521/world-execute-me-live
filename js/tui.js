@@ -66,8 +66,8 @@
      我们只能用系统 DroidSansMono（advance 0.6em、cap≈0.73em）—— 同一个 px 号下我们画的字
      **又宽又高**：实测 t=67「happy(you) = 0.62」(权威 F_MONO_B 22) 成片字宽 138/字高 18.7，
      我们 154/22.0（≈1.12-1.18 倍）。所以按字号整体缩一个 K，让**度量**贴近 Consolas。
-     K 由 PV.tui.TEXT_K 控制（默认 0.88），所有走 T.font/T.ascent 的绘制与量测都按它缩放。 */
-  T.TEXT_K = 0.88;
+     K 由 PV.tui.TEXT_K 控制（**默认 1.0 = 不缩**，见下），所有走 T.font/T.ascent 的绘制与量测都按它缩放。 */
+  T.TEXT_K = 1.0;
   function fsz(size) { return size * (T.TEXT_K === undefined ? 1 : T.TEXT_K); }
   T.font = function (size, bold) { return (bold ? '700 ' : '') + fsz(size).toFixed(2) + 'px ' + (bold ? T.FAMB : T.FAM); };
   T.text = function (ctx, s, x, y, col, size, align, bold) {
@@ -79,8 +79,15 @@
   };
   T.rect = function (ctx, x0, y0, x1, y1, col, lv, lw) {
     ctx.strokeStyle = typeof col === 'string' ? col : T.css(col, lv === undefined ? 1 : lv);
-    ctx.lineWidth = lw || 1;
-    ctx.strokeRect(Math.round(x0) + 0.5, Math.round(y0) + 0.5, Math.round(x1 - x0), Math.round(y1 - y0));
+    lw = lw || 1;
+    ctx.lineWidth = lw;
+    /* PIL 的 d.rectangle([x0,y0,x1,y1], outline=c, width=n) 是**向内** n 行/列：
+         width=1 -> 就在 x0/y0 那一行/列上；width=2 -> 覆盖 x0..x0+1（实测 BUSY 框 y=490..491）。
+       原来只对 lw=1 正确（+0.5 半像素 crisp），lw>1 时 stroke 以路径为中心会**外溢半格**并且糊成 3 行 ✗。
+       统一写成：路径从 (x0+lw/2, y0+lw/2) 到 (x1-lw/2+1, y1-lw/2+1) —— 奇数 lw 落半像素、偶数落整像素，
+       覆盖范围与 PIL 的向内描边逐像素一致（与 rectLine 同一套公式）。 */
+    var x = Math.round(x0) + lw / 2, y = Math.round(y0) + lw / 2;
+    ctx.strokeRect(x, y, Math.round(x1 - x0) - lw + 1, Math.round(y1 - y0) - lw + 1);
   };
   T.fill = function (ctx, x0, y0, x1, y1, col, a) {
     ctx.fillStyle = typeof col === 'string' ? col : T.css(col, a === undefined ? 1 : a);
