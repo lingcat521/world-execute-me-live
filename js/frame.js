@@ -28,8 +28,15 @@
   };
   /* 焦点压暗：原始工程 dsh_her.py 的 LEAD 表。谁"主导"时另一方降到 support 亮度，
      每次切换以 0.25s 缓入。RIGHT = 可视化窗格 + ops 列；她的窗格用她的窗口 alpha。 */
+  /* 【2026-10-05 补全】原来只抄了 dsh_her.py:35 的主表，漏了两组 patch 追加的项（它们同样影响
+     levels(t)[1] 的右侧压暗与 0.25s 交叉缓入）：
+       dsh_patch_e.py:21  LEAD = [(133.57,'left'), (133.80,'both')]
+       dsh_patch_g.py:51  LEFT_LEAD = [(188.40,'left'), (190.0,'both')]
+     实测成片 t=125.0 的 chmod 行峰值 (54,58,69)，到 125.25 才回到 (107,110,121) —— 正是
+     (125.0,'both') 那条的 0.25s 缓入，说明压暗在 125 之后仍在继续（E patch 把 COVER 续到了 147.5）。 */
   var LEAD = [[0.0, 'both'], [5.24, 'left'], [7.08, 'right'], [12.47, 'both'], [16.0, 'both'], [41.21, 'left'],
-              [41.93, 'both'], [103.0, 'left'], [110.40, 'both'], [115.60, 'right'], [123.55, 'left'], [125.0, 'both']];
+              [41.93, 'both'], [103.0, 'left'], [110.40, 'both'], [115.60, 'right'], [123.55, 'left'], [125.0, 'both'],
+              [133.57, 'left'], [133.80, 'both'], [188.40, 'left'], [190.0, 'both']];
   var SUPPORT = 0.42, LEAD_RECT = [392, 44, 1268, 608];
   function lv(side) { return [side === 'right' ? 0.7 : 1.0, side === 'left' ? SUPPORT : 1.0]; }
   PV.levels = function (t, fade) {
@@ -48,7 +55,10 @@
          reg = im.crop(RIGHT); im.paste(Image.blend(Image.new("RGB", reg.size, BG), reg, r), RIGHT[:2])
      r = levels(t)[1]（LEAD='left' 时右降到 0.42、0.25s 交叉缓入）。
      canvas 等价写法：source-over 铺一层 alpha=1-r 的 BG —— out = BG*(1-r) + in*r ✓ 与 blend 同式。 */
-  var LEAD_RIGHT = [392, 44, 1268, 608], LEAD_COVER = [5.0, 125.0];
+  /* COVER 是各段 chunk 的并集：主表到 125.0，dsh_patch_e/f/g 再依次 append (125.0,147.5)/(147.5,177.0)/(177,212)
+     → 实际 5.0-212.0 全都在内（dsh_her.py:27 + patch_e:32 + patch_f:94 + patch_g:113）。
+     原来只写 [5.0,125.0]：t=125.0 之后的压暗整段没了 —— 实测 t=125.0 成片画布整体比我们暗 ~0.42 倍。 */
+  var LEAD_RIGHT = [392, 44, 1268, 608], LEAD_COVER = [5.0, 212.0];
   PV.leadDim = function (ctx, t) {
     if (!(t >= LEAD_COVER[0] && t < LEAD_COVER[1])) return;
     var r = PV.levels(t)[1];
