@@ -15,7 +15,9 @@
   function red(lv) { return T.css(T.mix(T.ERR, lv)); }
   function heatCell(ctx, x, y, w, h, v, col) {
     v = T.clamp01(v);
-    T.fill(ctx, x, y, x + w - 2, y + h - 2, T.mix(col || T.UI, 0.06 + 0.94 * v), 1);
+    /* tk.heat_cell: d.rectangle([x, y, x+w-2, y+h-2], fill=) —— PIL 闭区间 = (w-1)x(h-1) 像素；
+       原来写成 T.fill(..., x+w-2, ...) 只有 (w-2)x(h-2)，每格少最后一列/行（同 §6Q）。 */
+    T.fill(ctx, x, y, x + w - 1, y + h - 1, T.mix(col || T.UI, 0.06 + 0.94 * v), 1);
   }
   function box(ctx, x0, y0, x1, y1, title, lv, col, spin) {
     T.box(ctx, x0, y0, x1, y1, title, lv === undefined ? 0.5 : lv, col || T.UI, spin);
@@ -1629,7 +1631,9 @@
   /* tk.heat_cell */
   function heatCell(ctx, x, y, w, h, v, col) {
     v = T.clamp01(v);
-    T.fill(ctx, x, y, x + w - 2, y + h - 2, T.mix(col || T.UI, 0.06 + 0.94 * v), 1);
+    /* tk.heat_cell: d.rectangle([x, y, x+w-2, y+h-2], fill=) —— PIL 闭区间 = (w-1)x(h-1) 像素；
+       原来写成 T.fill(..., x+w-2, ...) 只有 (w-2)x(h-2)，每格少最后一列/行（同 §6Q）。 */
+    T.fill(ctx, x, y, x + w - 1, y + h - 1, T.mix(col || T.UI, 0.06 + 0.94 * v), 1);
   }
   function box(ctx, x0, y0, x1, y1, title, lv, spin) {
     T.box(ctx, x0, y0, x1, y1, title, lv === undefined ? 0.5 : lv, T.UI, spin);
