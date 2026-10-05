@@ -603,6 +603,123 @@
     ctx.drawImage(cv, Math.round(x), Math.round(y), Math.round(w_), Math.round(h_));
     ctx.restore();
   }
+  /* ---- ERASE(120.208) 之后：最后一条气泡碎成 tile 飞进 defrag 网格
+     （权威 dsh_patch_mem.py:202-250 bubble_last 后半段 + :400-437 build_tiles + :439-501 tile_sprite/halo_only）
+       TILE=(18,22) 与 defrag 格同拍；把气泡贴图按这个格子切块，只留 alpha 均值 >10 的块；
+       目标格 cand = 未被 defragKeep 占用、C55 没 landed、且 defrag 扫描晚于 ERASE+FLY+0.12 的格，
+       按 step = len(cand)//len(cells) 均匀取样；
+       lift = ERASE + 0.18*k/(n-1)、land = lift+FLY、gone = max(lift+FLY+0.06, swept_at(该格))、
+       bend = Random(59).uniform(0.12,0.3) * (k%2 ? 1 : -1)；
+       画法：t<lift 原位(自然尺寸/无描边) · 飞行中 bezier 且 e=1-(1-u)^2、尺寸 lerp((18,22),(14,18))*s
+             (s=1+0.35 sin(pi u))、lit=clamp(1-(t-lift)/(2/24)) · 落地后 14x18、lit=clamp(1-(t-land)/(2/24))*0.5
+             · t>=gone 时 lit=1（defrag 扫过时亮一下，两帧后消失）；
+       tile = 缩放 + BLUE_TEXT(230/255) 的 1px 内描边 + 朝 (255,244,200) 混 lit。
+       我们原来 ERASE 之后整段不画（memLastBubble 在 t>=MEM_ERASE_T 直接 return），
+       成片里 120.21-120.7 最显眼的就是这一片飞行的 tile。 */
+  var TILE_W = 18, TILE_H = 22, TILE_FLY = 0.32, ERASE_S1 = 121.7741;
+  var TILES = null;
+  function bez2(p0, p1, bend, u) {
+    var mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2, dx = p1[0] - p0[0], dy = p1[1] - p0[1];
+    var cx = mx + dy * bend, cy = my - dx * bend, a = 1 - u;   /* 权威 kit.bezier 的符号 */
+    return [a * a * p0[0] + 2 * a * u * cx + u * u * p1[0], a * a * p0[1] + 2 * a * u * cy + u * u * p1[1]];
+  }
+  function eraseSweptAt(i) {
+    var n = Math.round(ERASE_START * 24);
+    while (eraseSweep((n / 24 - ERASE_START) / (ERASE_S1 - ERASE_START)) <= i / 660 && n / 24 < ERASE_S1 + 2) n += 1;
+    return n / 24;
+  }
+  function buildTiles() {
+    var m = MEMS[3], cv = MEM_IMG[m.sprite];
+    var lb = (cv && PV.c55LabelAt) ? PV.c55LabelAt(MEM_ERASE_T) : null;
+    if (!cv || !lb) return [];
+    var x0 = lb[0] + 1, y0 = lb[1] + lb[2] * 0.78 + 10;      /* last_box(ERASE)，与 memLastBubble 同一套几何 */
+    var cols = Math.ceil(cv.width / TILE_W), rows = Math.ceil(cv.height / TILE_H);
+    var cells = [], r, c, q;
+    for (r = 0; r < rows; r++) for (c = 0; c < cols; c++) {
+      var sw = Math.min(TILE_W, cv.width - c * TILE_W), sh = Math.min(TILE_H, cv.height - r * TILE_H);
+      if (sw <= 0 || sh <= 0) continue;
+      var sc = PV.newCanvas(TILE_W, TILE_H), sg = sc.getContext('2d');
+      sg.drawImage(cv, c * TILE_W, r * TILE_H, sw, sh, 0, 0, sw, sh);
+      var dd = sg.getImageData(0, 0, TILE_W, TILE_H).data, inked = 0;
+      for (q = 3; q < dd.length; q += 4) inked += dd[q];
+      if (inked / (TILE_W * TILE_H) > 10) cells.push([r, c, sc]);
+    }
+    if (!cells.length) return [];
+    var landed = eraseLanded() || {}, cand = [], i2;
+    var firstLand = MEM_ERASE_T + TILE_FLY;
+    for (i2 = 0; i2 < 660; i2++) {
+      if (defragKeep(i2) || landed[i2] !== undefined) continue;
+      if (eraseSweptAt(i2) >= firstLand + 0.12) cand.push(i2);
+    }
+    if (!cand.length) return [];
+    var step = Math.max(1, Math.floor(cand.length / Math.max(1, cells.length))), out = [];
+    var rnd = PV.mt(59);
+    for (var k = 0; k < cells.length; k++) {
+      var cell = cells[k], i = cand[Math.min(cand.length - 1, k * step)], g = defragCell(i);
+      var lift = MEM_ERASE_T + 0.18 * k / Math.max(1, cells.length - 1);
+      out.push({ crop: cell[2], src: [x0 + cell[1] * TILE_W + TILE_W / 2, y0 + cell[0] * TILE_H + TILE_H / 2],
+                 dst: [g[0] + 7, g[1] + 9], lift: lift, land: lift + TILE_FLY,
+                 gone: Math.max(lift + TILE_FLY + 0.06, eraseSweptAt(i)),
+                 bend: (0.12 + rnd.random() * 0.18) * (k % 2 ? 1 : -1) });
+    }
+    return out;
+  }
+  function tileSprite(cv, w, h, lit) {
+    var sc = PV.newCanvas(Math.max(1, Math.round(w)), Math.max(1, Math.round(h))), sg = sc.getContext('2d');
+    sg.imageSmoothingEnabled = true;
+    sg.drawImage(cv, 0, 0, sc.width, sc.height);
+    if (lit > 0.01) {
+      sg.globalCompositeOperation = 'source-atop';
+      sg.fillStyle = T.css([255, 244, 200], Math.min(1, lit));
+      sg.fillRect(0, 0, sc.width, sc.height);
+    }
+    return sc;
+  }
+  function drawEraseTiles(ctx, t) {
+    if (t < MEM_ERASE_T || t >= MEM_ERASE_T + 1.6) return;
+    if (!TILES) TILES = buildTiles();
+    if (!TILES.length) return;
+    var m = MEMS[3], cv = MEM_IMG[m.sprite];
+    var lb = PV.c55LabelAt ? PV.c55LabelAt(MEM_ERASE_T) : null;
+    var k0 = T.clamp01(1 - (t - MEM_ERASE_T) / 0.15);
+    if (cv && lb && k0 > 0.01) {          /* halo 跟着第一批 tile 走（halo_only(sp, halo*k, 8)）*/
+      var hx = lb[0] + 1 - 16, hy = lb[1] + lb[2] * 0.78 + 10 - 16;
+      ctx.save();
+      ctx.shadowColor = T.css(T.ME_TEXT, 1);
+      ctx.shadowBlur = Math.max(4, Math.round(8 * (m.halo || 0.5) * k0));
+      ctx.globalAlpha = k0;
+      ctx.drawImage(cv, hx, hy);
+      ctx.restore();
+    }
+    for (var i = 0; i < TILES.length; i++) {
+      var tl = TILES[i], cx, cy, w, h, lit;
+      if (t < tl.lift) {
+        ctx.drawImage(tl.crop, Math.round(tl.src[0] - TILE_W / 2), Math.round(tl.src[1] - TILE_H / 2));
+        continue;
+      }
+      if (t >= tl.gone + 2 / 24) continue;
+      if (t < tl.land) {
+        var u = T.clamp01((t - tl.lift) / TILE_FLY), e = 1 - (1 - u) * (1 - u);
+        var pos = bez2(tl.src, tl.dst, tl.bend, e);
+        cx = pos[0]; cy = pos[1];
+        var s = 1 + 0.35 * Math.sin(Math.PI * u);
+        w = (TILE_W + (14 - TILE_W) * e) * s; h = (TILE_H + (18 - TILE_H) * e) * s;
+        lit = T.clamp01(1 - (t - tl.lift) / (2 / 24));
+      } else {
+        cx = tl.dst[0]; cy = tl.dst[1]; w = 14; h = 18;
+        lit = T.clamp01(1 - (t - tl.land) / (2 / 24)) * 0.5;
+        if (t >= tl.gone) lit = 1.0;
+      }
+      var sp = tileSprite(tl.crop, w, h, lit);
+      var px = Math.round(cx - sp.width / 2), py = Math.round(cy - sp.height / 2);
+      ctx.drawImage(sp, px, py);
+      ctx.save();
+      ctx.strokeStyle = T.css(T.ME_TEXT, 230 / 255);
+      ctx.lineWidth = 1;
+      ctx.strokeRect(px + 0.5, py + 0.5, sp.width - 1, sp.height - 1);
+      ctx.restore();
+    }
+  }
   function memOverlay(ctx, t) {
     if (t < MEM_SPAN[0] || t >= MEM_SPAN[1]) return;
     var k, m, a, y;
@@ -632,6 +749,7 @@
     }
     for (k = 0; k < 3; k++) memBubble(ctx, k, t);   /* 2. 前三个气泡 */
     memLastBubble(ctx, t);                          /*    第 4 个（last_message）：跟着飞行的名字走 */
+    drawEraseTiles(ctx, t);                         /*    ERASE 之后：碎成 tile 飞进 defrag 网格（§6O）*/
     memCursor(ctx, t);                              /* 3. 她的光标 */
   }
   var _memPrevOverlay = PV.overlay;
