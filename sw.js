@@ -4,7 +4,18 @@
    做法：**只缓存素材**（data/ avatars/ assets/ fonts/），缓存优先、命中就直接返回，不再走网络；
    代码与 HTML 一律不拦（autoReload / stamp 轮询还要看得见新版本）。
    注意：SW 只在 https 或 localhost 生效；线上是 GitHub Pages（https ✓）。 */
-var VER = 'pv-assets-v4';
+/* 【2026-10-06】旧 v4 缓存里怀疑有坏条目：某些 WebView 里 caches.open()/match() 永不 settle（本地实测
+   precache 卡在 0/173MB、页面一直转圈且无报错）。这里 ① 换 VER（旧的整批作废）② 给 cache 路径加 1.2s 兜底，
+   超时直接走网络 —— 保证任何情况下 SW 都会在 1.2 秒内给出响应，不会再让一个卡住的样式表把整页拖死。 */
+var VER = 'pv-assets-v5';
+function withTimeout(p, ms, fallback) {
+  return new Promise(function (resolve) {
+    var done = false;
+    var timer = setTimeout(function () { if (!done) { done = true; resolve(fallback()); } }, ms);
+    p.then(function (v) { if (!done) { done = true; clearTimeout(timer); resolve(v); } },
+           function () { if (!done) { done = true; clearTimeout(timer); resolve(fallback()); } });
+  });
+}
 /* 只缓存**大块二进制素材**：webp/mp3/bin/css。json 不缓存 —— data/precache.json 会随素材变化重生成，
    缓存住就永远是旧索引（?v= 也救不了 SW 的 cache-first）。 */
 var ASSET = /^\/(data|avatars|assets|fonts)\/[^?]*\.(webp|mp3|bin|css)$/i;
@@ -26,7 +37,7 @@ self.addEventListener('fetch', function (e) {
   try { u = new URL(req.url); } catch (err) { return; }
   if (u.origin !== self.location.origin) return;
   if (!ASSET.test(u.pathname)) return;              /* 代码/HTML/JSON 不拦 */
-  e.respondWith(caches.open(VER).then(function (c) {
+  e.respondWith(withTimeout(caches.open(VER).then(function (c) {
     return c.match(req, { ignoreSearch: true }).then(function (hit) {
       if (hit) return hit;
       return fetch(req).then(function (res) {
@@ -34,6 +45,6 @@ self.addEventListener('fetch', function (e) {
         return res;
       });
     });
-  }));
+  }), 1200, function () { return fetch(req); }));
 });
 
