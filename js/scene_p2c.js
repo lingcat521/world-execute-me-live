@@ -1589,12 +1589,46 @@
     PV.ops = ["dsh eval", "LOAD", "RUN", "SCORE", "100.0"];
     PV.alert = '';
     T.box(ctx, 404, 56, 1164, 604, 'dsh eval --suite love', 0.5, T.UI, t);
+    /* 【2026-10-06 逐行对权威 scenes_eval.py:213-282】这 7 行**不是一开始就全在**：
+       第 0 行（LoveBench）是曲线带进来的 —— LAND88=0.231 之后才出轮廓/名字/数值，条分两段 ease_out 涨到 0.932；
+       其余行**从上一行滑下来**（y = qy(i-1) + 60*e，e = ease_out((lt - (LAND88+0.02+0.07i))/0.12)），e>=1 才画名字
+       （decode age = lt - land），条要等 land+0.02 之后再 ease 0.45s 涨满；数值列在 x=1028（5 字符宽）、
+       g>0.99 才转蓝。我们原来是「7 行固定 y、条按 (lt-0.1i)/0.8 一起涨」-> 180.85-181.95 这段多出 6 行文字 ✗
+       （成片 181.0 只有第 0 行在一块一块地 decode，其余行还没出现）。 */
+    var LAND88 = 0.231, P_LOVE = 0.932, BX0 = 700, BX1 = 1000, VX = 1028, g0v = 0;
     for (var i = 0; i < EVAL_ROWS.length; i++) {
-      var g = T.ease((lt - i * 0.1) / 0.8), y = 90 + i * 60;
-      mono(ctx, EVAL_ROWS[i], 430, y, amb(0.9), 20, 'left', true);
-      T.rect(ctx, 700, y + 4, 1000, y + 26, amb(0.25), 1, 1);
-      T.fill(ctx, 700, y + 4, 700 + Math.floor(300 * g), y + 26, blue(0.9), 1);
-      mono(ctx, (100 * g).toFixed(1), 1020, y, g > 0.99 ? blue(1.0) : amb(0.8), 20, 'left', true);
+      var y, e, g, land, t0;
+      if (i === 0) {
+        y = 90; e = 1; land = 0;
+        g = P_LOVE * T.ease_out((lt - LAND88) / 0.13) + (1 - P_LOVE) * T.ease_out((lt - LAND88 - 0.13) / 0.4);
+      } else {
+        t0 = LAND88 + 0.02 + 0.07 * i;
+        e = T.ease_out((lt - t0) / 0.12); land = t0 + 0.12;
+        y = 90 + (i - 1) * 60 + 60 * e;
+        g = T.ease((lt - land - 0.02) / 0.45);
+      }
+      if (e <= 0) continue;
+      if (i !== 0 || lt >= LAND88) {
+        T.rect(ctx, BX0, y + 4, BX1, y + 26, amb(i === 0 ? 0.3 : 0.25 + 0.25 * (1 - e)), 1, 1);
+        if (g > 0.001) T.fill(ctx, BX0, y + 4, BX0 + Math.floor(300 * g), y + 26, blue(0.9), 1);
+      }
+      if (e >= 1) {
+        var age = lt - (i ? land : 0), rg = PV.rngFor(t, 7919);
+        mono(ctx, T.decode(EVAL_ROWS[i], age, rg, 70, 0.12, 0), 430, y, amb(0.9), 20, 'left', true);
+        if (i || lt >= LAND88) {
+          var v = (i === 0) ? Math.max(P_LOVE, g) : g;
+          var col = v > 0.99 ? blue(1.0) : amb(0.8);
+          var vs = ('     ' + (100 * v).toFixed(1)).slice(-5);
+          mono(ctx, i === 0 ? vs : T.decode(vs, age, rg, 70, 0.12, 0), VX, y, col, 20, 'left', true);
+        }
+      }
+      if (i === 0) g0v = g;
+    }
+    /* 曲线带来的那个 'you' 小格（10px DS 蓝），落在 LoveBench 条右端并闪一下（权威 :279-282） */
+    if (lt >= LAND88) {
+      var kq = g0v > 0.995 ? Math.max(0, 1 - Math.abs(lt - (LAND88 + 0.45)) / 0.25) : 0;
+      T.fill(ctx, BX1 + 4, 97, BX1 + 20, 113, blue(0.7), 0.16 + 0.4 * kq);
+      T.fill(ctx, BX1 + 7, 100, BX1 + 17, 110, blue(1.0), 1);
     }
   };
 
