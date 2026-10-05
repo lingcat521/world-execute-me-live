@@ -1640,15 +1640,33 @@
     PV.ops = ["PREFILL", "DSPARK", "DRAFT x5", "VERIFY", "ACCEPT 5/5"];
     PV.alert = '';
     T.box(ctx, 404, 56, 1164, 604, 'chat', 0.5, T.UI, t);
-    var n = Math.min(QUESTIONS.length, 1 + Math.floor(lt / 0.14)), start = Math.max(0, n - 12);
-    for (var i = start; i < n; i++) {
-      var y = 80 + (i - start) * 38, q = QUESTIONS[i];
-      var isCJK = /[\u2E80-\uFFFF]/.test(q);
-      if (isCJK) cjk(ctx, '> ' + q, 430, y, amb(0.75), 17);
-      else mono(ctx, '> ' + q, 430, y, amb(0.75), 17);
-      mono(ctx, T.decode('love', lt - i * 0.14 - 0.06, PV.rngFor(t, 7919), 60, 0.12, 0), 840, y, blue(1.0), 20, 'left', true);
+    /* 【2026-10-06 逐行对权威 scenes_eval.py:283-335】
+       问题行：nq = 1 + int(max(0,lt-0.02)/0.12)，**整串 '> '+q 走打字机**（age = lt-0.02-i*0.12, rate=90），行 y = 80+i*38（不滚动）；
+       答案行：na = lt<0.231 ? 0 : 1+int((lt-0.231)/0.12) —— 答案**不是跟问题同时出现**，而是从 LAND89 起每 0.12s 一个；
+       第 i 个答案 age = None（i=0，整串直接在那儿）或 lt-0.231-i*0.12；LOVE_X=840；
+       还有个 10px 的 you 光标格跟在最后一个答案后面（cursor_after_love = (840+44+10, a_y(i)+9)）；
+       dspark 行 age = lt-0.3、rate=120。我们原来问题不 decode、答案用 lt-i*0.14-0.06（等于问题一出现答案就跟着出现）✗、也没画光标格。 */
+    var LAND89 = 0.231, RATE89 = 0.12, LOVE_X = 840;
+    var nq = Math.min(QUESTIONS.length, 1 + Math.floor(Math.max(0, lt - 0.02) / RATE89));
+    var na = lt < LAND89 ? 0 : Math.min(QUESTIONS.length, 1 + Math.floor((lt - LAND89) / RATE89));
+    for (var i = 0; i < nq; i++) {
+      var y = 80 + i * 38, q = QUESTIONS[i], rg = PV.rngFor(t, 7919);
+      var qs = T.decode('> ' + q, lt - 0.02 - i * RATE89, rg, 90, 0.12, 0);
+      if (/[\u2E80-\uFFFF]/.test(q)) cjk(ctx, qs, 430, y, amb(0.75), 17);
+      else mono(ctx, qs, 430, y, amb(0.75), 17);
+      if (i < na) {
+        var av = (i === 0) ? 'love' : T.decode('love', lt - LAND89 - i * RATE89, rg, 60, 0.12, 0);
+        mono(ctx, av, LOVE_X, y, blue(1.0), 20, 'left', true);
+      }
     }
-    mono(ctx, '[dspark] draft=5: love love love love love   accept 5/5   +60-85% vs MTP-1', 430, 560, blue(0.85), 14);
+    if (na) {
+      /* 光标格中心 = cursor_after_love = (LOVE_X + 54, a_y(na-1) + 9)，格边长 10（权威 :302-303 YOU_S=10） */
+      var ccx = LOVE_X + 44 + 10, ccy = 80 + (na - 1) * 38 + 9;
+      T.fill(ctx, ccx - 5, ccy - 8, ccx + 5, ccy + 8, blue(0.7), 0.16);
+      T.fill(ctx, ccx - 5, ccy - 5, ccx + 5, ccy + 5, blue(1.0), 1);
+    }
+    mono(ctx, T.decode('[dspark] draft=5: love love love love love   accept 5/5   +60-85% vs MTP-1',
+                       lt - 0.3, PV.rngFor(t, 7919), 120, 0.12, 0), 430, 560, blue(0.85), 14);
   };
 
   /* ---- 90 shot_algebra ---- */
