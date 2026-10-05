@@ -659,6 +659,15 @@
   };
 
   /* fullbleed 变换：把 canvas 坐标画到屏幕上 */
+  /* 【2026-10-06 修正】shot_collapse **整段**都不画帧级 chrome：
+     pre-line 的权威分支是 trapped_frame（**自带 chrome**）整帧压扁 —— chrome 已经在压缩带里了；
+     post-line 的 `C.body(ALL[COLLAPSE])` 根本没有 chrome（参考 176.0 实测：整幅只有 BG + 一条红线）。
+     原来只在 t >= LINE_T 才挡，于是 176.0 那帧在压缩带上又叠了一条**全尺寸**顶栏 + 底部歌词行 ✗
+     （175.0 的顶栏之所以在，是因为它被压进带子里，不是帧级 chrome）。 */
+  PV.p2cNoChrome = function (t) {
+    var m = PV.p2cMine['shot_collapse'];
+    return !!(m && t >= m.a && t < m.b);
+  };
   PV.p2cFullbleed = function (ctx, fn) {
     ctx.save();
     ctx.beginPath(); ctx.rect(0, FB_Y, W, (P.FULL[3] - P.FULL[1]) * FB_S); ctx.clip();
@@ -760,7 +769,7 @@
   var origChrome = PV.chrome;
   PV.chrome = function (ctx, t, opt) {
     opt = opt || {};
-    if (PV.p2cInRaw(t)) return;                        /* raw：整帧由镜头自己画 */
+    if (PV.p2cInRaw(t) || PV.p2cNoChrome(t)) return;   /* raw 或 shot_collapse（chrome 在压缩带里）*/
     if (PV.p2cInFullbleed(t)) { PV.p2cChromeFullbleed(ctx, t, opt); return; }
     return origChrome(ctx, t, opt);
   };
