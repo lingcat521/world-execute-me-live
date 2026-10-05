@@ -978,11 +978,13 @@
     var pinned = { '7,3': 1, '8,3': 1, '33,9': 1, '34,9': 1, '51,15': 1, '12,18': 1 };
     for (var r = 0; r < rows; r++) for (var q = 0; q < cols; q++) {
       var ii = r * cols + q, x = ox + q * cw, y = oy + r * chh;
-      if (pinned[q + ',' + r]) T.fill(d, x, y, x + cw - 2, y + chh - 2, T.ME_TEXT, 0.95);
+      /* 与 scene_p2c.js 的 shot_collapse 同一处坑：PIL 的 d.rectangle([x,y,x1,y1], fill=) 是闭区间，
+         权威 [x, y, x+cw-2, y+ch-2] 实为 11x18；T.fill 是 canvas 语义（w=x1-x0）→ 会少最后一行一列。 */
+      if (pinned[q + ',' + r]) T.fill(d, x, y, x + cw - 1, y + chh - 1, T.ME_TEXT, 0.95);
       else if (ii < nOn) {
         var fresh = (nOn - ii) < 40;
         var lv = (fresh && rng.random() < 0.5) ? 0.95 : 0.42 + 0.1 * ((q * 7 + r) % 3);
-        T.fill(d, x, y, x + cw - 2, y + chh - 2, T.UI, lv);
+        T.fill(d, x, y, x + cw - 1, y + chh - 1, T.UI, lv);
       } else T.rect(d, x, y, x + cw - 2, y + chh - 2, T.UI, 0.12, 1);
     }
     pil(d, 'pinned: you  (6 blocks)', 424, 510, blue(0.95), 16, true);

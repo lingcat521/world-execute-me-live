@@ -46,7 +46,7 @@
   /* 版本号：**必须与 index.html 的 ?v= 一起改**——caps 的 _box.png 会回传这个字段，是判断
      「浏览器到底跑的是哪一版代码」的唯一可靠依据（原来停在 202610050600，cap 里永远是旧号，
      双证时无法确认页面有没有 reload 到新码）。 */
-  PV.VER = '202610052620';
+  PV.VER = '202610052630';
   var errEl = document.getElementById('err');
   PV.showErr = function (msg) {
     if (!errEl) return;
