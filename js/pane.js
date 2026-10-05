@@ -3166,7 +3166,23 @@
     fp8Apply(t);                                   /* fp8 色深量化（88.312-91.543 + 6 帧回档）*/
     applySheets(t);
     var b = PV.paneBody(t);
-    if (b !== lastBody) { app.innerHTML = b; lastBody = b; perfFrame(b); }
+    /* 【2026-10-06 修用户报的「2:21-2:23 头像丢失」】实测 141.0-142.0 这 25 帧里 paneBody **每帧都变**
+       （24/25 帧不同，pet src 每帧换一张）。原来一律 app.innerHTML = b —— 等于把 <img> 每秒销毁重建 24 次，
+       浏览器里每次都要重新解码，表现就是头像闪/空（网络慢时更明显，正好是用户截图那两秒）。
+       改法：把 pet src 归一化后比较，若**只差头像那一帧**就只更新已有 <img> 的 src，不动 innerHTML。 */
+    if (b !== lastBody) {
+      var PETRE = /(<div class="pv-pet"[^>]*>\s*<img[^>]*?src=")[^"]*(")/;
+      var nb = b.replace(PETRE, '$1@@PET@@$2');
+      var ob = lastBody === null ? null : lastBody.replace(PETRE, '$1@@PET@@$2');
+      if (ob !== null && nb === ob) {
+        var msrc = b.match(/<div class="pv-pet"[^>]*>\s*<img[^>]*?src="([^"]*)"/), imEl = null;
+        try { imEl = document.querySelector('#chatbox .pv-pet img') || document.querySelector('.pv-pet img'); } catch (e) {}
+        if (msrc && imEl) imEl.setAttribute('src', msrc[1]);
+        lastBody = b;
+      } else {
+        app.innerHTML = b; lastBody = b; perfFrame(b);
+      }
+    }
     /* 压暗放最后：中间任何一步都可能把 #chatbox 的内联 filter 清掉（2026-10-05 浏览器实测）*/
     if (PV.paneDimApply) PV.paneDimApply(t, true);
   };
