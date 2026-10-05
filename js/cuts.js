@@ -39,7 +39,14 @@
        逐格贴上去时旧画面会从透明处透出来——逐格替换等于失效。 */
     if (PV.drawBackground) { PV.drawBackground(octx, t); PV.drawBackground(nctx, t); }
     oldDraw(octx, t);
+    var pickOld = { ops: PV.ops, alert: PV.alert, shell: PV.shell };
     newDraw(nctx, t);
+    /* 【2026-10-06】cuts.py:78 `pick = oc if t < T else nc` —— 转场期间 chrome 的上下文
+       （ops / alert / shell）在 T 之前属于**旧镜头**、T 之后才属于新镜头。
+       我们原来两张都画完就留在新镜头的 ops 上（newDraw 是最后调的）→ 整个 pre 窗口（0.2-0.5s）
+       右侧 ops 列提前换成新镜头的词 ✗（成片 10.96/11.0 实测仍是 INIT 那组，我们已是 WORLD.NEW 那组）。 */
+    var cutNow = PV.activeCut ? PV.activeCut(t) : null;
+    if (cutNow && t < cutNow.T) { PV.ops = pickOld.ops; PV.alert = pickOld.alert; PV.shell = pickOld.shell; }
     /* kit.reveal 的忠实实现（kit.py:356-394）= 逐格**交叉淡入** + 正在切换的格子上叠一层解码字形。
        【性能】权威是 Image.composite(new, old, mask)：小掩码 NEAREST 放大后**一次**合成。
        我们原来是逐格 drawImage（C06 是 178x35 = 6230 格/帧，每个都带 save/globalAlpha/restore），
@@ -959,7 +966,10 @@
       var kk;
       for (kk in buckets) {
         var bu = buckets[kk], arr = bu.xy, m2;
-        ctx.fillStyle = T.css(T.mix(T.ANOM, bu.lv), bu.av);
+        /* 【2026-10-06 实测修正】权威 s_boot.py:497 这一段是 B.lit(tk.amb(0.35+0.6v), 0.4(1-u))（琥珀），
+           但成片同刻帧量出来**全是中性蓝灰**（右翼最亮 150 像素均值 (161,169,182)、r-b = -20；整片零琥珀像素），
+           和上面柱条那条（cmt: 实测参考在这一段是浅灰白的柱条，不是琥珀）是同一类「源码 vs 成片」分歧 -> 以成片为准。 */
+        ctx.fillStyle = T.css(T.mix(T.UI, bu.lv), bu.av);
         ctx.beginPath();
         for (m2 = 0; m2 < arr.length; m2 += 2) ctx.rect(arr[m2], arr[m2 + 1], 9, 3);
         ctx.fill();
