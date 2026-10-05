@@ -153,7 +153,13 @@
     ctx.save();
     ctx.strokeStyle = typeof col === 'string' ? col : T.css(col, a === undefined ? 1 : a);
     ctx.lineWidth = lw || 1;
-    ctx.strokeRect(x0 - 0.5, y0 - 0.5, x1 - x0 + 1, y1 - y0 + 1);
+    /* 边框要画在**给定矩形之内**（PIL 的 rectangle(outline,width=n) 就是向内 n 行/列，
+       见 tuikit.box:337：d.rectangle([x0,y0,x1,y1], outline=...) 的 1px 就在 x0/y0 那一行/列上）。
+       原来写 strokeRect(x0-0.5, y0-0.5, w+1, h+1)：lw=1 时整条线落在 x0-1/y0-1 上（整体偏左上 1px），
+       lw=2 时又只覆盖 y0-1..y0（PIL 是 y0..y0+1）→ 高对比边框差 1-2px，块误差能到 20-30。
+       新写法：路径取 (x0+lw/2, y0+lw/2) 到 (x1-lw/2+1, y1-lw/2+1)，奇数 lw 落在半像素上（crisp）、
+       偶数 lw 落在整像素上（crisp），覆盖范围与 PIL 的向内描边逐像素一致。 */
+    ctx.strokeRect(x0 + lw / 2, y0 + lw / 2, (x1 - x0) - lw + 1, (y1 - y0) - lw + 1);
     ctx.restore();
   }
   function line(ctx, x0, y0, x1, y1, col, a, lw) {

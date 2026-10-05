@@ -75,7 +75,9 @@
     ctx.save();
     ctx.strokeStyle = typeof col === 'string' ? col : T.css(col, a === undefined ? 1 : a);
     ctx.lineWidth = lw || 1;
-    ctx.strokeRect(x0 - 0.5, y0 - 0.5, x1 - x0 + 1, y1 - y0 + 1);
+    /* 与 scene_p2b.js 的 rectLine 同步修正：边框要画在给定矩形之内（PIL 的 rectangle(outline,width=n) 向内）。
+       原来 lw=1 时整条线落在 x0-1/y0-1（偏左上 1px）、lw=2 时覆盖 y0-1..y0（PIL 是 y0..y0+1）。 */
+    ctx.strokeRect(x0 + lw / 2, y0 + lw / 2, (x1 - x0) - lw + 1, (y1 - y0) - lw + 1);
     ctx.restore();
   }
   /* 转场里画的镜头，Ctx 的 rng 种子是"帧号"而不是镜头序号：
