@@ -1429,11 +1429,14 @@
         if (isP) {
           var has = !pinned;
           if (pinned) for (j = 0; j < pinned.length; j++) if (pinned[j][0] === q && pinned[j][1] === r) has = true;
-          if (has) T.fill(ctx, x, y, x + KV.cw - 2, y + KV.ch - 2, blue(0.95), 1);
+          /* PIL 的 d.rectangle([x,y,x1,y1], fill=) 是**闭区间**（画到 x1/y1 那一列/行），
+             所以权威的 [x, y, x+cw-2, y+ch-2] 实际是 11x18 像素；我们用 T.fill 传同样的 x1/y1
+             只会得到 10x17（T.fill 是 x1-x0）→ 每格都缺最后一行一列，整片网格的边缘全错位 1px。 */
+          if (has) T.fill(ctx, x, y, x + KV.cw - 1, y + KV.ch - 1, blue(0.95), 1);
           else T.rect(ctx, x, y, x + KV.cw - 2, y + KV.ch - 2, amb(0.12), 1, 1);
         } else if (i < nOn) {
           var fresh = nOn - i < 40;
-          T.fill(ctx, x, y, x + KV.cw - 2, y + KV.ch - 2, amb(fresh && rng.random() < 0.5 ? 0.95 : 0.42 + 0.1 * ((q * 7 + r) % 3)), 1);
+          T.fill(ctx, x, y, x + KV.cw - 1, y + KV.ch - 1, amb(fresh && rng.random() < 0.5 ? 0.95 : 0.42 + 0.1 * ((q * 7 + r) % 3)), 1);
         } else T.rect(ctx, x, y, x + KV.cw - 2, y + KV.ch - 2, amb(0.12), 1, 1);
       }
     }
