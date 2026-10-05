@@ -96,6 +96,7 @@
     var url = item[0], size = item[1], fin = false;
     function done(ok, cached) {
       if (fin) return; fin = true;
+      if (guard) { clearTimeout(guard); guard = null; }
       PRE.n++;
       if (ok) { PRE.got++; PRE.done += size; if (cached) PRE.hit++; } else PRE.miss++;
       PRE.rate = Math.round(PRE.done / 1024 / Math.max(1, (Date.now() - t0) / 1000));
@@ -112,7 +113,19 @@
       setTimeout(function () { done(false); }, 30000);
       im.src = url;
     }
+    /* 【2026-10-06 修「素材缓存 0 / 173 MB　已命中 0　0 KB/s」卡死】有些 WebView 里
+       caches.open()/c.match() **永远不 settle**（既不 resolve 也不 reject）-> 16 个并发槽全部挂住、
+       pump 再也发不出请求，服务器侧一个素材请求都收不到（本地实测就是这个症状）。
+       加 1.5s 兜底：超时改走普通 fetch（不进 Cache API）；done() 有 fin 幂等保护，不会重复计数。 */
+    function plainFetch() {
+      fetch(url, { credentials: 'same-origin' }).then(function (res) {
+        if (!res || !res.ok) { done(false); return; }
+        res.arrayBuffer().then(function () { done(true); }, function () { done(false); });
+      }, function () { imgFallback(); });
+    }
+    var guard = null;
     if (window.caches && caches.open) {
+      guard = setTimeout(function () { guard = null; plainFetch(); }, 1500);
       caches.open(CACHE).then(function (c) {
         return c.match(url).then(function (hit) {
           if (hit) { done(true, true); return; }
@@ -129,8 +142,8 @@
             });
           }, function () { imgFallback(); });
         });
-      }).catch(function () { imgFallback(); });
-    } else imgFallback();
+      }).catch(function () { plainFetch(); });
+    } else plainFetch();
   }
 
   fetch('data/precache.json', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (idx) {
