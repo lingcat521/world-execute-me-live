@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>world.execute(me); · live</title>
-<link id="s-vendor" rel="stylesheet" href="css/vendor-BNsW4eBh.css?v=202610052770">
-<link id="s-index" rel="stylesheet" href="css/index-DPX2bQLO.css?v=202610052770">
-<link id="s-components" rel="stylesheet" href="css/dsh_components.css?v=202610052770">
-<link rel="stylesheet" href="data/pane_cordis.css?v=202610052770">
-<link rel="stylesheet" href="css/pv.css?v=202610052770">
+<link id="s-vendor" rel="stylesheet" href="css/vendor-BNsW4eBh.css?v=202610052780">
+<link id="s-index" rel="stylesheet" href="css/index-DPX2bQLO.css?v=202610052780">
+<link id="s-components" rel="stylesheet" href="css/dsh_components.css?v=202610052780">
+<link rel="stylesheet" href="data/pane_cordis.css?v=202610052780">
+<link rel="stylesheet" href="css/pv.css?v=202610052780">
 </head>
 <body data-ds-dark-theme="true">
 <div id="wrap"><div id="screen">
@@ -29,34 +29,53 @@
 <div id="err"></div>
 <div id="hint">▶&nbsp;&nbsp;点击开始播放</div>
 <audio id="song" src="audio/bgm.mp3" preload="auto"></audio>
-<script src="js/app.js?v=202610052770"></script>
-<script src="js/mt19937.js?v=202610052770"></script>
-<script src="js/tui.js?v=202610052770"></script>
-<script src="js/frame.js?v=202610052770"></script>
-<script src="js/chrome.js?v=202610052770"></script>
-<script src="js/scene_boot.js?v=202610052770"></script>
-<script src="js/pane.js?v=202610052770"></script>
-<script src="js/cuts.js?v=202610052770"></script>
-<script src="js/trans_pre.js?v=202610052770"></script>
-<script src="js/h3pool.js?v=202610052770"></script>
-<script src="js/h3pool_frames.js?v=202610052770"></script>
-<script src="js/h3live.js?v=202610052770"></script>
-<script src="data/hx/manifest.js?v=202610052770"></script>
-<script src="js/hx.js?v=202610052770"></script>
-<script src="js/h3_ifcan.js?v=202610052770"></script>
-<script src="js/scene_p2a.js?v=202610052770"></script>
-<script src="js/scene_p2b.js?v=202610052770"></script>
-<script src="js/scene_p2c.js?v=202610052770"></script>
-<script src="js/cuts_p2.js?v=202610052770"></script>
-<script src="js/cuts_p3.js?v=202610052770"></script>
-<script src="js/cuts_p4.js?v=202610052770"></script>
-<script src="js/cuts_p4x.js?v=202610052770"></script>
-<script src="js/watch.js?v=202610052770"></script>
-<script src="js/cap.js?v=202610052770"></script>
-<script src="js/dance_data.js?v=202610052770"></script>
-<script src="js/dancer.js?v=202610052770"></script>
-<script src="js/paneplace.js?v=202610052770"></script>
-<script src="js/precache.js?v=202610052770"></script>
+<script src="js/app.js?v=202610052780"></script>
+<script src="js/mt19937.js?v=202610052780"></script>
+<script src="js/tui.js?v=202610052780"></script>
+<script src="js/frame.js?v=202610052780"></script>
+<script src="js/chrome.js?v=202610052780"></script>
+<script src="js/scene_boot.js?v=202610052780"></script>
+<script src="js/pane.js?v=202610052780"></script>
+<script src="js/cuts.js?v=202610052780"></script>
+<script src="js/trans_pre.js?v=202610052780"></script>
+<script src="js/h3pool.js?v=202610052780"></script>
+<script src="js/h3pool_frames.js?v=202610052780"></script>
+<script src="js/h3live.js?v=202610052780"></script>
+<script src="data/hx/manifest.js?v=202610052780"></script>
+<script src="js/hx.js?v=202610052780"></script>
+<script src="js/h3_ifcan.js?v=202610052780"></script>
+<script src="js/scene_p2a.js?v=202610052780"></script>
+<script src="js/scene_p2b.js?v=202610052780"></script>
+<script src="js/scene_p2c.js?v=202610052780"></script>
+<script src="js/cuts_p2.js?v=202610052780"></script>
+<script src="js/cuts_p3.js?v=202610052780"></script>
+<script src="js/cuts_p4.js?v=202610052780"></script>
+<script src="js/cuts_p4x.js?v=202610052780"></script>
+<script src="js/watch.js?v=202610052780"></script>
+<script src="js/cap.js?v=202610052780"></script>
+<script src="js/dance_data.js?v=202610052780"></script>
+<script src="js/dancer.js?v=202610052780"></script>
+<script src="js/paneplace.js?v=202610052780"></script>
+<script src="js/precache.js?v=202610052780"></script>
+<script>
+/* 【2026-10-06】带 ?reset=1 打开时：注销 service worker + 清空 Cache Storage 再自动回到 ?pre=0。
+   用户报过「页面一直转圈加载不出东西」——SW 一旦代理了页面，旧的 sw.js/旧素材缓存会让它卡住。
+   只在显式带 reset=1 时执行，正常访问不受影响。 */
+if (location.search.indexOf('reset=1') >= 0) {
+  (function () {
+    var jobs = [];
+    if (navigator.serviceWorker) jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) {
+      return Promise.all(rs.map(function (r) { return r.unregister(); }));
+    }).catch(function () {}));
+    if (window.caches && caches.keys) jobs.push(caches.keys().then(function (ks) {
+      return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+    }).catch(function () {}));
+    Promise.all(jobs).then(function () {
+      if (location.search.indexOf('done=1') < 0) location.replace(location.pathname + '?pre=0&done=1');
+    });
+  })();
+}
+</script>
 <script>
 /* 素材缓存：首次播放后 hx 贴图/h3 帧池/avatars 不再重复下载（见 sw.js） */
 if ('serviceWorker' in navigator) {
