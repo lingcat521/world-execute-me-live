@@ -52,9 +52,17 @@
   T.uiGainNow = 1;                 /* 每帧由 frame.js 更新 */
   T.amb = function (lv) { return T.mix(T.UI, lv * T.uiGainNow); };
   T.bg = function (lv) { return T.mix(T.UI, lv); };
-  T.FAM = '"SpaceMono", ui-monospace, Consolas, "DejaVu Sans Mono", monospace';
+  /* 【2026-10-05 字重对齐】权威的等宽有两支：F_MONO = Consolas **regular**、F_MONO_B = Consolas Bold。
+     我们仓库里只有 SpaceMono-Bold.ttf（pv.css 也只注册了 font-weight:700）—— 它排在字族表第一位时，
+     对 weight 400 也会拿它（最近可用字重=700）→ **所有「常规」等宽字全变粗体** ✗。
+     A/B（node，t=146 全屏 me 文字场）：MONO_FAM 用 SpaceMono 13.19 / DroidSansMono 10.92 / CutiveMono 12.42
+     → 常规字必须用真正的 regular mono。
+     现在拆成两支：FAM（常规）系统等宽优先；FAMB（粗体）SpaceMono 优先。
+     node 侧 setup 会把 MONO_FAM 落到 DroidSansMono；浏览器侧 ui-monospace/Roboto Mono/Droid Sans Mono 都在。 */
+  T.FAM = 'ui-monospace, "DejaVu Sans Mono", "Roboto Mono", "Droid Sans Mono", monospace';
+  T.FAMB = '"SpaceMono", ui-monospace, Consolas, "DejaVu Sans Mono", monospace';
   T.CJK = '"Noto Sans SC", "Source Han Sans SC", system-ui, sans-serif';
-  T.font = function (size, bold) { return (bold ? '700 ' : '') + size + 'px ' + T.FAM; };
+  T.font = function (size, bold) { return (bold ? '700 ' : '') + size + 'px ' + (bold ? T.FAMB : T.FAM); };
   T.text = function (ctx, s, x, y, col, size, align, bold) {
     ctx.font = T.font(size, bold);
     ctx.textAlign = align || 'left';
