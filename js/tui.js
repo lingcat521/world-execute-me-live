@@ -62,7 +62,14 @@
   T.FAM = 'ui-monospace, "DejaVu Sans Mono", "Roboto Mono", "Droid Sans Mono", monospace';
   T.FAMB = '"SpaceMono", ui-monospace, Consolas, "DejaVu Sans Mono", monospace';
   T.CJK = '"Noto Sans SC", "Source Han Sans SC", system-ui, sans-serif';
-  T.font = function (size, bold) { return (bold ? '700 ' : '') + size + 'px ' + (bold ? T.FAMB : T.FAM); };
+  /* 【字号拟合】权威成片用的是 Windows 的 Consolas（advance 0.5498em、cap≈0.64em），
+     我们只能用系统 DroidSansMono（advance 0.6em、cap≈0.73em）—— 同一个 px 号下我们画的字
+     **又宽又高**：实测 t=67「happy(you) = 0.62」(权威 F_MONO_B 22) 成片字宽 138/字高 18.7，
+     我们 154/22.0（≈1.12-1.18 倍）。所以按字号整体缩一个 K，让**度量**贴近 Consolas。
+     K 由 PV.tui.TEXT_K 控制（默认 0.88），所有走 T.font/T.ascent 的绘制与量测都按它缩放。 */
+  T.TEXT_K = 0.88;
+  function fsz(size) { return size * (T.TEXT_K === undefined ? 1 : T.TEXT_K); }
+  T.font = function (size, bold) { return (bold ? '700 ' : '') + fsz(size).toFixed(2) + 'px ' + (bold ? T.FAMB : T.FAM); };
   T.text = function (ctx, s, x, y, col, size, align, bold) {
     ctx.font = T.font(size, bold);
     ctx.textAlign = align || 'left';
@@ -112,8 +119,9 @@
   var PV = window.PV, T = PV.tui;
   T.ASC = 1.12;
   T.ADV = 0.612;
-  T.ascent = function (size) { return Math.floor(T.ASC * size); };
-  T.adv = function (size) { return size * T.ADV; };
+  /* 注意：画字的字号已经被 TEXT_K 缩过，锚点（ascender 顶）也必须跟着缩，否则字会整体下沉。 */
+  T.ascent = function (size) { return Math.floor(T.ASC * size * (T.TEXT_K === undefined ? 1 : T.TEXT_K)); };
+  T.adv = function (size) { return size * (T.TEXT_K === undefined ? 1 : T.TEXT_K) * T.ADV; };
   /* 宽度必须用「真正画字的那套字体」量。原来是 s.length * 0.612em 的固定近似：遇到 CJK（≈1em）
      或空白（≈0.28em）就差很多 —— 底栏 credit 因此右端溢出画面（实测画到 1278 > W-24）、顶栏右侧
      的 chapter/时钟也跟着偏。权威一律用 PIL 的 d.textlength(s, font) = 真字体度量。 */
