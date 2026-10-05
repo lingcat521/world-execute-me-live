@@ -46,7 +46,7 @@
   /* 版本号：**必须与 index.html 的 ?v= 一起改**——caps 的 _box.png 会回传这个字段，是判断
      「浏览器到底跑的是哪一版代码」的唯一可靠依据（原来停在 202610050600，cap 里永远是旧号，
      双证时无法确认页面有没有 reload 到新码）。 */
-  PV.VER = '202610052790';
+  PV.VER = '202610052800';
   var errEl = document.getElementById('err');
   PV.showErr = function (msg) {
     if (!errEl) return;
@@ -375,8 +375,20 @@
       }
     }
   }
-  if (document.readyState === 'complete') setTimeout(boot, 0);
-  else window.addEventListener('load', function () { setTimeout(boot, 0); });
+  /* 【2026-10-06 修「页面一直转圈、无报错、一个数据都不拉」】
+     原来只等 window.load。但 <audio preload="auto"> 会**推迟 document 的 load 事件**（规范如此），
+     音频一卡（服务器日志里 /audio/bgm.mp3 被反复请求 5 次）load 就永远不来 -> boot() 永不执行 ->
+     后面所有 data/*.json、assets/*.bin 的请求一个都不发，页面上也没有任何红色报错。
+     改成三保险：已经 complete / DOMContentLoaded / 3 秒兜底，谁先到谁跑（boot 用 booted 保证只跑一次）。
+     脚本都在 </body> 前，DOMContentLoaded 时页面上该有的元素都已经在了。 */
+  var booted = false;
+  function bootOnce() { if (booted) return; booted = true; setTimeout(boot, 0); }
+  if (document.readyState === 'complete') bootOnce();
+  else {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bootOnce);
+    window.addEventListener('load', bootOnce);
+    setTimeout(bootOnce, 3000);
+  }
   /* "Script error." 是跨域脚本抛错的专属签名（同源脚本一定会带出堆栈）。
      页面自己把非本源的 script / 浏览器注入物报出来，省得靠猜。 */
   PV.scanForeign = function () {
