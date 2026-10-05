@@ -3034,7 +3034,12 @@
        208.0 起 composer 出现、209.0 有 `在吗？` ✓，正是这条边界。
        以前这里靠 HIDE_SHOTS 里的 shot_whale_fall 兜底，但它跨到 211.0，会把 207.77-211 一起藏掉 ✗ ——
        权威 eval 段的 HIDE_HER 只有 {shot_last_execution, shot_black}，不含 whale_fall。 */
-    if (t >= 193.543 && t < 207.7738) return false;
+    /* 【2026-10-06 修正】原来这条从 193.543 就开始藏 —— 但成片实测 195/200/204 三帧里她的窗格
+       **是在画面上的**（`我在。我在。` 的一片聊天行 + 头像 + `已归档 · DeepSeek-V4.1-Flash` + composer，
+       被 WhaleFall.offset() 带着右移 374px / 下沉，最后在 204 前后碎成一片点）。
+       只有 205.5433（shot_last_execution 起）到 207.7738（黑场里页面重新出现）之间才是真的没有窗格
+       （206 帧实测只有红色 execution + 海底）。所以边界改成 205.5433。 */
+    if (t >= 205.5433 && t < 207.7738) return false;
     if (execHitPaneOff(t)) return false;              /* lay 0/2/3 的 exec_hit：参考里这一段没有聊天窗 */
     /* shot_collapse（174.851-176.928）：压成线/点之后不再有窗格；**之前**要显示 —— 权威 collapse_frame
        在 LINE_T 前返回完整的 trapped_frame（含 her/window 与页面自己的红墙），参考 175.0 实测左框
