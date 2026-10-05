@@ -1901,6 +1901,87 @@
       if (lv2 <= 0.02) continue;
       T.fill(ctx, sx, sy, sx + q_.sz, sy + q_.sz, blue(Math.min(1, lv2)), 1);
     }
+    /* --- 落下的爱语（画在她之上，权威 :723「drawn over her」）--- */
+    try { wfDrawWords(ctx, t); } catch (e) { PV.wfWordsErr = e; }
+    /* --- 落下的爱语（权威 s_eval.py:600-628 的 words + :658-676 word_state/converge + :723-752 的绘制）：
+       love_loop 那一屏的每个条目（候选词/概率条/三行提示/love 流）在鲸落开始时从原位松手，
+       先整块下落（whole: x+2sin(5a+x), y+10a+36a²，alpha 1-0.7a/L），再碎成 3~5 个点继续掉（v=24~42），
+       过了 TC 每个点按自己的 d 沿 bezier(bend .18) 被吸进她化成的那个 cell，吸完就不再画。
+       统计口径：权威用 Random(94) 的**同一股流**（它的雪那半我们的 rng 用法不同、已经偏了，见 wfSnow 注释），
+       所以这里另起一股 Random(940) —— 属于"随机场"级差异（用户规则允许），结构与运动学逐行照抄。 */
+  var WF_LT_LOVE = WF_T0 - 190.3125;          /* 鲸落起点对应的 love_loop 本地时间 */
+  var WF_ITEMS = null;
+  function wfItems() {
+    if (WF_ITEMS) return WF_ITEMS;
+    if (!PV.l93Items) { WF_ITEMS = []; return WF_ITEMS; }
+    var src = PV.l93Items(WF_LT_LOVE, true), words = [], k, i;
+    for (k = 0; k < src.length; k++) {
+      var it = src[k];
+      if (it[0] === 't') words.push({ kind: 't', s: it[1], x: it[2], y: it[3], col: it[4], size: it[5], bold: it[6], key: it[7] });
+      else words.push({ kind: 'r', box: it[1], col: it[2], x: it[1][0], y: it[1][1], key: it[3] });
+    }
+    var rnd = PV.mt(940), rows = 1;
+    for (k = 0; k < words.length; k++)
+      if (words[k].key >= 100) rows = Math.max(rows, Math.floor((words[k].y - 76) / 20) + 1);
+    for (k = 0; k < words.length; k++) {
+      var wd = words[k];
+      if (wd.key >= 100) {                      /* 输出流：底行先松手、顶行最后 */
+        wd.delay = 0.035 * (rows - Math.floor((wd.y - 76) / 20)) + 0.006 * ((wd.x - 800) / 50) + rnd.random() * 0.03;
+        wd.whole = 0.55;
+      } else { wd.delay = rnd.random() * 0.08; wd.whole = 0.3; }
+      var ns = wd.kind === 't' ? 3 : 5;
+      wd.specks = [];
+      for (i = 0; i < ns; i++)
+        wd.specks.push([-4 + rnd.random() * 40, -2 + rnd.random() * 14, 24 + rnd.random() * 18,
+                        rnd.random() * 6.28, 0.5 + rnd.random() * 0.4]);
+    }
+    for (k = 0; k < words.length; k++) {
+      var dd = [], wd2 = words[k];
+      for (i = 0; i < wd2.specks.length; i++) dd.push(rnd.random() * 1.05);
+      wd2.d = dd;
+    }
+    WF_ITEMS = words;
+    return WF_ITEMS;
+  }
+  /* 她化成的 cell 中心（s_eval.cell_pos() → 我们的 she-cell 位置） */
+  function wfCellPos() { return [WF_HX, wfFloorY(WF_HX) - 10]; }
+  function wfConverge(x, y, d, t) {
+    if (t < WF_TC) return [x, y, 1.0];
+    var w = T.ease_in(T.clamp01((t - WF_TC - d) / 0.75));
+    if (w >= 1) return null;
+    var P = wfCellPos(), p0 = [x, y], mx = (p0[0] + P[0]) / 2, my = (p0[1] + P[1]) / 2;
+    var dx = P[0] - p0[0], dy = P[1] - p0[1], cx = mx + dy * 0.18, cy = my - dx * 0.18, a = 1 - w;
+    return [a * a * p0[0] + 2 * a * w * cx + w * w * P[0], a * a * p0[1] + 2 * a * w * cy + w * w * P[1], 1 + 0.4 * w];
+  }
+  function wfDrawWords(ctx, t) {
+    if (PV.WF_NOWORDS) return;
+    var words = wfItems(), k, i;
+    for (k = 0; k < words.length; k++) {
+      var wd = words[k], a = Math.max(0, t - WF_T0 - wd.delay), L = wd.whole;
+      if (a < L) {                               /* 整块下落 */
+        var wx = wd.x + 2 * Math.sin(a * 5 + wd.x), wy = wd.y + 10 * a + 36 * a * a;
+        var al = 1 - 0.7 * a / L;
+        if (al <= 0.02) continue;
+        ctx.save(); ctx.globalAlpha = al;
+        if (wd.kind === 't') mono(ctx, wd.s, wx, wy, wd.col, wd.size, 'left', wd.bold);
+        else rFill(ctx, wd.box[0] + (wx - wd.x), wd.box[1] + (wy - wd.y), wd.box[2] + (wx - wd.x), wd.box[3] + (wy - wd.y), wd.col, 1);
+        ctx.restore();
+        continue;
+      }
+      var b = a - L, yl = 10 * L + 36 * L * L;
+      for (i = 0; i < wd.specks.length; i++) {
+        var sp = wd.specks[i];
+        var x = wd.x + sp[0] + 9 * Math.sin(b * 1.1 + sp[3]) + 3 * b;
+        var y = wd.y + sp[1] + yl + sp[2] * b + 14 * Math.min(b, 0.5);
+        var fy = wfFloorY(x) - 2;
+        var lv = sp[4] * (1 - 0.3 * T.clamp01(b / 5));
+        if (y >= fy) { y = fy; lv *= 0.8; }
+        var r = wfConverge(x, y, wd.d[i], t);
+        if (!r) continue;
+        T.fill(ctx, r[0], r[1], r[0] + 2, r[1] + 2, blue(Math.min(1, lv * r[2])), 1);
+      }
+    }
+  }
     /* --- 她：参考里这一块是她那块 dsh 窗格（真 HTML #chat）被带走：右移 374px、下沉 262px、
        沉到海底以下被剪掉、最后淡成一道痕（s_eval.WhaleFall.her）。窗格在 canvas 里画不出来
        （paneplace.js 已经在 DOM 层做水平滑出）；试过用亮蓝半调立绘当替身，200.00 三个指标全部变差
