@@ -1537,6 +1537,9 @@
       var WE_DY = PV.UNITE_WE_DY === undefined ? -12 : PV.UNITE_WE_DY;
       var r = 30 + 60 * PV.pulse(t);
       T.ring(ctx, cx, 173 + WE_DY, r, T.ui(0.5), 1, 1);
+      /* 方块高度保持源码的 47 行（150..196）：试过按「成片亮带 138..178」收成 41 行（PV.UNITE_WE_BOT=179）
+         → 区域误差 13.45->18.74、方块带 31.17->45.12 **变差**，说明成片那条 178 的读数不可靠（下缘那几行
+         在成片里偏暗，长亮带判据没抓到），高度按源码保留。 */
       T.fill(ctx, cx - 50, 150 + WE_DY, cx + 51, 197 + WE_DY, T.ui(0.95), 1);
       T.textPIL(ctx, 'we', cx - 18, 156 + WE_DY, T.css(T.BG), 26);
       T.textMono(ctx, 'merge -> id ' + T.tokenId('we'), cx - 34, 202 + WE_DY, T.ui(0.8), 12);
